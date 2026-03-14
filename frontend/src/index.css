@@ -1,0 +1,111 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Smooth page transitions ────────────────────────────────── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Better focus styles */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-gray-900/30;
+  }
+
+  /* Smooth transitions on interactive elements */
+  select,
+  input,
+  textarea,
+  button,
+  a {
+    @apply transition-all duration-200;
+  }
+}
+
+/* ── Custom select styling ──────────────────────────────────── */
+@layer components {
+  .select-styled {
+    @apply appearance-none bg-white rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm
+           shadow-sm hover:border-gray-300
+           focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10
+           transition-all duration-200;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.5rem;
+  }
+
+  .input-styled {
+    @apply w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm
+           shadow-sm placeholder:text-gray-400
+           hover:border-gray-300
+           focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10
+           transition-all duration-200;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5
+           text-sm font-medium text-white shadow-sm
+           hover:bg-gray-800 hover:shadow-md
+           active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-200;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-2.5
+           text-sm font-medium text-gray-700 shadow-sm
+           hover:bg-gray-50 hover:border-gray-300 hover:shadow-md
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-5 py-2.5
+           text-sm font-medium text-red-600 shadow-sm
+           hover:bg-red-50 hover:border-red-300
+           active:scale-[0.98]
+           transition-all duration-200;
+  }
+
+  .card {
+    @apply rounded-2xl border border-gray-200 bg-white shadow-sm
+           hover:shadow-md hover:border-gray-300
+           transition-all duration-300;
+  }
+}
+
+/* ── Voice bars animation (user speaking) ───────────────────── */
+.voice-bar {
+  transform-origin: bottom;
+  animation: voice-bar-bounce var(--bar-speed, 0.6s) ease-in-out infinite;
+  animation-delay: var(--bar-delay, 0s);
+}
+
+@keyframes voice-bar-bounce {
+  0%, 100% { transform: scaleY(0.25); }
+  50% { transform: scaleY(1); }
+}
+
+/* ── Orb ring animation ─────────────────────────────────────── */
+.orb-ring {
+  animation: orb-ring-expand 2.5s ease-out infinite;
+}
+
+@keyframes orb-ring-expand {
+  0% { transform: scale(0.85); opacity: 0.5; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* ── Page transition wrapper ────────────────────────────────── */
+.page-enter {
+  animation: page-fade-in 0.3s ease-out;
+}
+
+@keyframes page-fade-in {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
