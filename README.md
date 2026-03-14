@@ -35,6 +35,10 @@ OASIS is an open-source research platform that lets you run conversational AI in
 
 It was built out of a simple frustration: existing commercial tools for conversational AI are powerful, but they are not designed with research methodology in mind. Things like follow-up probing, semi-structured interview guides, participant identifiers, and study-level organization tend to be afterthoughts. OASIS puts those features front and center.
 
+## Early-stage notice
+
+OASIS launched publicly in March 2026. While we have tested the platform extensively across different virtual machines, operating systems, and deployment setups, it is still a young project. You may encounter rough edges, especially in less common configurations. If something breaks, please [open an issue](https://github.com/oasis-surveys/oasis-platform/issues/new?template=bug_report.yml) and we will do our best to help.
+
 ## Demo
 
 <p align="center">
@@ -97,6 +101,9 @@ https://github.com/user-attachments/assets/bbf5a613-a28a-4dd0-a962-9250ac1f05a1
 - No data leaves your infrastructure unless you explicitly configure external API calls
 - Optional basic authentication for the admin dashboard
 - API keys configurable via `.env` or the dashboard settings page
+
+**A note on GPUs and HPCs**
+- OASIS does not currently include built-in support for GPU scheduling or HPC cluster integration. This is intentional. HPC environments vary significantly between institutions, and teams that manage GPU clusters typically have the technical expertise to integrate OASIS into their own infrastructure. If you are running OASIS on an HPC and want to connect it to local GPU-hosted models, the LiteLLM layer makes this straightforward via custom endpoints.
 
 ## Architecture
 
@@ -263,9 +270,11 @@ The long-term goal is for OASIS to become a standard open-source tool that surve
 
 ## Contributing
 
-Contributions are very welcome. If you are interested in contributing, improving the platform, or building on it for your own research, please reach out first. Open an issue or send an email to [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk).
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-For feature requests and bug reports, please use [GitHub Issues](https://github.com/oasis-surveys/oasis-platform/issues).
+- **Bug reports:** [Open a bug report](https://github.com/oasis-surveys/oasis-platform/issues/new?template=bug_report.yml)
+- **Feature requests:** [Suggest a feature](https://github.com/oasis-surveys/oasis-platform/issues/new?template=feature_request.yml)
+- **General questions:** [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk)
 
 ## License
 

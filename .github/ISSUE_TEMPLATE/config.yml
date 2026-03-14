@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions or general discussion
+    url: mailto:max.lang@stx.ox.ac.uk
+    about: For questions that are not bugs or feature requests, feel free to reach out via email.

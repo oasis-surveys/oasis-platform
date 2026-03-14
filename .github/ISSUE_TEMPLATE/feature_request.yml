@@ -1,0 +1,73 @@
+name: Feature Request
+description: Suggest a new feature or improvement for OASIS
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We appreciate feature ideas, especially from researchers using OASIS in real studies. Please describe what you need and why it matters for your work.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or frustration that motivates this request.
+      placeholder: "I am running a longitudinal study and need to schedule follow-up interviews with the same participants, but there is no way to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would the solution look like?
+      description: Describe the feature as concretely as you can. What would the user see or do?
+      placeholder: "A 'Schedule follow-up' button on the session detail page that lets you set a date and automatically generates a new interview link for that participant..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area of OASIS does this relate to?
+      options:
+        - Admin Dashboard
+        - Interview experience (voice or text)
+        - Pipeline / AI models
+        - Data export and analysis
+        - Study design and configuration
+        - Deployment and infrastructure
+        - Telephony (Twilio)
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: How important is this for your work?
+      options:
+        - Nice to have
+        - Would significantly improve my workflow
+        - Blocking my research (need a workaround)
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
+      description: Have you found a workaround, or looked at other tools that handle this?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, mockups, links to papers, or anything else that helps explain the request.
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Would you be willing to contribute?
+      description: Not required at all, but helpful to know.
+      options:
+        - label: I would be interested in working on this feature (with guidance)

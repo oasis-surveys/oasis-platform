@@ -1,0 +1,113 @@
+name: Bug Report
+description: Report something that is broken or not working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Please fill in as much detail as you can so we can reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: "When I try to start a voice interview, the WebSocket connection drops after ~5 seconds..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: "The interview should stay connected and the agent should respond to audio."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Walk us through how to trigger this bug.
+      placeholder: |
+        1. Create a new study
+        2. Add a voice agent with OpenAI GPT-4o
+        3. Set agent to Active
+        4. Open the interview link in Chrome
+        5. Allow microphone access
+        6. Connection drops after a few seconds
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part of OASIS is affected?
+      options:
+        - Admin Dashboard (frontend)
+        - Interview Widget (voice)
+        - Interview Widget (text chat)
+        - Backend API
+        - Pipeline / AI models
+        - Twilio / telephony
+        - Docker / deployment
+        - Database / migrations
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: OASIS version or commit hash
+      description: Run `git log --oneline -1` in your OASIS directory.
+      placeholder: "e.g. 4ec3b23 or main branch as of 2026-03-14"
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running OASIS?
+      options:
+        - Docker Compose on local machine
+        - Docker Compose on a remote server / VM
+        - Cloud VM (AWS, GCP, Azure, etc.)
+        - University / institutional server
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Host operating system
+      placeholder: "e.g. Ubuntu 22.04, macOS 15, Windows 11 with WSL2"
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser (if frontend-related)
+      placeholder: "e.g. Chrome 124, Firefox 126, Safari 18"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error messages
+      description: Paste any relevant output from `docker compose logs backend` or the browser console.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help (screenshots, .env config with keys redacted, network setup, etc.)
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have searched existing issues to make sure this is not a duplicate
+          required: true
+        - label: I have redacted any API keys or sensitive information from logs and config
+          required: true
