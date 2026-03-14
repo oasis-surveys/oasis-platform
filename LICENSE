@@ -1,0 +1,51 @@
+Open Non-Commercial Research License (ONCRL) v1.0
+
+Copyright (c) 2025 Max M. Lang. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, and distribute the Software for non-commercial research and
+educational purposes only, subject to the following conditions:
+
+1. NON-COMMERCIAL USE ONLY
+   The Software may not be used, in whole or in part, for any commercial
+   purpose. This includes, but is not limited to, selling the Software,
+   offering it as a hosted service for profit, or incorporating it into a
+   commercial product. Any use in connection with revenue-generating
+   activities requires prior written approval from the copyright holder.
+
+2. FUNDED PROJECTS AND GRANT APPLICATIONS
+   Use of the Software as a core component of a funded research project,
+   grant application, or externally sponsored initiative requires prior
+   written approval from the copyright holder. Approval requests should be
+   directed to: max.lang@stx.ox.ac.uk
+
+3. ATTRIBUTION
+   All copies or substantial portions of the Software must retain this
+   copyright notice and permission notice. Any published work making use of
+   the Software must cite the original repository:
+
+       OASIS: Open Agentic Survey Interview System
+       https://github.com/oasis-surveys/oasis
+
+4. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+   NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+   USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. CONTRIBUTIONS
+   By submitting a contribution (pull request, patch, or any other form) to
+   this project, you agree that your contribution is licensed under the same
+   terms as this license unless explicitly stated otherwise.
+
+6. TERMINATION
+   This license is automatically terminated if you fail to comply with any
+   of its terms. Upon termination, you must destroy all copies of the
+   Software in your possession.
+
+For permissions beyond the scope of this license, please contact:
+max.lang@stx.ox.ac.uk

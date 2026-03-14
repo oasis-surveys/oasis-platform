@@ -1,22 +1,25 @@
 # ─────────────────────────────────────────────────────────────────
-# OASIS — Weekly Test Suite
+# OASIS — Scheduled Test Suite (every 3 weeks)
 #
-# Comprehensive weekly test run including:
+# Comprehensive test run including:
 # - All unit/integration tests
 # - Dependency audit
 # - Docker compose validation
 #
-# Runs every Monday at 06:00 UTC and can be triggered manually.
-# No paid API keys required — all external calls are mocked.
+# Cron fires every Monday at 06:00 UTC. A guard job skips the
+# run unless the ISO week number is divisible by 3, giving us an
+# effective cadence of once every three weeks.
+# Can also be triggered manually at any time.
+# No paid API keys required. All external calls are mocked.
 # ─────────────────────────────────────────────────────────────────
 
-name: Weekly Tests
+name: Scheduled Tests
 
 on:
   schedule:
-    # Every Monday at 06:00 UTC
+    # Every Monday at 06:00 UTC (guard job filters to every 3 weeks)
     - cron: "0 6 * * 1"
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch: # Allow manual triggering (always runs)
 
 env:
   POSTGRES_HOST: localhost
@@ -32,9 +35,35 @@ env:
   GOOGLE_API_KEY: goog-test-fake-weekly-key
 
 jobs:
+  # ── Schedule Gate (skip unless week % 3 == 0 or manual) ─────────
+  schedule-gate:
+    name: Schedule Gate
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check if this week should run
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger, running."
+          else
+            WEEK=$(date +%V)
+            if [ $(( WEEK % 3 )) -eq 0 ]; then
+              echo "should_run=true" >> "$GITHUB_OUTPUT"
+              echo "Week $WEEK is divisible by 3, running."
+            else
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              echo "Week $WEEK is not divisible by 3, skipping."
+            fi
+          fi
+
   # ── Full Backend Test Suite ───────────────────────────────────
   backend-full:
     name: Backend Full Test Suite
+    needs: schedule-gate
+    if: needs.schedule-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -73,6 +102,8 @@ jobs:
   # ── Full Frontend Test Suite ──────────────────────────────────
   frontend-full:
     name: Frontend Full Test Suite
+    needs: schedule-gate
+    if: needs.schedule-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -101,6 +132,8 @@ jobs:
   # ── Dependency Audit ──────────────────────────────────────────
   dependency-audit:
     name: Dependency Audit
+    needs: schedule-gate
+    if: needs.schedule-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -122,19 +155,21 @@ jobs:
           pip install --upgrade pip
           pip install pip-audit
           pip install -r requirements.txt
-          pip-audit --strict 2>&1 || echo "⚠️ Python dependency vulnerabilities found"
+          pip-audit --strict 2>&1 || echo "Python dependency vulnerabilities found"
         continue-on-error: true
 
       - name: Node dependency check
         run: |
           cd frontend
           npm ci || npm install
-          npm audit --production 2>&1 || echo "⚠️ Node dependency vulnerabilities found"
+          npm audit --production 2>&1 || echo "Node dependency vulnerabilities found"
         continue-on-error: true
 
   # ── Docker Compose Validation ─────────────────────────────────
   docker-validation:
     name: Docker Compose Validation
+    needs: schedule-gate
+    if: needs.schedule-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
 
     steps:
