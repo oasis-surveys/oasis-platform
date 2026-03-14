@@ -39,18 +39,21 @@ It was built out of a simple frustration: existing commercial tools for conversa
 
 <p align="center">
   <strong>1. Setup a Study</strong><br/><br/>
-  <img src="misc/demo1-fast.gif" alt="Setup a Study" width="700"/>
 </p>
+
+https://github.com/user-attachments/assets/25633a6b-26c5-4030-89d9-40638b67aff7
 
 <p align="center">
   <strong>2. Create and Configure an Agent</strong><br/><br/>
-  <img src="misc/demo2-fast.gif" alt="Create and Configure an Agent" width="700"/>
 </p>
+
+https://github.com/user-attachments/assets/4ac63d6e-fdbd-44da-818d-3a4e53417ddc
 
 <p align="center">
   <strong>3. Collect and Manage Data</strong><br/><br/>
-  <img src="misc/demo3-fast.gif" alt="Collect and Manage Data" width="700"/>
 </p>
+
+https://github.com/user-attachments/assets/bbf5a613-a28a-4dd0-a962-9250ac1f05a1
 
 ## Features
 
