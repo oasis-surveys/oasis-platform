@@ -127,6 +127,11 @@ class Agent(Base):
         String(255), nullable=True, default="Agent is listening…"
     )
 
+    # ── Telephony (Twilio) ──
+    twilio_phone_number: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )
+
     # ── Relationships ──
     study = relationship("Study", back_populates="agents")
     participant_identifiers = relationship(

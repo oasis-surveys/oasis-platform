@@ -43,6 +43,9 @@ class AgentCreate(BaseModel):
     widget_primary_color: str | None = "#111827"
     widget_listening_message: str | None = "Agent is listening…"
 
+    # Telephony
+    twilio_phone_number: str | None = None
+
 
 class AgentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
@@ -71,6 +74,8 @@ class AgentUpdate(BaseModel):
     widget_description: str | None = None
     widget_primary_color: str | None = None
     widget_listening_message: str | None = None
+
+    twilio_phone_number: str | None = None
 
 
 # ── Response Schemas ─────────────────────────────────────────
@@ -107,6 +112,8 @@ class AgentRead(BaseModel):
     widget_description: str | None
     widget_primary_color: str | None
     widget_listening_message: str | None
+
+    twilio_phone_number: str | None
 
     created_at: datetime
     updated_at: datetime

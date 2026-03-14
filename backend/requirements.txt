@@ -22,6 +22,9 @@ deepgram-sdk>=4.0.0
 elevenlabs>=1.0.0
 google-genai>=1.0.0
 
+# ── Telephony ──
+twilio>=9.0.0
+
 # ── Utilities ──
 httpx==0.28.1
 python-dotenv==1.0.1

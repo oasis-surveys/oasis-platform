@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.router import api_router
 from app.api.interviews import router as interviews_router
 from app.api.monitor import router as monitor_router
+from app.api.twilio import router as twilio_router
 from app.config import settings
 from app.database import engine, get_db
 from app.redis import close_redis, get_redis
@@ -58,6 +59,9 @@ app.include_router(api_router)
 # ── WebSocket Routes (outside /api prefix) ───────────────────
 app.include_router(interviews_router)
 app.include_router(monitor_router)
+
+# ── Twilio Routes (voice webhook + media streams WebSocket) ──
+app.include_router(twilio_router)
 
 
 # ── Public Widget Config (no auth required) ──────────────────

@@ -65,6 +65,7 @@ export interface Agent {
   widget_description: string | null;
   widget_primary_color: string | null;
   widget_listening_message: string | null;
+  twilio_phone_number: string | null;
   created_at: string;
   updated_at: string;
 }

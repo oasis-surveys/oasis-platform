@@ -46,6 +46,98 @@ from app.database import async_session_factory
 from app.pipeline.transcript_logger import TranscriptLogger
 
 
+async def build_twilio_pipeline(
+    *,
+    websocket,
+    session_id: uuid.UUID,
+    system_prompt: str,
+    welcome_message: Optional[str],
+    pipeline_type: str = "modular",
+    llm_model: str,
+    stt_provider: str = "deepgram",
+    tts_provider: str = "elevenlabs",
+    tts_voice: Optional[str] = None,
+    language: str = "en",
+    max_duration_seconds: Optional[int] = None,
+    notify_callback=None,
+    stream_sid: str = "",
+    call_sid: Optional[str] = None,
+) -> PipelineTask:
+    """
+    Build a Pipecat pipeline for Twilio telephony.
+
+    Uses TwilioFrameSerializer to handle μ-law ↔ PCM16 conversion
+    and Twilio Media Streams JSON protocol.
+    """
+    from pipecat.serializers.twilio import TwilioFrameSerializer
+
+    serializer = TwilioFrameSerializer(
+        stream_sid=stream_sid,
+        call_sid=call_sid,
+        account_sid=settings.twilio_account_sid or None,
+        auth_token=settings.twilio_auth_token or None,
+        params=TwilioFrameSerializer.InputParams(
+            # Disable auto hang-up if no credentials provided
+            auto_hang_up=bool(
+                settings.twilio_account_sid
+                and settings.twilio_auth_token
+                and call_sid
+            ),
+        ),
+    )
+
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket,
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            vad_enabled=True,
+            vad_analyzer=_get_vad(),
+            vad_audio_passthrough=True,
+            serializer=serializer,
+            session_timeout=max_duration_seconds,
+        ),
+    )
+
+    transcript_logger = TranscriptLogger(
+        session_id=session_id,
+        db_session_factory=async_session_factory,
+        notify_callback=notify_callback,
+    )
+
+    # Twilio calls always use the modular pipeline (STT → LLM → TTS)
+    # because the telephony audio is 8kHz μ-law, not suitable for
+    # direct V2V endpoints which expect higher-quality audio.
+    # However, if the agent is configured for V2V, we still support it.
+    if pipeline_type == "voice_to_voice":
+        task = _build_v2v_pipeline(
+            transport=transport,
+            transcript_logger=transcript_logger,
+            llm_model=llm_model,
+            system_prompt=system_prompt,
+            welcome_message=welcome_message,
+            language=language,
+            max_duration_seconds=max_duration_seconds,
+            voice=tts_voice,
+        )
+    else:
+        task = _build_modular_pipeline(
+            transport=transport,
+            transcript_logger=transcript_logger,
+            llm_model=llm_model,
+            system_prompt=system_prompt,
+            welcome_message=welcome_message,
+            stt_provider=stt_provider,
+            tts_provider=tts_provider,
+            tts_voice=tts_voice,
+            language=language,
+            max_duration_seconds=max_duration_seconds,
+        )
+
+    return task
+
+
 async def build_pipeline(
     *,
     websocket,

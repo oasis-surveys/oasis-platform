@@ -186,6 +186,7 @@ interface FormData {
   widget_description: string;
   widget_primary_color: string;
   widget_listening_message: string;
+  twilio_phone_number: string;
 }
 
 const DEFAULT_FORM: FormData = {
@@ -209,6 +210,7 @@ const DEFAULT_FORM: FormData = {
   widget_description: "",
   widget_primary_color: "#111827",
   widget_listening_message: "Agent is listening…",
+  twilio_phone_number: "",
 };
 
 // ── Grouped select helper ──────────────────────────────────────
@@ -320,6 +322,7 @@ export default function AgentFormPage() {
           widget_description: a.widget_description || "",
           widget_primary_color: a.widget_primary_color || "#111827",
           widget_listening_message: a.widget_listening_message || "Agent is listening…",
+          twilio_phone_number: a.twilio_phone_number || "",
         });
         participants.list(studyId, agentId).then(setPidList).catch(console.error);
       })
@@ -369,6 +372,7 @@ export default function AgentFormPage() {
       widget_description: form.widget_description || null,
       widget_primary_color: form.widget_primary_color || null,
       widget_listening_message: form.widget_listening_message || null,
+      twilio_phone_number: form.twilio_phone_number || null,
     };
 
     try {
@@ -1100,6 +1104,64 @@ export default function AgentFormPage() {
               />
               <span className="text-xs text-gray-500">Preview of your primary colour</span>
             </div>
+          </div>
+        </div>
+
+        {/* ── Telephony (Twilio) ── */}
+        <div className="card p-6">
+          <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
+            Telephony (Twilio)
+            <HelpTooltip text="Connect a Twilio phone number so participants can call in for interviews via regular phone. Requires TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in your .env file." />
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-100 rounded-full px-2 py-0.5">Optional</span>
+          </h3>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                Twilio Phone Number
+                <HelpTooltip text="The Twilio phone number assigned to this agent (e.g. +1234567890). Participants will call this number to start an interview." />
+              </label>
+              <input
+                type="tel"
+                value={form.twilio_phone_number}
+                onChange={set("twilio_phone_number")}
+                className="input-styled font-mono"
+                placeholder="+1234567890"
+              />
+            </div>
+
+            {/* Webhook URL info (only shown for existing agents) */}
+            {existing && (
+              <div className="rounded-xl bg-gray-50 p-4 border border-gray-100 space-y-3">
+                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                  Twilio Webhook Configuration
+                </label>
+                <p className="text-xs text-gray-500">
+                  Configure your Twilio phone number's <strong>Voice webhook</strong> (HTTP POST) to point to:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs font-mono text-gray-700 bg-white rounded-lg border border-gray-200 px-3 py-1.5 select-all flex-1 truncate">
+                    {`${window.location.origin}/api/twilio/voice/${existing.id}`}
+                  </code>
+                  <CopyButton
+                    text={`${window.location.origin}/api/twilio/voice/${existing.id}`}
+                    onCopied={showToast}
+                    toastMessage="Webhook URL copied!"
+                    size="md"
+                  />
+                </div>
+                <InfoBanner color="amber">
+                  <strong>Setup steps:</strong>{" "}
+                  1. Buy a phone number in your{" "}
+                  <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/incoming" target="_blank" rel="noopener noreferrer" className="underline">Twilio Console</a>.{" "}
+                  2. Set the Voice webhook URL above.{" "}
+                  3. Add <code>TWILIO_ACCOUNT_SID</code> and <code>TWILIO_AUTH_TOKEN</code> to your <code>.env</code> file.{" "}
+                  4. For local development, use{" "}
+                  <a href="https://ngrok.com" target="_blank" rel="noopener noreferrer" className="underline">ngrok</a>{" "}
+                  to expose your server.
+                </InfoBanner>
+              </div>
+            )}
           </div>
         </div>
 
