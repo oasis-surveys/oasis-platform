@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   studies,
   agents,
+  knowledge,
   type Study,
   type AgentListItem,
   type StudyAnalytics,
+  type KnowledgeDocument,
 } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import CopyButton from "../components/CopyButton";
@@ -27,17 +29,29 @@ export default function StudyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [toast, showToast] = useToast();
 
+  // ── Knowledge Base state ──
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
+  const [kbExpanded, setKbExpanded] = useState(false);
+  const [kbUploading, setKbUploading] = useState(false);
+  const [kbTextTitle, setKbTextTitle] = useState("");
+  const [kbTextContent, setKbTextContent] = useState("");
+  const [kbShowTextForm, setKbShowTextForm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!studyId) return;
     Promise.all([
       studies.get(studyId),
       agents.list(studyId),
       studies.analytics(studyId).catch(() => null),
+      knowledge.list(studyId).catch(() => [] as KnowledgeDocument[]),
     ])
-      .then(([s, a, an]) => {
+      .then(([s, a, an, kd]) => {
         setStudy(s);
         setAgentList(a);
         setAnalytics(an);
+        setKnowledgeDocs(kd);
+        if (kd.length > 0) setKbExpanded(true);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -143,6 +157,206 @@ export default function StudyDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ── Knowledge Base Section ─────────────────────────────── */}
+      <div className="mb-6">
+        <button
+          onClick={() => setKbExpanded(!kbExpanded)}
+          className="w-full flex items-center justify-between text-left"
+        >
+          <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+            <svg className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+            Knowledge Base
+            {knowledgeDocs.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-gray-900 px-1.5 text-[10px] font-bold text-white">
+                {knowledgeDocs.length}
+              </span>
+            )}
+            <HelpTooltip text="Upload documents to give your agents study-specific context. During interviews, agents can search this knowledge base to provide informed answers (RAG — Retrieval-Augmented Generation)." />
+          </h2>
+          <svg
+            className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${kbExpanded ? "rotate-180" : ""}`}
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {kbExpanded && (
+          <div className="mt-3 space-y-3 animate-slide-up">
+            {/* Upload actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setKbShowTextForm(!kbShowTextForm)}
+                className="btn-primary !py-1.5 !px-3 !text-xs"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                Add Text
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={kbUploading}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-all active:scale-[0.98]"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                Upload File
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.md,.csv,.json,.xml,.html,.log"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file || !studyId) return;
+                  setKbUploading(true);
+                  try {
+                    const doc = await knowledge.uploadFile(studyId, file);
+                    setKnowledgeDocs((prev) => [doc, ...prev]);
+                    showToast(`"${doc.title}" uploaded — ${doc.chunk_count} chunks indexed`);
+                  } catch (err: any) {
+                    showToast(err.message || "Upload failed");
+                  } finally {
+                    setKbUploading(false);
+                    e.target.value = "";
+                  }
+                }}
+              />
+              {kbUploading && (
+                <span className="text-xs text-gray-400 flex items-center gap-1.5">
+                  <div className="h-3 w-3 rounded-full border-2 border-gray-300 border-t-gray-700 animate-spin" />
+                  Processing…
+                </span>
+              )}
+            </div>
+
+            {/* Text input form */}
+            {kbShowTextForm && (
+              <div className="card p-4 space-y-3 animate-slide-up">
+                <input
+                  type="text"
+                  placeholder="Document title"
+                  value={kbTextTitle}
+                  onChange={(e) => setKbTextTitle(e.target.value)}
+                  className="input-styled"
+                />
+                <textarea
+                  placeholder="Paste your text content here… (study instructions, background info, reference materials, etc.)"
+                  value={kbTextContent}
+                  onChange={(e) => setKbTextContent(e.target.value)}
+                  rows={6}
+                  className="input-styled !min-h-[120px] resize-y"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-gray-400">
+                    {kbTextContent.length.toLocaleString()} characters
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setKbShowTextForm(false);
+                        setKbTextTitle("");
+                        setKbTextContent("");
+                      }}
+                      className="rounded-xl px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      disabled={!kbTextTitle.trim() || !kbTextContent.trim() || kbUploading}
+                      onClick={async () => {
+                        if (!studyId) return;
+                        setKbUploading(true);
+                        try {
+                          const doc = await knowledge.uploadText(studyId, {
+                            title: kbTextTitle.trim(),
+                            content: kbTextContent,
+                          });
+                          setKnowledgeDocs((prev) => [doc, ...prev]);
+                          setKbShowTextForm(false);
+                          setKbTextTitle("");
+                          setKbTextContent("");
+                          showToast(`"${doc.title}" added — ${doc.chunk_count} chunks indexed`);
+                        } catch (err: any) {
+                          showToast(err.message || "Failed to add document");
+                        } finally {
+                          setKbUploading(false);
+                        }
+                      }}
+                      className="btn-primary !py-1.5 !px-4 !text-xs"
+                    >
+                      {kbUploading ? "Processing…" : "Add Document"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Document list */}
+            {knowledgeDocs.length === 0 ? (
+              <div className="card py-10 text-center">
+                <div className="flex flex-col items-center gap-2">
+                  <svg className="h-8 w-8 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                  </svg>
+                  <p className="text-xs text-gray-400">
+                    No documents yet. Add text or upload files to build the knowledge base.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {knowledgeDocs.map((doc) => (
+                  <div key={doc.id} className="card px-4 py-3 flex items-center justify-between group">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        {doc.source_type === "file" ? (
+                          <svg className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                          </svg>
+                        ) : (
+                          <svg className="h-4 w-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{doc.title}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {doc.chunk_count} chunk{doc.chunk_count !== 1 ? "s" : ""} · {(doc.content_length / 1000).toFixed(1)}k chars · {new Date(doc.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!studyId || !confirm(`Delete "${doc.title}"?`)) return;
+                        try {
+                          await knowledge.delete(studyId, doc.id);
+                          setKnowledgeDocs((prev) => prev.filter((d) => d.id !== doc.id));
+                          showToast("Document deleted");
+                        } catch (err: any) {
+                          showToast(err.message || "Failed to delete");
+                        }
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity rounded-lg p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Agents Section */}
       <div className="flex items-center justify-between mb-4">

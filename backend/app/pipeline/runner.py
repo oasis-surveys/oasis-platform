@@ -46,6 +46,20 @@ from app.database import async_session_factory
 from app.pipeline.transcript_logger import TranscriptLogger
 
 
+async def _get_key(field: str) -> str:
+    """
+    Get effective API key: dashboard override (Redis) > .env value.
+
+    This allows researchers to set API keys via the dashboard without
+    needing to restart the backend.
+    """
+    try:
+        from app.api.settings import get_effective_key
+        return await get_effective_key(field)
+    except Exception:
+        return getattr(settings, field, "")
+
+
 async def build_twilio_pipeline(
     *,
     websocket,
@@ -62,6 +76,7 @@ async def build_twilio_pipeline(
     notify_callback=None,
     stream_sid: str = "",
     call_sid: Optional[str] = None,
+    study_id: Optional[uuid.UUID] = None,
 ) -> PipelineTask:
     """
     Build a Pipecat pipeline for Twilio telephony.
@@ -111,7 +126,7 @@ async def build_twilio_pipeline(
     # direct V2V endpoints which expect higher-quality audio.
     # However, if the agent is configured for V2V, we still support it.
     if pipeline_type == "voice_to_voice":
-        task = _build_v2v_pipeline(
+        task = await _build_v2v_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -120,9 +135,10 @@ async def build_twilio_pipeline(
             language=language,
             max_duration_seconds=max_duration_seconds,
             voice=tts_voice,
+            study_id=study_id,
         )
     else:
-        task = _build_modular_pipeline(
+        task = await _build_modular_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -133,6 +149,7 @@ async def build_twilio_pipeline(
             tts_voice=tts_voice,
             language=language,
             max_duration_seconds=max_duration_seconds,
+            study_id=study_id,
         )
 
     return task
@@ -152,6 +169,9 @@ async def build_pipeline(
     language: str = "en",
     max_duration_seconds: Optional[int] = None,
     notify_callback=None,
+    study_id: Optional[uuid.UUID] = None,
+    silence_timeout_seconds: Optional[int] = None,
+    silence_prompt: Optional[str] = None,
 ) -> PipelineTask:
     """
     Build and return a ready-to-run PipelineTask.
@@ -183,7 +203,7 @@ async def build_pipeline(
     )
 
     if pipeline_type == "voice_to_voice":
-        task = _build_v2v_pipeline(
+        task = await _build_v2v_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -192,9 +212,12 @@ async def build_pipeline(
             language=language,
             max_duration_seconds=max_duration_seconds,
             voice=tts_voice,  # V2V pipelines use tts_voice for voice selection
+            study_id=study_id,
+            silence_timeout_seconds=silence_timeout_seconds,
+            silence_prompt=silence_prompt,
         )
     else:
-        task = _build_modular_pipeline(
+        task = await _build_modular_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -205,38 +228,139 @@ async def build_pipeline(
             tts_voice=tts_voice,
             language=language,
             max_duration_seconds=max_duration_seconds,
+            study_id=study_id,
+            silence_timeout_seconds=silence_timeout_seconds,
+            silence_prompt=silence_prompt,
         )
 
     return task
 
 
+# ── RAG tool registration ────────────────────────────────────────────────────
+
+def _register_rag_tool(llm_service, study_id: uuid.UUID):
+    """
+    Register a 'search_knowledge_base' function on an LLM service.
+
+    When the LLM invokes this tool, we perform a vector similarity search
+    against the study's knowledge base (pgvector) and return the most
+    relevant chunks as context.
+    """
+
+    async def search_knowledge_base(
+        function_name: str,
+        tool_call_id: str,
+        args: dict,
+        llm,
+        context,
+        result_callback,
+    ):
+        """Search the study's knowledge base for relevant context."""
+        query = args.get("query", "")
+        if not query:
+            await result_callback("No query provided.")
+            return
+
+        try:
+            from app.knowledge.embeddings import search_similar_chunks
+
+            async with async_session_factory() as db:
+                results = await search_similar_chunks(
+                    db=db,
+                    study_id=study_id,
+                    query=query,
+                    top_k=5,
+                )
+
+            if not results:
+                await result_callback(
+                    "No relevant information found in the knowledge base."
+                )
+                return
+
+            # Format results as readable context
+            context_parts = []
+            for i, r in enumerate(results, 1):
+                context_parts.append(
+                    f"[Source: {r['title']}] (relevance: {r['similarity']})\n"
+                    f"{r['content']}"
+                )
+            context_text = "\n\n---\n\n".join(context_parts)
+            await result_callback(
+                f"Knowledge base results:\n\n{context_text}"
+            )
+
+        except Exception as e:
+            logger.exception(f"RAG search error: {e}")
+            await result_callback(f"Error searching knowledge base: {e}")
+
+    llm_service.register_function(
+        "search_knowledge_base",
+        search_knowledge_base,
+    )
+
+    logger.info(f"Registered RAG tool 'search_knowledge_base' for study={study_id}")
+
+
+def _get_rag_tools_schema():
+    """Return a ToolsSchema with the RAG search function definition."""
+    from pipecat.adapters.schemas.function_schema import FunctionSchema
+    from pipecat.adapters.schemas.tools_schema import ToolsSchema
+
+    return ToolsSchema(
+        standard_tools=[
+            FunctionSchema(
+                name="search_knowledge_base",
+                description=(
+                    "Search the study's knowledge base for relevant context, "
+                    "background information, or specific instructions. Use this "
+                    "when you need additional information to answer the "
+                    "participant's question or to guide the conversation."
+                ),
+                properties={
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "The search query to find relevant information "
+                            "in the knowledge base."
+                        ),
+                    },
+                },
+                required=["query"],
+            )
+        ]
+    )
+
+
 # ── Modular pipeline (STT → LLM → TTS) ──────────────────────────────────────
 
-def _build_llm(llm_model: str):
+async def _build_llm(llm_model: str):
     """Instantiate the correct LLM service based on the model prefix."""
     from pipecat.services.openai.llm import OpenAILLMService, OpenAILLMSettings
 
     if llm_model.startswith("scaleway/"):
         model_name = llm_model[len("scaleway/"):]
-        if not settings.scaleway_api_key:
+        api_key = await _get_key("scaleway_secret_key")
+        if not api_key:
             raise ValueError(
-                "SCALEWAY_SECRET_KEY is not set. Add it to your .env file."
+                "SCALEWAY_SECRET_KEY is not set. Add it to your .env file or dashboard."
             )
         return OpenAILLMService(
-            api_key=settings.scaleway_api_key,
+            api_key=api_key,
             base_url=settings.scaleway_api_url,
             settings=OpenAILLMSettings(model=model_name),
         )
 
     if llm_model.startswith("azure/"):
         model_name = llm_model[len("azure/"):]
-        if not settings.azure_openai_api_key:
+        api_key = await _get_key("azure_openai_api_key")
+        if not api_key:
             raise ValueError(
-                "AZURE_OPENAI_API_KEY is not set. Add it to your .env file."
+                "AZURE_OPENAI_API_KEY is not set. Add it to your .env file or dashboard."
             )
         from openai import AsyncAzureOpenAI
         client = AsyncAzureOpenAI(
-            api_key=settings.azure_openai_api_key,
+            api_key=api_key,
             azure_endpoint=settings.azure_openai_endpoint,
             api_version=settings.azure_openai_api_version,
         )
@@ -247,17 +371,17 @@ def _build_llm(llm_model: str):
 
     if llm_model.startswith("gcp/"):
         model_name = llm_model[len("gcp/"):]
-        if not settings.gcp_project_id:
+        gcp_project = await _get_key("gcp_project_id")
+        if not gcp_project:
             raise ValueError(
-                "GCP_PROJECT_ID is not set. Add it to your .env file for Vertex AI."
+                "GCP_PROJECT_ID is not set. Add it to your .env file or dashboard."
             )
-        # Vertex AI uses an OpenAI-compatible endpoint
         base_url = (
             f"https://{settings.gcp_location}-aiplatform.googleapis.com/v1/"
-            f"projects/{settings.gcp_project_id}/locations/{settings.gcp_location}/"
+            f"projects/{gcp_project}/locations/{settings.gcp_location}/"
             f"publishers/google/models"
         )
-        api_key = settings.gcp_api_key or "dummy"  # ADC may be used instead
+        api_key = await _get_key("gcp_api_key") or "dummy"
         return OpenAILLMService(
             api_key=api_key,
             base_url=base_url,
@@ -266,13 +390,14 @@ def _build_llm(llm_model: str):
 
     # Default: OpenAI (strip optional "openai/" prefix)
     model_name = _resolve_model_name(llm_model)
+    api_key = await _get_key("openai_api_key")
     return OpenAILLMService(
-        api_key=settings.openai_api_key,
+        api_key=api_key,
         settings=OpenAILLMSettings(model=model_name),
     )
 
 
-def _build_modular_pipeline(
+async def _build_modular_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
     transcript_logger: TranscriptLogger,
@@ -284,35 +409,70 @@ def _build_modular_pipeline(
     tts_voice: Optional[str],
     language: str,
     max_duration_seconds: Optional[int],
+    study_id: Optional[uuid.UUID] = None,
+    silence_timeout_seconds: Optional[int] = None,
+    silence_prompt: Optional[str] = None,
 ) -> PipelineTask:
     """Build the modular STT → LLM → TTS pipeline."""
 
     # ── STT ───────────────────────────────────────────────────
-    stt = _build_stt(stt_provider, language)
+    stt = await _build_stt(stt_provider, language)
 
     # ── LLM ───────────────────────────────────────────────────
-    llm = _build_llm(llm_model)
+    llm = await _build_llm(llm_model)
+
+    # ── RAG tool registration ─────────────────────────────────
+    tools = None
+    if study_id:
+        _register_rag_tool(llm, study_id)
+        tools = _get_rag_tools_schema()
 
     # Modern context API
     messages = [{"role": "system", "content": system_prompt}]
-    context = LLMContext(messages=messages)
+    if tools:
+        context = LLMContext(messages=messages, tools=tools)
+    else:
+        context = LLMContext(messages=messages)
     context_aggregator = LLMContextAggregatorPair(context=context)
 
     # ── TTS ───────────────────────────────────────────────────
-    tts = _build_tts(tts_provider, tts_voice, language)
+    tts = await _build_tts(tts_provider, tts_voice, language)
+
+    # ── Silence handling (UserIdleProcessor) ─────────────────
+    idle_processor = None
+    if silence_timeout_seconds and silence_timeout_seconds > 0:
+        from pipecat.processors.user_idle_processor import UserIdleProcessor
+        import warnings
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module="pipecat.processors.user_idle_processor")
+
+        _silence_msg = silence_prompt or "Take your time. Let me know when you're ready to continue."
+
+        async def _handle_user_idle(processor: "UserIdleProcessor", retry_count: int) -> bool:
+            logger.info(f"User idle (retry #{retry_count}), sending silence prompt")
+            await task.queue_frames([TTSSpeakFrame(text=_silence_msg)])
+            return retry_count < 3  # stop after 3 retries
+
+        idle_processor = UserIdleProcessor(
+            callback=_handle_user_idle,
+            timeout=float(silence_timeout_seconds),
+        )
 
     # ── Pipeline wiring ───────────────────────────────────────
-    pipeline = Pipeline(
-        [
-            transport.input(),          # audio from browser
-            stt,                        # speech → text
-            transcript_logger,          # log user transcript + agent text
-            context_aggregator.user(),  # accumulate user turns
-            llm,                        # text → LLM response
-            tts,                        # text → speech
-            transport.output(),         # audio back to browser
-        ]
-    )
+    pipeline_nodes = [
+        transport.input(),          # audio from browser
+        stt,                        # speech → text
+        transcript_logger,          # log user transcript + agent text
+        context_aggregator.user(),  # accumulate user turns
+        llm,                        # text → LLM response
+        tts,                        # text → speech
+        transport.output(),         # audio back to browser
+    ]
+
+    # Insert idle processor after STT (before user context aggregator)
+    if idle_processor:
+        pipeline_nodes.insert(3, idle_processor)  # after transcript_logger, before context_aggregator.user()
+
+    pipeline = Pipeline(pipeline_nodes)
 
     task = PipelineTask(
         pipeline,
@@ -356,7 +516,7 @@ def _build_modular_pipeline(
 
 # ── Voice-to-Voice pipeline dispatcher ──────────────────────────────────────
 
-def _build_v2v_pipeline(
+async def _build_v2v_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
     transcript_logger: TranscriptLogger,
@@ -365,11 +525,14 @@ def _build_v2v_pipeline(
     welcome_message: Optional[str],
     language: str,
     max_duration_seconds: Optional[int],
+    silence_timeout_seconds: Optional[int] = None,
+    silence_prompt: Optional[str] = None,
     voice: Optional[str] = None,
+    study_id: Optional[uuid.UUID] = None,
 ) -> PipelineTask:
     """Dispatch to the correct V2V backend based on the model prefix."""
     if llm_model.startswith("google/"):
-        return _build_gemini_live_pipeline(
+        return await _build_gemini_live_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -378,9 +541,10 @@ def _build_v2v_pipeline(
             language=language,
             max_duration_seconds=max_duration_seconds,
             voice=voice or "Charon",
+            study_id=study_id,
         )
     # Default: OpenAI Realtime
-    return _build_openai_realtime_pipeline(
+    return await _build_openai_realtime_pipeline(
         transport=transport,
         transcript_logger=transcript_logger,
         llm_model=llm_model,
@@ -389,10 +553,11 @@ def _build_v2v_pipeline(
         language=language,
         max_duration_seconds=max_duration_seconds,
         voice=voice or "coral",
+        study_id=study_id,
     )
 
 
-def _build_openai_realtime_pipeline(
+async def _build_openai_realtime_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
     transcript_logger: TranscriptLogger,
@@ -402,6 +567,7 @@ def _build_openai_realtime_pipeline(
     language: str,
     max_duration_seconds: Optional[int],
     voice: str = "coral",
+    study_id: Optional[uuid.UUID] = None,
 ) -> PipelineTask:
     """Build the voice-to-voice pipeline using OpenAI Realtime API.
 
@@ -429,8 +595,9 @@ def _build_openai_realtime_pipeline(
     # The OpenAI Realtime API (2025+) requires output_modalities to be
     # EITHER ["text"] or ["audio"], NOT ["text", "audio"] combined.
     # Voice is configured under audio.output.voice.
+    api_key = await _get_key("openai_api_key")
     realtime_llm = OpenAIRealtimeLLMService(
-        api_key=settings.openai_api_key,
+        api_key=api_key,
         settings=OpenAIRealtimeLLMSettings(
             model=model_name,
             system_instruction=system_prompt,
@@ -442,6 +609,10 @@ def _build_openai_realtime_pipeline(
             ),
         ),
     )
+
+    # ── RAG tool registration ─────────────────────────────────
+    if study_id:
+        _register_rag_tool(realtime_llm, study_id)
 
     # V2V pipeline: NO context aggregator needed.
     # The Realtime service handles context management internally.
@@ -493,7 +664,7 @@ def _build_openai_realtime_pipeline(
     return task
 
 
-def _build_gemini_live_pipeline(
+async def _build_gemini_live_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
     transcript_logger: TranscriptLogger,
@@ -503,6 +674,7 @@ def _build_gemini_live_pipeline(
     language: str,
     max_duration_seconds: Optional[int],
     voice: str = "Charon",
+    study_id: Optional[uuid.UUID] = None,
 ) -> PipelineTask:
     """Build the voice-to-voice pipeline using Google Gemini Live native audio."""
     try:
@@ -519,21 +691,26 @@ def _build_gemini_live_pipeline(
     # Strip "google/" prefix to get the actual model name
     model_name = llm_model[len("google/"):]
 
-    if not settings.google_api_key:
+    api_key = await _get_key("google_api_key")
+    if not api_key:
         raise ValueError(
-            "GOOGLE_API_KEY is not set in .env. Required for Gemini Live models."
+            "GOOGLE_API_KEY is not set. Add it to .env or dashboard settings."
         )
 
     logger.info(f"Building Gemini Live pipeline with model=models/{model_name}, voice={voice}")
 
     gemini_llm = GeminiLiveLLMService(
-        api_key=settings.google_api_key,
+        api_key=api_key,
         settings=GeminiLiveLLMSettings(
             model=f"models/{model_name}",
             system_instruction=system_prompt,
             voice=voice,
         ),
     )
+
+    # ── RAG tool registration ─────────────────────────────────
+    if study_id:
+        _register_rag_tool(gemini_llm, study_id)
 
     # V2V pipeline: NO context aggregator needed.
     pipeline = Pipeline(
@@ -622,32 +799,29 @@ def _get_vad():
     return SileroVADAnalyzer()
 
 
-def _build_stt(provider: str, language: str):
+async def _build_stt(provider: str, language: str):
     """Instantiate the correct STT service based on the agent config."""
     provider = provider.lower()
 
     if provider == "deepgram":
         from pipecat.services.deepgram.stt import DeepgramSTTService
-        return DeepgramSTTService(
-            api_key=settings.deepgram_api_key,
-        )
+        api_key = await _get_key("deepgram_api_key")
+        return DeepgramSTTService(api_key=api_key)
 
     if provider in ("whisper", "openai"):
         from pipecat.services.openai.stt import OpenAISTTService
-        return OpenAISTTService(
-            api_key=settings.openai_api_key,
-            language=language,
-        )
+        api_key = await _get_key("openai_api_key")
+        return OpenAISTTService(api_key=api_key, language=language)
 
     if provider == "scaleway":
-        # Scaleway exposes Whisper Large V3 via an OpenAI-compatible endpoint
         from pipecat.services.openai.stt import OpenAISTTService, OpenAISTTSettings
-        if not settings.scaleway_api_key:
+        api_key = await _get_key("scaleway_secret_key")
+        if not api_key:
             raise ValueError(
                 "SCALEWAY_SECRET_KEY is not set. Required for Scaleway STT."
             )
         return OpenAISTTService(
-            api_key=settings.scaleway_api_key,
+            api_key=api_key,
             base_url=settings.scaleway_api_url,
             language=language,
             settings=OpenAISTTSettings(model="whisper-large-v3"),
@@ -660,7 +834,7 @@ def _build_stt(provider: str, language: str):
     raise ValueError(f"Unsupported STT provider: {provider}")
 
 
-def _build_tts(provider: str, voice: Optional[str], language: str):
+async def _build_tts(provider: str, voice: Optional[str], language: str):
     """Instantiate the correct TTS service based on the agent config."""
     provider = provider.lower()
 
@@ -670,25 +844,27 @@ def _build_tts(provider: str, voice: Optional[str], language: str):
             ElevenLabsTTSSettings,
         )
         resolved_voice = _resolve_elevenlabs_voice(voice)
+        api_key = await _get_key("elevenlabs_api_key")
         return ElevenLabsTTSService(
-            api_key=settings.elevenlabs_api_key,
+            api_key=api_key,
             settings=ElevenLabsTTSSettings(voice=resolved_voice),
         )
 
     if provider == "openai":
         from pipecat.services.openai.tts import OpenAITTSService, OpenAITTSSettings
+        api_key = await _get_key("openai_api_key")
         return OpenAITTSService(
-            api_key=settings.openai_api_key,
+            api_key=api_key,
             settings=OpenAITTSSettings(voice=voice or "alloy"),
         )
 
     if provider == "cartesia":
         from pipecat.services.cartesia.tts import CartesiaTTSService
-        cartesia_key = getattr(settings, "cartesia_api_key", None)
-        if not cartesia_key:
+        api_key = await _get_key("cartesia_api_key")
+        if not api_key:
             raise ValueError("Cartesia API key is not set (CARTESIA_API_KEY)")
         return CartesiaTTSService(
-            api_key=cartesia_key,
+            api_key=api_key,
             voice_id=voice or "a0e99841-438c-4a64-b679-ae501e7d6091",
         )
 

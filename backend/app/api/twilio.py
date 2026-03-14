@@ -163,6 +163,7 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
         # Snapshot agent config
         agent_cfg = {
             "id": agent.id,
+            "study_id": agent.study_id,
             "system_prompt": agent.system_prompt,
             "welcome_message": agent.welcome_message,
             "pipeline_type": (
@@ -222,6 +223,7 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             notify_callback=_notify,
             stream_sid=stream_sid,
             call_sid=call_sid,
+            study_id=agent_cfg["study_id"],
         )
 
         runner = PipelineRunner(handle_sigint=False, handle_sigterm=False)

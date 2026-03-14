@@ -25,6 +25,7 @@ from app.database import async_session_factory
 from app.models.agent import Agent, AgentStatus, ParticipantIdMode, ParticipantIdentifier
 from app.models.session import Session, SessionStatus
 from app.realtime import publish_transcript_event
+from app.session_manager import register_session, unregister_session
 
 router = APIRouter()
 
@@ -65,6 +66,7 @@ async def interview_ws(
         # Snapshot config before leaving the DB session
         agent_cfg = {
             "id": agent.id,
+            "study_id": agent.study_id,
             "system_prompt": agent.system_prompt,
             "welcome_message": agent.welcome_message,
             "pipeline_type": (
@@ -79,6 +81,8 @@ async def interview_ws(
             "language": agent.language,
             "max_duration_seconds": agent.max_duration_seconds,
             "participant_id_mode": agent.participant_id_mode,
+            "silence_timeout_seconds": agent.silence_timeout_seconds,
+            "silence_prompt": agent.silence_prompt,
         }
 
         # ── 2. Resolve participant_id ──────────────────────────────
@@ -150,6 +154,13 @@ async def interview_ws(
         f"widget_key={widget_key}, participant_id={participant_id}"
     )
 
+    # Register session in Redis for tracking
+    await register_session(
+        session_id=session_id,
+        agent_id=agent_cfg["id"],
+        max_duration_seconds=agent_cfg["max_duration_seconds"],
+    )
+
     # ── 4. Build & run the Pipecat pipeline ────────────────────────
     final_status = SessionStatus.COMPLETED
     try:
@@ -173,6 +184,9 @@ async def interview_ws(
             language=agent_cfg["language"],
             max_duration_seconds=agent_cfg["max_duration_seconds"],
             notify_callback=_notify,
+            study_id=agent_cfg["study_id"],
+            silence_timeout_seconds=agent_cfg["silence_timeout_seconds"],
+            silence_prompt=agent_cfg["silence_prompt"],
         )
 
         runner = PipelineRunner(handle_sigint=False, handle_sigterm=False)
@@ -224,6 +238,9 @@ async def interview_ws(
                 f"Interview ended: session={session_id}, "
                 f"status={final_status.value}, duration={duration:.1f}s"
             )
+            # Unregister session from Redis
+            await unregister_session(session_id)
+
         except Exception as cleanup_exc:
             logger.error(
                 f"Interview {session_id}: failed to finalise session — {cleanup_exc}"

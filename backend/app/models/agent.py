@@ -127,6 +127,14 @@ class Agent(Base):
         String(255), nullable=True, default="Agent is listening…"
     )
 
+    # ── Silence handling ──
+    silence_timeout_seconds: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=None
+    )
+    silence_prompt: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
+
     # ── Telephony (Twilio) ──
     twilio_phone_number: Mapped[str | None] = mapped_column(
         String(30), nullable=True

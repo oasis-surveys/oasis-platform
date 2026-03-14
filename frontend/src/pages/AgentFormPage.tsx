@@ -186,6 +186,8 @@ interface FormData {
   widget_description: string;
   widget_primary_color: string;
   widget_listening_message: string;
+  silence_timeout_seconds: string;
+  silence_prompt: string;
   twilio_phone_number: string;
 }
 
@@ -210,6 +212,8 @@ const DEFAULT_FORM: FormData = {
   widget_description: "",
   widget_primary_color: "#111827",
   widget_listening_message: "Agent is listening…",
+  silence_timeout_seconds: "",
+  silence_prompt: "Take your time. Let me know when you're ready to continue.",
   twilio_phone_number: "",
 };
 
@@ -322,6 +326,8 @@ export default function AgentFormPage() {
           widget_description: a.widget_description || "",
           widget_primary_color: a.widget_primary_color || "#111827",
           widget_listening_message: a.widget_listening_message || "Agent is listening…",
+          silence_timeout_seconds: a.silence_timeout_seconds ? String(a.silence_timeout_seconds) : "",
+          silence_prompt: a.silence_prompt || "Take your time. Let me know when you're ready to continue.",
           twilio_phone_number: a.twilio_phone_number || "",
         });
         participants.list(studyId, agentId).then(setPidList).catch(console.error);
@@ -372,6 +378,8 @@ export default function AgentFormPage() {
       widget_description: form.widget_description || null,
       widget_primary_color: form.widget_primary_color || null,
       widget_listening_message: form.widget_listening_message || null,
+      silence_timeout_seconds: form.silence_timeout_seconds ? parseInt(form.silence_timeout_seconds, 10) : null,
+      silence_prompt: form.silence_prompt || null,
       twilio_phone_number: form.twilio_phone_number || null,
     };
 
@@ -883,6 +891,52 @@ export default function AgentFormPage() {
             </div>
           )}
         </div>
+
+        {/* ── Silence Handling ── */}
+        {form.pipeline_type === "modular" && (
+          <div className="card p-6">
+            <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
+              Silence Handling
+              <HelpTooltip text="When the participant stops speaking for a set duration, the agent can automatically send a follow-up prompt to re-engage. Leave timeout empty to disable." />
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Silence Timeout (seconds)
+                </label>
+                <input
+                  type="number"
+                  value={form.silence_timeout_seconds}
+                  onChange={set("silence_timeout_seconds")}
+                  className="input-styled"
+                  placeholder="e.g. 10 (leave empty to disable)"
+                  min={5}
+                  max={120}
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  Seconds of silence before sending the follow-up prompt. Leave empty to disable.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Silence Prompt
+                </label>
+                <input
+                  type="text"
+                  value={form.silence_prompt}
+                  onChange={set("silence_prompt")}
+                  className="input-styled"
+                  placeholder="Take your time..."
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  The message spoken by the agent when extended silence is detected.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Participant Identification ── */}
         <div className="card p-6">

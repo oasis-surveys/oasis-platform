@@ -2,6 +2,7 @@ from app.models.base import Base
 from app.models.study import Study, StudyStatus
 from app.models.agent import Agent, AgentStatus, PipelineType, ParticipantIdMode, ParticipantIdentifier
 from app.models.session import Session, SessionStatus, TranscriptEntry, SpeakerRole
+from app.models.knowledge import KnowledgeDocument, KnowledgeChunk
 
 __all__ = [
     "Base",
@@ -16,4 +17,6 @@ __all__ = [
     "SessionStatus",
     "TranscriptEntry",
     "SpeakerRole",
+    "KnowledgeDocument",
+    "KnowledgeChunk",
 ]

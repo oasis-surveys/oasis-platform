@@ -80,5 +80,12 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_phone_number: str = ""
 
+    # ── Authentication ──
+    # Set AUTH_ENABLED=true and AUTH_PASSWORD to enable basic auth.
+    # Default is OFF — no login required.
+    auth_enabled: bool = False
+    auth_username: str = "admin"
+    auth_password: str = ""  # Must be set when auth_enabled=true
+
 
 settings = Settings()

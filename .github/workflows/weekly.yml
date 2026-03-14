@@ -1,0 +1,158 @@
+# ─────────────────────────────────────────────────────────────────
+# SURVEYOR — Weekly Test Suite
+#
+# Comprehensive weekly test run including:
+# - All unit/integration tests
+# - Dependency audit
+# - Docker compose validation
+#
+# Runs every Monday at 06:00 UTC and can be triggered manually.
+# No paid API keys required — all external calls are mocked.
+# ─────────────────────────────────────────────────────────────────
+
+name: Weekly Tests
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  POSTGRES_HOST: localhost
+  POSTGRES_USER: test
+  POSTGRES_PASSWORD: test
+  POSTGRES_DB: test
+  REDIS_URL: redis://localhost:6379/15
+  SECRET_KEY: weekly-test-secret-key
+  AUTH_ENABLED: "false"
+  OPENAI_API_KEY: sk-test-fake-weekly-key
+  DEEPGRAM_API_KEY: dg-test-fake-weekly-key
+  ELEVENLABS_API_KEY: el-test-fake-weekly-key
+  GOOGLE_API_KEY: goog-test-fake-weekly-key
+
+jobs:
+  # ── Full Backend Test Suite ───────────────────────────────────
+  backend-full:
+    name: Backend Full Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run full test suite with verbose output
+        run: |
+          cd backend
+          python -m pytest tests/ \
+            -v \
+            --tb=long \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=html:htmlcov \
+            --cov-fail-under=40
+
+      - name: Upload HTML coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-html
+          path: backend/htmlcov/
+          retention-days: 30
+
+  # ── Full Frontend Test Suite ──────────────────────────────────
+  frontend-full:
+    name: Frontend Full Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci || npm install
+
+      - name: Run tests with verbose output
+        run: |
+          cd frontend
+          npx vitest run --reporter=verbose
+
+      - name: Build check
+        run: |
+          cd frontend
+          npm run build
+
+  # ── Dependency Audit ──────────────────────────────────────────
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Python dependency check
+        run: |
+          cd backend
+          pip install --upgrade pip
+          pip install pip-audit
+          pip install -r requirements.txt
+          pip-audit --strict 2>&1 || echo "⚠️ Python dependency vulnerabilities found"
+        continue-on-error: true
+
+      - name: Node dependency check
+        run: |
+          cd frontend
+          npm ci || npm install
+          npm audit --production 2>&1 || echo "⚠️ Node dependency vulnerabilities found"
+        continue-on-error: true
+
+  # ── Docker Compose Validation ─────────────────────────────────
+  docker-validation:
+    name: Docker Compose Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Build all images
+        run: docker compose build --no-cache
+
+      - name: Check container startup (dry run)
+        run: |
+          # Create a minimal .env for validation
+          cat > .env << EOF
+          OPENAI_API_KEY=sk-test
+          DEEPGRAM_API_KEY=dg-test
+          ELEVENLABS_API_KEY=el-test
+          EOF
+          docker compose up -d --no-start
+          docker compose down

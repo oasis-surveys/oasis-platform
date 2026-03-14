@@ -24,14 +24,26 @@ from app.redis import close_redis, get_redis
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup / shutdown lifecycle hook."""
+    import asyncio
+    from app.session_manager import session_cleanup_loop
+
     # ── Startup ──
     # Verify Redis is reachable
     redis = await get_redis()
     await redis.ping()
 
+    # Start background session cleanup loop
+    cleanup_task = asyncio.create_task(session_cleanup_loop(interval_seconds=60))
+
     yield
 
     # ── Shutdown ──
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
     await engine.dispose()
     await close_redis()
 

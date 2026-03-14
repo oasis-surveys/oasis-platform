@@ -6,16 +6,50 @@
 
 const BASE = "/api";
 
+// ── Auth token management ─────────────────────────────────────
+const TOKEN_KEY = "surveyor_auth_token";
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearAuthToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
 async function request<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((options?.headers as Record<string, string>) || {}),
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
+    headers,
   });
 
   if (res.status === 204) return undefined as T;
+
+  if (res.status === 401) {
+    // Token expired or invalid — clear it and redirect to login
+    clearAuthToken();
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+    throw new Error("Authentication required");
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -24,6 +58,30 @@ async function request<T>(
 
   return res.json();
 }
+
+// ── Auth API ──────────────────────────────────────────────────
+
+export interface AuthStatusResponse {
+  auth_enabled: boolean;
+  authenticated: boolean;
+  username: string | null;
+}
+
+export interface LoginResponse {
+  token: string;
+  username: string;
+  expires_in: number;
+}
+
+export const auth = {
+  login: (username: string, password: string) =>
+    request<LoginResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  status: () => request<AuthStatusResponse>("/auth/status"),
+};
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -65,6 +123,8 @@ export interface Agent {
   widget_description: string | null;
   widget_primary_color: string | null;
   widget_listening_message: string | null;
+  silence_timeout_seconds: number | null;
+  silence_prompt: string | null;
   twilio_phone_number: string | null;
   created_at: string;
   updated_at: string;
@@ -268,6 +328,66 @@ export const participants = {
     ),
 };
 
+// ── Knowledge Base ──────────────────────────────────────────────
+
+export interface KnowledgeDocument {
+  id: string;
+  study_id: string;
+  title: string;
+  source_type: string;
+  content_length: number;
+  chunk_count: number;
+  created_at: string;
+}
+
+export interface KnowledgeSearchResult {
+  content: string;
+  title: string;
+  similarity: number;
+}
+
+export const knowledge = {
+  list: (studyId: string) =>
+    request<KnowledgeDocument[]>(`/studies/${studyId}/knowledge`),
+
+  uploadText: (studyId: string, data: { title: string; content: string }) =>
+    request<KnowledgeDocument>(`/studies/${studyId}/knowledge/text`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  uploadFile: (studyId: string, file: File, title?: string) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (title) formData.append("title", title);
+    const headers: Record<string, string> = {};
+    const token = getAuthToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    return fetch(`${BASE}/studies/${studyId}/knowledge/file`, {
+      method: "POST",
+      body: formData,
+      headers,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `API error: ${res.status}`);
+      }
+      return res.json() as Promise<KnowledgeDocument>;
+    });
+  },
+
+  delete: (studyId: string, documentId: string) =>
+    request<void>(`/studies/${studyId}/knowledge/${documentId}`, {
+      method: "DELETE",
+    }),
+
+  search: (studyId: string, query: string, topK?: number) =>
+    request<KnowledgeSearchResult[]>(`/studies/${studyId}/knowledge/search`, {
+      method: "POST",
+      body: JSON.stringify({ query, top_k: topK || 5 }),
+    }),
+};
+
 // ── Sessions ────────────────────────────────────────────────────
 
 export interface SessionListParams {
@@ -328,4 +448,31 @@ export const sessions = {
     const qs = searchParams.toString();
     return `${BASE}/studies/${studyId}/agents/${agentId}/sessions/export/json${qs ? `?${qs}` : ""}`;
   },
+};
+
+// ── Settings (API Keys) ─────────────────────────────────────────
+
+export interface ApiKeyStatus {
+  field: string;
+  env_var: string;
+  is_set: boolean;
+  source: "env" | "dashboard" | "none";
+  masked_value: string;
+}
+
+export interface ApiKeysResponse {
+  keys: ApiKeyStatus[];
+}
+
+export const settingsApi = {
+  getKeys: () => request<ApiKeysResponse>("/settings/keys"),
+
+  updateKeys: (updates: Record<string, string>) =>
+    request<ApiKeysResponse>("/settings/keys", {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    }),
+
+  getAuthConfig: () =>
+    request<{ auth_enabled: boolean; username: string }>("/settings/auth"),
 };
