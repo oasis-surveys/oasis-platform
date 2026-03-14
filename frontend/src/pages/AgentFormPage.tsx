@@ -1,0 +1,1161 @@
+import { useEffect, useState } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
+import {
+  agents,
+  participants,
+  type Agent,
+  type ParticipantIdentifier,
+} from "../lib/api";
+import HelpTooltip from "../components/HelpTooltip";
+import CopyButton from "../components/CopyButton";
+import { useToast } from "../components/Toast";
+
+// ── Model options ─────────────────────────────────────────────
+
+const LLM_MODELS_MODULAR = [
+  // OpenAI — latest models (as of March 2026)
+  { value: "openai/gpt-5.4", label: "GPT-5.4 (latest flagship)", group: "OpenAI" },
+  { value: "openai/gpt-5.2", label: "GPT-5.2", group: "OpenAI" },
+  { value: "openai/gpt-5", label: "GPT-5", group: "OpenAI" },
+  { value: "openai/gpt-5-mini", label: "GPT-5 Mini (fast)", group: "OpenAI" },
+  { value: "openai/gpt-5-nano", label: "GPT-5 Nano (fastest)", group: "OpenAI" },
+  { value: "openai/gpt-4.1", label: "GPT-4.1", group: "OpenAI" },
+  { value: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini", group: "OpenAI" },
+  { value: "openai/gpt-4.1-nano", label: "GPT-4.1 Nano", group: "OpenAI" },
+  { value: "openai/gpt-4o", label: "GPT-4o", group: "OpenAI" },
+  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini", group: "OpenAI" },
+  { value: "openai/o4-mini", label: "o4-mini (reasoning)", group: "OpenAI" },
+  { value: "openai/o3", label: "o3 (reasoning)", group: "OpenAI" },
+  { value: "openai/o3-mini", label: "o3-mini (reasoning)", group: "OpenAI" },
+  // Scaleway — Generative APIs (OpenAI-compatible)
+  { value: "scaleway/qwen3-235b-a22b-instruct-2507", label: "Qwen 3 235B A22B Instruct", group: "Scaleway" },
+  { value: "scaleway/mistral-small-3.2-24b-instruct-2506", label: "Mistral Small 3.2 24B", group: "Scaleway" },
+  { value: "scaleway/voxtral-small-24b-2507", label: "Voxtral Small 24B (audio-capable)", group: "Scaleway" },
+  { value: "scaleway/gpt-oss-120b", label: "GPT-OSS 120B", group: "Scaleway" },
+  { value: "scaleway/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct", group: "Scaleway" },
+  { value: "scaleway/gemma-3-27b-it", label: "Gemma 3 27B IT", group: "Scaleway" },
+  { value: "scaleway/deepseek-r1-distill-llama-70b", label: "DeepSeek-R1 Distill 70B", group: "Scaleway" },
+  { value: "scaleway/devstral-2-123b-instruct-2512", label: "Devstral 2 123B Instruct", group: "Scaleway" },
+  { value: "scaleway/pixtral-12b-2409", label: "Pixtral 12B (vision)", group: "Scaleway" },
+  { value: "scaleway/llama-3.1-8b-instruct", label: "Llama 3.1 8B Instruct", group: "Scaleway" },
+  { value: "scaleway/mistral-nemo-instruct-2407", label: "Mistral Nemo Instruct", group: "Scaleway" },
+  // Azure OpenAI (self-hosted)
+  { value: "azure/gpt-4o", label: "Azure GPT-4o", group: "Azure" },
+  { value: "azure/gpt-4o-mini", label: "Azure GPT-4o Mini", group: "Azure" },
+  // GCP Vertex AI (self-hosted)
+  { value: "gcp/gemini-2.5-flash", label: "GCP Gemini 2.5 Flash", group: "GCP (Vertex AI)" },
+  { value: "gcp/gemini-2.5-pro", label: "GCP Gemini 2.5 Pro", group: "GCP (Vertex AI)" },
+  { value: "gcp/gemini-2.0-flash", label: "GCP Gemini 2.0 Flash", group: "GCP (Vertex AI)" },
+];
+
+const LLM_MODELS_V2V = [
+  // OpenAI Realtime — latest speech-to-speech models
+  { value: "openai/gpt-realtime-1.5", label: "GPT Realtime 1.5 (latest)", group: "OpenAI" },
+  { value: "openai/gpt-realtime", label: "GPT Realtime", group: "OpenAI" },
+  { value: "openai/gpt-realtime-mini", label: "GPT Realtime Mini (fast)", group: "OpenAI" },
+  { value: "openai/gpt-4o-realtime-preview", label: "GPT-4o Realtime Preview", group: "OpenAI" },
+  { value: "openai/gpt-4o-mini-realtime-preview", label: "GPT-4o Mini Realtime Preview", group: "OpenAI" },
+  // Google Gemini — native audio (bidiGenerateContent)
+  { value: "google/gemini-2.5-flash-native-audio-latest", label: "Gemini 2.5 Flash Native Audio (latest)", group: "Google" },
+  { value: "google/gemini-2.5-flash-native-audio-preview-12-2025", label: "Gemini 2.5 Flash Native Audio (Dec 2025)", group: "Google" },
+];
+
+// ── V2V voice options ──────────────────────────────────────────
+const OPENAI_REALTIME_VOICES = [
+  { value: "coral", label: "Coral (default)" },
+  { value: "alloy", label: "Alloy" },
+  { value: "ash", label: "Ash" },
+  { value: "ballad", label: "Ballad" },
+  { value: "echo", label: "Echo" },
+  { value: "fable", label: "Fable" },
+  { value: "onyx", label: "Onyx" },
+  { value: "nova", label: "Nova" },
+  { value: "sage", label: "Sage" },
+  { value: "shimmer", label: "Shimmer" },
+  { value: "verse", label: "Verse" },
+];
+
+const GEMINI_LIVE_VOICES = [
+  { value: "Charon", label: "Charon (default)" },
+  { value: "Kore", label: "Kore" },
+  { value: "Puck", label: "Puck" },
+  { value: "Aoede", label: "Aoede" },
+  { value: "Fenrir", label: "Fenrir" },
+  { value: "Leda", label: "Leda" },
+  { value: "Orus", label: "Orus" },
+  { value: "Zephyr", label: "Zephyr" },
+];
+
+const STT_PROVIDERS = [
+  { value: "deepgram", label: "Deepgram" },
+  { value: "openai", label: "OpenAI Whisper" },
+  { value: "scaleway", label: "Scaleway Whisper" },
+];
+
+const DEEPGRAM_MODELS = [
+  { value: "nova-2", label: "Nova 2 (default)" },
+  { value: "nova-2-general", label: "Nova 2 General" },
+  { value: "nova-2-meeting", label: "Nova 2 Meeting" },
+  { value: "nova-2-phonecall", label: "Nova 2 Phone Call" },
+  { value: "nova-3", label: "Nova 3" },
+  { value: "enhanced", label: "Enhanced" },
+  { value: "base", label: "Base" },
+];
+
+const OPENAI_STT_MODELS = [
+  { value: "whisper-1", label: "Whisper 1 (default)" },
+  { value: "gpt-4o-transcribe", label: "GPT-4o Transcribe" },
+  { value: "gpt-4o-mini-transcribe", label: "GPT-4o Mini Transcribe" },
+];
+
+const SCALEWAY_STT_MODELS = [
+  { value: "whisper-large-v3", label: "Whisper Large V3" },
+];
+
+const TTS_PROVIDERS = [
+  { value: "openai", label: "OpenAI TTS" },
+  { value: "elevenlabs", label: "ElevenLabs" },
+];
+
+const OPENAI_TTS_VOICES = [
+  { value: "alloy", label: "Alloy (Neutral)" },
+  { value: "echo", label: "Echo (Male)" },
+  { value: "fable", label: "Fable (Male)" },
+  { value: "onyx", label: "Onyx (Male)" },
+  { value: "nova", label: "Nova (Female)" },
+  { value: "shimmer", label: "Shimmer (Female)" },
+];
+
+const ELEVENLABS_VOICES = [
+  { value: "rachel", label: "Rachel (Female)" },
+  { value: "alice", label: "Alice (Female)" },
+  { value: "lily", label: "Lily (Female)" },
+  { value: "emily", label: "Emily (Female)" },
+  { value: "bella", label: "Bella (Female)" },
+  { value: "elli", label: "Elli (Female)" },
+  { value: "josh", label: "Josh (Male)" },
+  { value: "adam", label: "Adam (Male)" },
+  { value: "arnold", label: "Arnold (Male)" },
+  { value: "sam", label: "Sam (Male)" },
+  { value: "charlie", label: "Charlie (Male)" },
+  { value: "bill", label: "Bill (Male)" },
+  { value: "george", label: "George (Male)" },
+];
+
+const OPENAI_TTS_MODELS = [
+  { value: "gpt-4o-mini-tts", label: "GPT-4o Mini TTS (default)" },
+  { value: "tts-1", label: "TTS-1 (fast)" },
+  { value: "tts-1-hd", label: "TTS-1 HD (quality)" },
+];
+
+const LANGUAGES = [
+  { value: "en", label: "English" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "pt", label: "Portuguese" },
+  { value: "nl", label: "Dutch" },
+  { value: "it", label: "Italian" },
+  { value: "zh", label: "Chinese" },
+  { value: "ja", label: "Japanese" },
+  { value: "ko", label: "Korean" },
+  { value: "ar", label: "Arabic" },
+  { value: "hi", label: "Hindi" },
+];
+
+// ── Form data ─────────────────────────────────────────────────
+
+interface FormData {
+  name: string;
+  system_prompt: string;
+  welcome_message: string;
+  pipeline_type: "modular" | "voice_to_voice";
+  llm_model: string;
+  llm_model_custom: string;
+  stt_provider: string;
+  stt_model: string;
+  tts_provider: string;
+  tts_model: string;
+  tts_voice: string;
+  language: string;
+  max_duration_seconds: string;
+  max_duration_custom: string;
+  status: "draft" | "active" | "paused";
+  participant_id_mode: "random" | "predefined" | "input";
+  widget_title: string;
+  widget_description: string;
+  widget_primary_color: string;
+  widget_listening_message: string;
+}
+
+const DEFAULT_FORM: FormData = {
+  name: "",
+  system_prompt: "",
+  welcome_message: "Hello, thank you for participating in this study.",
+  pipeline_type: "modular",
+  llm_model: "openai/gpt-5.4",
+  llm_model_custom: "",
+  stt_provider: "deepgram",
+  stt_model: "nova-2",
+  tts_provider: "openai",
+  tts_model: "gpt-4o-mini-tts",
+  tts_voice: "alloy",
+  language: "en",
+  max_duration_seconds: "1800",
+  max_duration_custom: "",
+  status: "draft",
+  participant_id_mode: "random",
+  widget_title: "",
+  widget_description: "",
+  widget_primary_color: "#111827",
+  widget_listening_message: "Agent is listening…",
+};
+
+// ── Grouped select helper ──────────────────────────────────────
+function GroupedSelect({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  options: { value: string; label: string; group: string }[];
+  className?: string;
+}) {
+  const groups = [...new Set(options.map((o) => o.group))];
+  return (
+    <select value={value} onChange={onChange} className={className}>
+      {groups.map((g) => (
+        <optgroup key={g} label={g}>
+          {options.filter((o) => o.group === g).map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
+export default function AgentFormPage() {
+  const { studyId, agentId } = useParams<{
+    studyId: string;
+    agentId: string;
+  }>();
+  const navigate = useNavigate();
+  const isNew = agentId === "new";
+
+  const [form, setForm] = useState<FormData>(DEFAULT_FORM);
+  const [existing, setExisting] = useState<Agent | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [toast, showToast] = useToast();
+  const [loading, setLoading] = useState(!isNew);
+
+  // Participant identifiers (predefined mode)
+  const [pidList, setPidList] = useState<ParticipantIdentifier[]>([]);
+  const [newPid, setNewPid] = useState("");
+  const [bulkPids, setBulkPids] = useState("");
+
+  const llmModels =
+    form.pipeline_type === "voice_to_voice" ? LLM_MODELS_V2V : LLM_MODELS_MODULAR;
+  const isCustomModel = form.llm_model === "__custom__";
+
+  // STT model options based on provider
+  const sttModelOptions =
+    form.stt_provider === "deepgram"
+      ? DEEPGRAM_MODELS
+      : form.stt_provider === "scaleway"
+        ? SCALEWAY_STT_MODELS
+        : OPENAI_STT_MODELS;
+
+  // V2V voice options based on selected model
+  const isGoogleV2V = form.llm_model.startsWith("google/");
+  const v2vVoiceOptions = isGoogleV2V ? GEMINI_LIVE_VOICES : OPENAI_REALTIME_VOICES;
+
+  // TTS voice options based on provider
+  const ttsVoiceOptions =
+    form.tts_provider === "openai" ? OPENAI_TTS_VOICES : ELEVENLABS_VOICES;
+
+  useEffect(() => {
+    if (isNew || !studyId || !agentId) return;
+    agents
+      .get(studyId, agentId)
+      .then((a) => {
+        setExisting(a);
+        const v2vModels = LLM_MODELS_V2V.map((m) => m.value);
+        const modularModels = LLM_MODELS_MODULAR.map((m) => m.value);
+        const allKnown = [...v2vModels, ...modularModels];
+        const storedModel = a.llm_model;
+        const isKnown = allKnown.includes(storedModel);
+
+        setForm({
+          name: a.name,
+          system_prompt: a.system_prompt,
+          welcome_message: a.welcome_message || "",
+          pipeline_type: a.pipeline_type,
+          llm_model: isKnown ? storedModel : "__custom__",
+          llm_model_custom: isKnown ? "" : storedModel,
+          stt_provider: a.stt_provider,
+          stt_model: a.stt_model || "nova-2",
+          tts_provider: a.tts_provider,
+          tts_model: a.tts_model || "gpt-4o-mini-tts",
+          tts_voice: a.tts_voice || "alloy",
+          language: a.language,
+          max_duration_seconds: (() => {
+            const val = a.max_duration_seconds?.toString() || "";
+            const presets = ["300", "600", "900", "1200", "1800", "2700", "3600", "5400", "7200"];
+            return val && !presets.includes(val) ? "__custom__" : val;
+          })(),
+          max_duration_custom: (() => {
+            const val = a.max_duration_seconds?.toString() || "";
+            const presets = ["300", "600", "900", "1200", "1800", "2700", "3600", "5400", "7200"];
+            return val && !presets.includes(val) ? val : "";
+          })(),
+          status: a.status,
+          participant_id_mode: a.participant_id_mode || "random",
+          widget_title: a.widget_title || "",
+          widget_description: a.widget_description || "",
+          widget_primary_color: a.widget_primary_color || "#111827",
+          widget_listening_message: a.widget_listening_message || "Agent is listening…",
+        });
+        participants.list(studyId, agentId).then(setPidList).catch(console.error);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [studyId, agentId, isNew]);
+
+  const set =
+    (field: keyof FormData) =>
+    (
+      e: React.ChangeEvent<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >
+    ) =>
+      setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studyId) return;
+    setSaving(true);
+    setError(null);
+
+    const resolvedModel =
+      form.llm_model === "__custom__" ? form.llm_model_custom : form.llm_model;
+
+    const payload = {
+      name: form.name,
+      system_prompt: form.system_prompt,
+      welcome_message: form.welcome_message || null,
+      pipeline_type: form.pipeline_type,
+      llm_model: resolvedModel,
+      stt_provider: form.stt_provider,
+      stt_model: form.stt_model || null,
+      tts_provider: form.tts_provider,
+      tts_model: form.tts_model || null,
+      tts_voice: form.tts_voice || null,
+      language: form.language,
+      max_duration_seconds: (() => {
+        const raw = form.max_duration_seconds === "__custom__"
+          ? form.max_duration_custom
+          : form.max_duration_seconds;
+        return raw ? parseInt(raw) : null;
+      })(),
+      status: form.status,
+      participant_id_mode: form.participant_id_mode,
+      widget_title: form.widget_title || null,
+      widget_description: form.widget_description || null,
+      widget_primary_color: form.widget_primary_color || null,
+      widget_listening_message: form.widget_listening_message || null,
+    };
+
+    try {
+      if (isNew) {
+        const created = await agents.create(studyId, payload);
+        navigate(`/studies/${studyId}/agents/${created.id}`);
+        showToast("Agent created!");
+      } else if (agentId) {
+        const updated = await agents.update(studyId, agentId, payload);
+        setExisting(updated);
+        showToast("Changes saved");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!studyId || !agentId || !confirm("Delete this agent?")) return;
+    await agents.delete(studyId, agentId);
+    navigate(`/studies/${studyId}`);
+  };
+
+  // ── Participant identifier management ──
+  const handleAddPid = async () => {
+    if (!studyId || !agentId || !newPid.trim()) return;
+    try {
+      const created = await participants.create(studyId, agentId, {
+        identifier: newPid.trim(),
+      });
+      setPidList((prev) => [...prev, created]);
+      setNewPid("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add identifier");
+    }
+  };
+
+  const handleBulkAddPids = async () => {
+    if (!studyId || !agentId || !bulkPids.trim()) return;
+    const ids = bulkPids
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ids.length === 0) return;
+    try {
+      const created = await participants.bulkCreate(studyId, agentId, ids);
+      setPidList((prev) => [...prev, ...created]);
+      setBulkPids("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to bulk add");
+    }
+  };
+
+  const handleDeletePid = async (pid: ParticipantIdentifier) => {
+    if (!studyId || !agentId) return;
+    await participants.delete(studyId, agentId, pid.id);
+    setPidList((prev) => prev.filter((p) => p.id !== pid.id));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-700 animate-spin" />
+        Loading…
+      </div>
+    );
+  }
+
+  const isModular = form.pipeline_type === "modular";
+  const isAzureLLM = form.llm_model.startsWith("azure/");
+  const isScalewayLLM = form.llm_model.startsWith("scaleway/");
+  const isGcpLLM = form.llm_model.startsWith("gcp/");
+
+  const widgetUrl = existing ? `${window.location.origin}/interview/${existing.widget_key}` : "";
+  const embedCode = existing
+    ? `<iframe src="${widgetUrl}" width="100%" height="700" style="border:none;border-radius:16px;" allow="microphone" title="${existing.name} Interview"></iframe>`
+    : "";
+
+  return (
+    <div className="max-w-3xl">
+      {toast}
+
+      {/* Breadcrumb */}
+      <nav className="mb-6 text-sm text-gray-400 flex items-center gap-2">
+        <Link to="/" className="hover:text-gray-600 transition-colors">Studies</Link>
+        <ChevronRight />
+        <Link to={`/studies/${studyId}`} className="hover:text-gray-600 transition-colors">Study</Link>
+        <ChevronRight />
+        <span className="text-gray-700 font-medium">
+          {isNew ? "New Agent" : existing?.name || "Agent"}
+        </span>
+      </nav>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* ── Identity & Prompt ── */}
+        <div className="card p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2">
+            {isNew ? "Create Agent" : "Edit Agent"}
+            <HelpTooltip text="An agent is an AI interviewer with its own system prompt, model configuration, and participant-facing widget." />
+          </h2>
+
+          {error && (
+            <p className="mb-4 text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2.5 animate-slide-up">
+              {error}
+            </p>
+          )}
+
+          {/* Widget key & sharing */}
+          {existing && (
+            <div className="mb-5 rounded-xl bg-gray-50 p-4 border border-gray-100">
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Share with participants
+              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <code className="text-xs font-mono text-gray-700 bg-white rounded-lg border border-gray-200 px-3 py-1.5 select-all">
+                  {existing.widget_key}
+                </code>
+                <CopyButton
+                  text={widgetUrl}
+                  onCopied={showToast}
+                  toastMessage="Interview link copied!"
+                  size="md"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(embedCode);
+                    showToast("Embed code copied!");
+                  }}
+                  className="btn-secondary !py-1.5 !px-3 !text-xs"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                  </svg>
+                  Embed
+                </button>
+                <HelpTooltip text="Copy the embed code to embed this interview widget in Qualtrics, SurveyMonkey, or any survey tool via an HTML iframe." />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                  Name
+                  <HelpTooltip text="A descriptive name for this agent. Only visible to you in the admin dashboard." />
+                </label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={set("name")}
+                  required
+                  className="input-styled"
+                  placeholder="e.g. Interview Bot Alpha"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                  Status
+                  <HelpTooltip text="Only 'Active' agents can receive interview connections. 'Draft' and 'Paused' agents are not accessible to participants." />
+                </label>
+                <select value={form.status} onChange={set("status")} className="select-styled">
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                  <option value="paused">Paused</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                System Prompt
+                <HelpTooltip text="Define the agent's behaviour, interview style, the questions it should ask, and any research-specific instructions. This is the main prompt that guides the AI." />
+              </label>
+              <textarea
+                value={form.system_prompt}
+                onChange={set("system_prompt")}
+                rows={6}
+                className="input-styled font-mono text-xs"
+                placeholder="You are a qualitative research interviewer..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                Welcome Message
+                <HelpTooltip text="The first message the agent speaks when a participant connects. Leave empty for no greeting." />
+              </label>
+              <input
+                type="text"
+                value={form.welcome_message}
+                onChange={set("welcome_message")}
+                className="input-styled"
+                placeholder="Hello, thank you for participating..."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Pipeline & Model Config ── */}
+        <div className="card p-6">
+          <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
+            Pipeline Configuration
+            <HelpTooltip text="Choose how audio is processed. Modular chains STT → LLM → TTS services. Voice-to-Voice sends audio directly to multimodal models like OpenAI Realtime or Gemini Live." />
+          </h3>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Pipeline Type
+                </label>
+                <select
+                  value={form.pipeline_type}
+                  onChange={(e) => {
+                    const pt = e.target.value as "modular" | "voice_to_voice";
+                    setForm((f) => ({
+                      ...f,
+                      pipeline_type: pt,
+                      llm_model:
+                        pt === "voice_to_voice"
+                          ? "openai/gpt-realtime-1.5"
+                          : "openai/gpt-5.4",
+                      tts_voice:
+                        pt === "voice_to_voice" ? "coral" : f.tts_voice,
+                    }));
+                  }}
+                  className="select-styled"
+                >
+                  <option value="modular">Modular (STT → LLM → TTS)</option>
+                  <option value="voice_to_voice">Voice-to-Voice (Multimodal)</option>
+                </select>
+                {!isModular && (
+                  <p className="text-xs text-amber-600 mt-1.5">
+                    Routes audio directly to a multimodal endpoint. STT & TTS settings are not used.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                  LLM Model
+                  <HelpTooltip text="Select the language model. Use 'Custom' to enter any LiteLLM-compatible model identifier." />
+                </label>
+                <GroupedSelect
+                  value={form.llm_model}
+                  onChange={set("llm_model")}
+                  options={[
+                    ...llmModels,
+                    { value: "__custom__", label: "Custom (LiteLLM format)", group: "Custom" },
+                  ]}
+                  className="select-styled"
+                />
+              </div>
+            </div>
+
+            {/* Custom model identifier */}
+            {isCustomModel && (
+              <div className="animate-slide-up">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Custom Model Identifier
+                </label>
+                <input
+                  type="text"
+                  value={form.llm_model_custom}
+                  onChange={set("llm_model_custom")}
+                  className="input-styled font-mono"
+                  placeholder="e.g. openai/gpt-4.1, anthropic/claude-3.5-sonnet, mistral/mistral-large-latest"
+                />
+                <p className="text-xs text-gray-400 mt-1.5">
+                  Enter any model identifier in{" "}
+                  <a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">LiteLLM format</a>.
+                  Use <code className="bg-gray-100 px-1 rounded text-xs">provider/model-name</code> syntax.
+                </p>
+              </div>
+            )}
+
+            {/* V2V voice selection */}
+            {!isModular && form.llm_model !== "__custom__" && (
+              <div className="animate-slide-up">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                  Voice
+                  <HelpTooltip text="The voice used by the V2V model for audio responses. Different providers have different voice options." />
+                </label>
+                <select
+                  value={form.tts_voice}
+                  onChange={(e) => setForm((f) => ({ ...f, tts_voice: e.target.value }))}
+                  className="select-styled"
+                >
+                  {v2vVoiceOptions.map((v) => (
+                    <option key={v.value} value={v.value}>{v.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Provider hints */}
+            {form.llm_model.startsWith("google/") && (
+              <InfoBanner color="emerald">
+                <strong>Google Gemini:</strong> Requires <code>GOOGLE_API_KEY</code> (from{" "}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline">AI Studio</a>
+                ) in your <code>.env</code> file.
+              </InfoBanner>
+            )}
+            {isAzureLLM && (
+              <InfoBanner color="blue">
+                <strong>Azure OpenAI:</strong> Requires <code>AZURE_OPENAI_API_KEY</code>, <code>AZURE_OPENAI_ENDPOINT</code>, and <code>AZURE_OPENAI_API_VERSION</code> in your <code>.env</code> file.
+              </InfoBanner>
+            )}
+            {isScalewayLLM && (
+              <InfoBanner color="purple">
+                <strong>Scaleway:</strong> Requires <code>SCALEWAY_SECRET_KEY</code> in your <code>.env</code> file. Uses Scaleway's OpenAI-compatible Generative APIs endpoint.
+              </InfoBanner>
+            )}
+            {isGcpLLM && (
+              <InfoBanner color="cyan">
+                <strong>GCP Vertex AI:</strong> Requires <code>GCP_PROJECT_ID</code>, <code>GCP_LOCATION</code>, and <code>GCP_API_KEY</code> in your <code>.env</code> file.
+              </InfoBanner>
+            )}
+            {isModular && form.stt_provider === "scaleway" && (
+              <InfoBanner color="purple">
+                <strong>Scaleway STT:</strong> Uses the Whisper Large V3 model via Scaleway's OpenAI-compatible API. Requires <code>SCALEWAY_SECRET_KEY</code>.
+              </InfoBanner>
+            )}
+
+            {/* STT / TTS — only visible for modular pipeline */}
+            {isModular && (
+              <>
+                {/* STT row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                      Speech-to-Text
+                      <HelpTooltip text="The STT provider converts participant audio into text for the LLM. Deepgram offers real-time streaming; Whisper models work for batch processing." />
+                    </label>
+                    <select
+                      value={form.stt_provider}
+                      onChange={(e) => {
+                        const p = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          stt_provider: p,
+                          stt_model:
+                            p === "deepgram"
+                              ? "nova-2"
+                              : p === "scaleway"
+                                ? "whisper-large-v3"
+                                : "whisper-1",
+                        }));
+                      }}
+                      className="select-styled"
+                    >
+                      {STT_PROVIDERS.map((p) => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      STT Model
+                    </label>
+                    <select
+                      value={form.stt_model}
+                      onChange={set("stt_model")}
+                      className="select-styled"
+                    >
+                      {sttModelOptions.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* TTS row */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                      Text-to-Speech
+                      <HelpTooltip text="The TTS provider converts the LLM's text response back into speech for the participant." />
+                    </label>
+                    <select
+                      value={form.tts_provider}
+                      onChange={(e) => {
+                        const p = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          tts_provider: p,
+                          tts_voice: p === "openai" ? "alloy" : "rachel",
+                          tts_model: p === "openai" ? "gpt-4o-mini-tts" : "",
+                        }));
+                      }}
+                      className="select-styled"
+                    >
+                      {TTS_PROVIDERS.map((p) => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {form.tts_provider === "openai" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        TTS Model
+                      </label>
+                      <select
+                        value={form.tts_model}
+                        onChange={set("tts_model")}
+                        className="select-styled"
+                      >
+                        {OPENAI_TTS_MODELS.map((m) => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Voice
+                    </label>
+                    <select
+                      value={form.tts_voice}
+                      onChange={set("tts_voice")}
+                      className="select-styled"
+                    >
+                      {ttsVoiceOptions.map((v) => (
+                        <option key={v.value} value={v.value}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {form.tts_provider === "elevenlabs" && (
+                  <InfoBanner color="amber">
+                    <strong>ElevenLabs note:</strong> The free tier does not allow library voices via the API. You need a paid plan, or use a voice ID from your own ElevenLabs account.
+                  </InfoBanner>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Interview Settings ── */}
+        <div className="card p-6">
+          <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
+            Interview Settings
+            <HelpTooltip text="Configure language and maximum session duration. Sessions exceeding the max duration will be automatically terminated." />
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Language</label>
+              <select value={form.language} onChange={set("language")} className="select-styled">
+                {LANGUAGES.map((l) => (
+                  <option key={l.value} value={l.value}>{l.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Max Duration
+              </label>
+              <select
+                value={form.max_duration_seconds}
+                onChange={set("max_duration_seconds")}
+                className="select-styled"
+              >
+                <option value="300">5 minutes</option>
+                <option value="600">10 minutes</option>
+                <option value="900">15 minutes</option>
+                <option value="1200">20 minutes</option>
+                <option value="1800">30 minutes</option>
+                <option value="2700">45 minutes</option>
+                <option value="3600">60 minutes</option>
+                <option value="5400">90 minutes</option>
+                <option value="7200">120 minutes</option>
+                <option value="__custom__">Custom</option>
+              </select>
+            </div>
+          </div>
+          {form.max_duration_seconds === "__custom__" && (
+            <div className="animate-slide-up">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Custom Duration (seconds)
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min="60"
+                  max="7200"
+                  step="1"
+                  value={form.max_duration_custom}
+                  onChange={set("max_duration_custom")}
+                  className="input-styled w-40 font-mono"
+                  placeholder="e.g. 450"
+                />
+                <span className="text-xs text-gray-400">
+                  {form.max_duration_custom
+                    ? (() => {
+                        const s = parseInt(form.max_duration_custom);
+                        if (isNaN(s)) return "";
+                        const m = Math.floor(s / 60);
+                        const r = s % 60;
+                        return `= ${m}m ${r}s`;
+                      })()
+                    : "Min 60s · Max 7200s (2 hours)"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Participant Identification ── */}
+        <div className="card p-6">
+          <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
+            Participant Identification
+            <HelpTooltip text="Choose how participants are identified. 'Random' auto-generates IDs. 'Predefined' creates unique links per participant. 'User Input' asks participants to enter their ID." />
+          </h3>
+
+          <div className="mb-4">
+            <select
+              value={form.participant_id_mode}
+              onChange={set("participant_id_mode")}
+              className="select-styled"
+            >
+              <option value="random">
+                Random — Auto-generate ID when participant starts
+              </option>
+              <option value="predefined">
+                Predefined — Create unique links for each participant
+              </option>
+              <option value="input">
+                User Input — Participant enters their ID in the widget
+              </option>
+            </select>
+          </div>
+
+          {form.participant_id_mode === "random" && (
+            <p className="text-xs text-gray-400">
+              A unique participant ID will be automatically generated for each interview session.
+            </p>
+          )}
+
+          {form.participant_id_mode === "input" && (
+            <p className="text-xs text-gray-400">
+              Participants will be prompted to enter their identifier before starting the interview.
+            </p>
+          )}
+
+          {form.participant_id_mode === "predefined" && !isNew && (
+            <div className="mt-4 space-y-4 animate-slide-up">
+              <p className="text-xs text-gray-500">
+                Create participant identifiers below. Each gets a unique link:{" "}
+                <code className="bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">
+                  /interview/{existing?.widget_key}?pid=IDENTIFIER
+                </code>
+              </p>
+
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newPid}
+                  onChange={(e) => setNewPid(e.target.value)}
+                  className="input-styled flex-1"
+                  placeholder="Participant ID (e.g. P001)"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddPid();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddPid}
+                  className="btn-primary !py-2"
+                >
+                  Add
+                </button>
+              </div>
+
+              <details className="text-sm">
+                <summary className="cursor-pointer text-gray-500 hover:text-gray-700 transition-colors">
+                  Bulk add (one per line)
+                </summary>
+                <div className="mt-2 flex gap-2">
+                  <textarea
+                    value={bulkPids}
+                    onChange={(e) => setBulkPids(e.target.value)}
+                    rows={4}
+                    className="input-styled flex-1 font-mono"
+                    placeholder={"P001\nP002\nP003"}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleBulkAddPids}
+                    className="btn-primary self-end"
+                  >
+                    Add All
+                  </button>
+                </div>
+              </details>
+
+              {pidList.length > 0 && (
+                <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 max-h-60 overflow-y-auto">
+                  {pidList.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between px-3.5 py-2.5 text-sm hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <code className="font-mono text-gray-800 text-xs">{p.identifier}</code>
+                        {p.used ? (
+                          <span className="rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold">
+                            Used
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-[10px] font-semibold">
+                            Available
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CopyButton
+                          text={`${window.location.origin}/interview/${existing?.widget_key}?pid=${p.identifier}`}
+                          onCopied={showToast}
+                          toastMessage="Participant link copied!"
+                        />
+                        {!p.used && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePid(p)}
+                            className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {pidList.length === 0 && (
+                <p className="text-xs text-gray-300 text-center py-6 border border-dashed border-gray-200 rounded-xl">
+                  No participant identifiers yet.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Widget Customisation ── */}
+        <div className="card p-6">
+          <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
+            Widget Appearance
+            <HelpTooltip text="Customise how the interview widget looks and behaves when participants visit the link. Changes are applied instantly." />
+          </h3>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Widget Title
+                </label>
+                <input
+                  type="text"
+                  value={form.widget_title}
+                  onChange={set("widget_title")}
+                  className="input-styled"
+                  placeholder="Voice Interview"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Primary Colour
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="color"
+                    value={form.widget_primary_color}
+                    onChange={set("widget_primary_color")}
+                    className="h-[42px] w-[42px] rounded-xl border border-gray-200 cursor-pointer p-0.5"
+                  />
+                  <input
+                    type="text"
+                    value={form.widget_primary_color}
+                    onChange={set("widget_primary_color")}
+                    className="input-styled flex-1 font-mono"
+                    placeholder="#111827"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Widget Description
+              </label>
+              <textarea
+                value={form.widget_description}
+                onChange={set("widget_description")}
+                rows={2}
+                className="input-styled"
+                placeholder="Click the button below to begin your interview."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                Listening Message
+                <HelpTooltip text="Text shown to participants while the agent is listening to them speak. This appears below the orb animation." />
+              </label>
+              <input
+                type="text"
+                value={form.widget_listening_message}
+                onChange={set("widget_listening_message")}
+                className="input-styled"
+                placeholder="Agent is listening…"
+              />
+            </div>
+
+            <div className="flex items-center gap-3 rounded-xl bg-gray-50 p-3 border border-gray-100">
+              <div
+                className="h-8 w-8 rounded-full shadow-sm border border-white/50"
+                style={{
+                  background: `radial-gradient(circle at 35% 30%, ${form.widget_primary_color}dd, ${form.widget_primary_color})`,
+                }}
+              />
+              <span className="text-xs text-gray-500">Preview of your primary colour</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Actions ── */}
+        <div className="flex items-center justify-between pb-8">
+          <div>
+            {!isNew && (
+              <button type="button" onClick={handleDelete} className="btn-danger">
+                Delete Agent
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <Link to={`/studies/${studyId}`} className="btn-secondary">
+              Cancel
+            </Link>
+            <button type="submit" disabled={saving} className="btn-primary">
+              {saving ? (
+                <>
+                  <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Saving…
+                </>
+              ) : isNew ? (
+                "Create Agent"
+              ) : (
+                "Save Changes"
+              )}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ── Helper Components ────────────────────────────────────────
+
+function ChevronRight() {
+  return (
+    <svg className="h-3.5 w-3.5 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function InfoBanner({ color, children }: { color: string; children: React.ReactNode }) {
+  const colorMap: Record<string, string> = {
+    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    blue: "bg-blue-50 border-blue-200 text-blue-700",
+    purple: "bg-purple-50 border-purple-200 text-purple-700",
+    cyan: "bg-cyan-50 border-cyan-200 text-cyan-700",
+    amber: "bg-amber-50 border-amber-200 text-amber-700",
+  };
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-xs ${colorMap[color] || colorMap.blue} animate-fade-in`}>
+      {children}
+    </div>
+  );
+}
