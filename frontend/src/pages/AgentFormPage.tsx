@@ -888,6 +888,21 @@ export default function AgentFormPage() {
             </p>
           )}
 
+          {/* Activation warning */}
+          {existing && form.status !== "active" && (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 animate-fade-in">
+              <svg className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-800">Agent is not active</p>
+                <p className="text-xs text-amber-600 mt-0.5">
+                  This agent is currently set to <strong>{form.status}</strong>. Participants will not be able to start interviews until the status is changed to <strong>Active</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Widget key & sharing */}
           {existing && (
             <div className="mb-5 rounded-xl bg-gray-50 p-4 border border-gray-100">
@@ -900,7 +915,12 @@ export default function AgentFormPage() {
                 </code>
                 <CopyButton
                   text={widgetUrl}
-                  onCopied={showToast}
+                  onCopied={(msg) => {
+                    showToast(msg);
+                    if (form.status !== "active") {
+                      setTimeout(() => showToast("⚠️ Agent is not active. Participants cannot connect yet."), 350);
+                    }
+                  }}
                   toastMessage="Interview link copied!"
                   size="md"
                 />
@@ -909,6 +929,9 @@ export default function AgentFormPage() {
                   onClick={() => {
                     navigator.clipboard.writeText(embedCode);
                     showToast("Embed code copied!");
+                    if (form.status !== "active") {
+                      setTimeout(() => showToast("⚠️ Agent is not active. Participants cannot connect yet."), 350);
+                    }
                   }}
                   className="btn-secondary !py-1.5 !px-3 !text-xs"
                 >
@@ -1932,7 +1955,12 @@ export default function AgentFormPage() {
                       <div className="flex items-center gap-2">
                         <CopyButton
                           text={`${window.location.origin}/interview/${existing?.widget_key}?pid=${p.identifier}`}
-                          onCopied={showToast}
+                          onCopied={(msg) => {
+                            showToast(msg);
+                            if (form.status !== "active") {
+                              setTimeout(() => showToast("⚠️ Agent is not active. Participants cannot connect yet."), 350);
+                            }
+                          }}
                           toastMessage="Participant link copied!"
                         />
                         {!p.used && (
