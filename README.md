@@ -283,7 +283,7 @@ If you use OASIS in your research, please cite it:
 @software{lang2025oasis,
   author       = {Lang, Max M.},
   title        = {{OASIS}: Open Agentic Survey Interview System},
-  year         = {2025},
+  year         = {2026},
   url          = {https://github.com/oasis-surveys/oasis},
   note         = {Self-hosted platform for AI-powered conversational interviews}
 }
