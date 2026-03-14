@@ -1,0 +1,28 @@
+# ── Web Framework ──
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+websockets==14.1
+python-multipart==0.0.20
+
+# ── Database ──
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
+
+# ── Redis ──
+redis[hiredis]==5.2.1
+
+# ── Configuration ──
+pydantic-settings==2.7.1
+
+# ── AI / Pipeline ──
+pipecat-ai[silero,websocket,google]==0.0.105
+openai>=1.50.0
+deepgram-sdk>=4.0.0
+elevenlabs>=1.0.0
+google-genai>=1.0.0
+
+# ── Utilities ──
+httpx==0.28.1
+python-dotenv==1.0.1
+loguru>=0.7.0
