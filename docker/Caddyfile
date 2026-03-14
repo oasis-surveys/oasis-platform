@@ -1,0 +1,20 @@
+# For local development, listen on :80 without TLS.
+# For production, replace ':80' with your domain (e.g. survey.example.com)
+# and Caddy will auto-provision SSL certificates.
+
+:80 {
+	# ── API & WebSocket traffic → Backend ──
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	# ── WebSocket upgrade for audio streams ──
+	handle /ws/* {
+		reverse_proxy backend:8000
+	}
+
+	# ── Everything else → Frontend ──
+	handle {
+		reverse_proxy frontend:80
+	}
+}
