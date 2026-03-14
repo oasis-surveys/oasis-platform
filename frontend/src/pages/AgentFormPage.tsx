@@ -163,6 +163,27 @@ const LANGUAGES = [
   { value: "hi", label: "Hindi" },
 ];
 
+// ── Interview question types ──────────────────────────────────
+
+interface InterviewQuestion {
+  text: string;
+  probes: string[];
+  max_follow_ups: number;
+  transition: string;
+}
+
+interface InterviewGuide {
+  questions: InterviewQuestion[];
+  closing_message: string;
+}
+
+const EMPTY_QUESTION: InterviewQuestion = {
+  text: "",
+  probes: [],
+  max_follow_ups: 3,
+  transition: "",
+};
+
 // ── Form data ─────────────────────────────────────────────────
 
 interface FormData {
@@ -186,6 +207,8 @@ interface FormData {
   widget_description: string;
   widget_primary_color: string;
   widget_listening_message: string;
+  interview_mode: "free_form" | "structured";
+  interview_guide: InterviewGuide;
   silence_timeout_seconds: string;
   silence_prompt: string;
   twilio_phone_number: string;
@@ -212,6 +235,11 @@ const DEFAULT_FORM: FormData = {
   widget_description: "",
   widget_primary_color: "#111827",
   widget_listening_message: "Agent is listening…",
+  interview_mode: "free_form",
+  interview_guide: {
+    questions: [],
+    closing_message: "Thank you for your time. This concludes our interview.",
+  },
   silence_timeout_seconds: "",
   silence_prompt: "Take your time. Let me know when you're ready to continue.",
   twilio_phone_number: "",
@@ -326,6 +354,11 @@ export default function AgentFormPage() {
           widget_description: a.widget_description || "",
           widget_primary_color: a.widget_primary_color || "#111827",
           widget_listening_message: a.widget_listening_message || "Agent is listening…",
+          interview_mode: a.interview_mode || "free_form",
+          interview_guide: a.interview_guide || {
+            questions: [],
+            closing_message: "Thank you for your time. This concludes our interview.",
+          },
           silence_timeout_seconds: a.silence_timeout_seconds ? String(a.silence_timeout_seconds) : "",
           silence_prompt: a.silence_prompt || "Take your time. Let me know when you're ready to continue.",
           twilio_phone_number: a.twilio_phone_number || "",
@@ -378,6 +411,11 @@ export default function AgentFormPage() {
       widget_description: form.widget_description || null,
       widget_primary_color: form.widget_primary_color || null,
       widget_listening_message: form.widget_listening_message || null,
+      interview_mode: form.interview_mode,
+      interview_guide:
+        form.interview_mode === "structured" && form.interview_guide.questions.length > 0
+          ? form.interview_guide
+          : null,
       silence_timeout_seconds: form.silence_timeout_seconds ? parseInt(form.silence_timeout_seconds, 10) : null,
       silence_prompt: form.silence_prompt || null,
       twilio_phone_number: form.twilio_phone_number || null,
@@ -581,6 +619,308 @@ export default function AgentFormPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* ── Interview Mode ── */}
+        <div className="card p-6">
+          <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
+            Interview Mode
+            <HelpTooltip text="Free-form lets the AI guide the conversation naturally using your system prompt. Structured mode follows a pre-defined question guide with follow-up probes — ideal for semi-structured interviews." />
+          </h3>
+
+          <div className="mb-4">
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, interview_mode: "free_form" }))}
+                className={`flex-1 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                  form.interview_mode === "free_form"
+                    ? "border-gray-900 bg-gray-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="font-medium text-sm text-gray-900">Free-form</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Open-ended conversation guided by the system prompt
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((f) => ({
+                    ...f,
+                    interview_mode: "structured",
+                    interview_guide:
+                      f.interview_guide.questions.length === 0
+                        ? { ...f.interview_guide, questions: [{ ...EMPTY_QUESTION }] }
+                        : f.interview_guide,
+                  }));
+                }}
+                className={`flex-1 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                  form.interview_mode === "structured"
+                    ? "border-gray-900 bg-gray-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="font-medium text-sm text-gray-900">Structured</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  Pre-defined questions with follow-up probes
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {form.interview_mode === "structured" && (
+            <div className="space-y-4 animate-slide-up">
+              <p className="text-xs text-gray-500">
+                Define the questions your agent will ask in order.  For each question, add example
+                probes that the agent can use to get deeper answers. The agent will adapt its probing
+                based on what the participant actually says.
+              </p>
+
+              {/* Question list */}
+              {form.interview_guide.questions.map((q, qi) => (
+                <div
+                  key={qi}
+                  className="rounded-xl border border-gray-200 p-4 space-y-3 relative group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      Question {qi + 1}
+                    </span>
+                    <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {qi > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((f) => {
+                              const qs = [...f.interview_guide.questions];
+                              [qs[qi - 1], qs[qi]] = [qs[qi], qs[qi - 1]];
+                              return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                            });
+                          }}
+                          className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
+                          title="Move up"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                          </svg>
+                        </button>
+                      )}
+                      {qi < form.interview_guide.questions.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((f) => {
+                              const qs = [...f.interview_guide.questions];
+                              [qs[qi], qs[qi + 1]] = [qs[qi + 1], qs[qi]];
+                              return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                            });
+                          }}
+                          className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-all"
+                          title="Move down"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                      )}
+                      {form.interview_guide.questions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((f) => ({
+                              ...f,
+                              interview_guide: {
+                                ...f.interview_guide,
+                                questions: f.interview_guide.questions.filter((_, i) => i !== qi),
+                              },
+                            }));
+                          }}
+                          className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                          title="Remove question"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Main question */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Question
+                    </label>
+                    <input
+                      type="text"
+                      value={q.text}
+                      onChange={(e) => {
+                        setForm((f) => {
+                          const qs = [...f.interview_guide.questions];
+                          qs[qi] = { ...qs[qi], text: e.target.value };
+                          return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                        });
+                      }}
+                      className="input-styled"
+                      placeholder="e.g. Can you tell me about your experience with…?"
+                    />
+                  </div>
+
+                  {/* Probes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                      Example Probes
+                      <HelpTooltip text="Example follow-up questions the agent can use to explore this topic deeper. The agent will adapt these based on participant responses." />
+                    </label>
+                    <div className="space-y-1.5">
+                      {q.probes.map((probe, pi) => (
+                        <div key={pi} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={probe}
+                            onChange={(e) => {
+                              setForm((f) => {
+                                const qs = [...f.interview_guide.questions];
+                                const probes = [...qs[qi].probes];
+                                probes[pi] = e.target.value;
+                                qs[qi] = { ...qs[qi], probes };
+                                return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                              });
+                            }}
+                            className="input-styled flex-1 text-sm"
+                            placeholder="e.g. Can you elaborate on that?"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((f) => {
+                                const qs = [...f.interview_guide.questions];
+                                qs[qi] = { ...qs[qi], probes: qs[qi].probes.filter((_, i) => i !== pi) };
+                                return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                              });
+                            }}
+                            className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all shrink-0"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((f) => {
+                            const qs = [...f.interview_guide.questions];
+                            qs[qi] = { ...qs[qi], probes: [...qs[qi].probes, ""] };
+                            return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                          });
+                        }}
+                        className="text-xs text-gray-500 hover:text-gray-700 transition-colors flex items-center gap-1 py-1"
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                        Add probe
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Max follow-ups */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                        Max Follow-ups
+                        <HelpTooltip text="Maximum follow-up exchanges before the agent transitions to the next question. The agent may move on sooner if the topic is sufficiently explored." />
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={10}
+                        value={q.max_follow_ups}
+                        onChange={(e) => {
+                          setForm((f) => {
+                            const qs = [...f.interview_guide.questions];
+                            qs[qi] = { ...qs[qi], max_follow_ups: parseInt(e.target.value) || 3 };
+                            return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                          });
+                        }}
+                        className="input-styled w-24"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                        Transition
+                        <HelpTooltip text="Optional text the agent says when moving to the next question. Leave empty for a natural transition." />
+                      </label>
+                      <input
+                        type="text"
+                        value={q.transition}
+                        onChange={(e) => {
+                          setForm((f) => {
+                            const qs = [...f.interview_guide.questions];
+                            qs[qi] = { ...qs[qi], transition: e.target.value };
+                            return { ...f, interview_guide: { ...f.interview_guide, questions: qs } };
+                          });
+                        }}
+                        className="input-styled text-sm"
+                        placeholder="e.g. Now I'd like to ask you about…"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Add question button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((f) => ({
+                    ...f,
+                    interview_guide: {
+                      ...f.interview_guide,
+                      questions: [...f.interview_guide.questions, { ...EMPTY_QUESTION }],
+                    },
+                  }));
+                }}
+                className="w-full rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-400 px-4 py-3 text-sm text-gray-500 hover:text-gray-700 transition-all flex items-center justify-center gap-2"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add Question
+              </button>
+
+              {/* Closing message */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                  Closing Message
+                  <HelpTooltip text="The message the agent speaks after the last question is complete." />
+                </label>
+                <input
+                  type="text"
+                  value={form.interview_guide.closing_message}
+                  onChange={(e) => {
+                    setForm((f) => ({
+                      ...f,
+                      interview_guide: { ...f.interview_guide, closing_message: e.target.value },
+                    }));
+                  }}
+                  className="input-styled"
+                  placeholder="Thank you for your time…"
+                />
+              </div>
+
+              <InfoBanner color="blue">
+                <strong>How it works:</strong> The agent will ask each question in order, probe
+                for deeper answers using your example probes, then naturally transition to the
+                next question. The system prompt still applies — use it to set the tone, persona,
+                and any additional context.
+              </InfoBanner>
+            </div>
+          )}
         </div>
 
         {/* ── Pipeline & Model Config ── */}

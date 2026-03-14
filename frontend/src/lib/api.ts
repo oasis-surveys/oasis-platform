@@ -123,6 +123,16 @@ export interface Agent {
   widget_description: string | null;
   widget_primary_color: string | null;
   widget_listening_message: string | null;
+  interview_mode: "free_form" | "structured";
+  interview_guide: {
+    questions: {
+      text: string;
+      probes: string[];
+      max_follow_ups: number;
+      transition: string;
+    }[];
+    closing_message: string;
+  } | null;
   silence_timeout_seconds: number | null;
   silence_prompt: string | null;
   twilio_phone_number: string | null;
@@ -140,6 +150,7 @@ export interface AgentListItem {
   language: string;
   widget_key: string;
   participant_id_mode: "random" | "predefined" | "input";
+  interview_mode: "free_form" | "structured";
   created_at: string;
 }
 

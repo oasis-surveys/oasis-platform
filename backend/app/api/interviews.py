@@ -83,6 +83,12 @@ async def interview_ws(
             "participant_id_mode": agent.participant_id_mode,
             "silence_timeout_seconds": agent.silence_timeout_seconds,
             "silence_prompt": agent.silence_prompt,
+            "interview_mode": (
+                agent.interview_mode.value
+                if hasattr(agent.interview_mode, "value")
+                else (agent.interview_mode or "free_form")
+            ),
+            "interview_guide": agent.interview_guide,
         }
 
         # ── 2. Resolve participant_id ──────────────────────────────
@@ -187,6 +193,8 @@ async def interview_ws(
             study_id=agent_cfg["study_id"],
             silence_timeout_seconds=agent_cfg["silence_timeout_seconds"],
             silence_prompt=agent_cfg["silence_prompt"],
+            interview_mode=agent_cfg["interview_mode"],
+            interview_guide=agent_cfg["interview_guide"],
         )
 
         runner = PipelineRunner(handle_sigint=False, handle_sigterm=False)

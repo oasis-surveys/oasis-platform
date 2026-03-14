@@ -7,7 +7,42 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.agent import AgentStatus, ParticipantIdMode, PipelineType
+from app.models.agent import AgentStatus, InterviewMode, ParticipantIdMode, PipelineType
+
+
+# ── Structured Interview Guide Sub-Schemas ───────────────────
+
+
+class InterviewQuestion(BaseModel):
+    """A single question in the structured interview guide."""
+    text: str = Field(..., min_length=1, description="The main question text")
+    probes: list[str] = Field(
+        default_factory=list,
+        description="Example follow-up probes for deeper exploration",
+    )
+    max_follow_ups: int = Field(
+        3,
+        ge=0,
+        le=10,
+        description="Maximum follow-up exchanges before moving on",
+    )
+    transition: str | None = Field(
+        None,
+        description="Optional transition text when moving to the next question",
+    )
+
+
+class InterviewGuide(BaseModel):
+    """Structured interview protocol — a list of questions with probes."""
+    questions: list[InterviewQuestion] = Field(
+        ...,
+        min_length=1,
+        description="Ordered list of interview questions",
+    )
+    closing_message: str | None = Field(
+        "Thank you for your time. This concludes our interview.",
+        description="Message spoken after the last question is complete",
+    )
 
 
 # ── Request Schemas ──────────────────────────────────────────
@@ -42,6 +77,10 @@ class AgentCreate(BaseModel):
     widget_description: str | None = None
     widget_primary_color: str | None = "#111827"
     widget_listening_message: str | None = "Agent is listening…"
+
+    # Interview mode
+    interview_mode: InterviewMode = InterviewMode.FREE_FORM
+    interview_guide: InterviewGuide | None = None
 
     # Silence handling
     silence_timeout_seconds: int | None = None
@@ -78,6 +117,10 @@ class AgentUpdate(BaseModel):
     widget_description: str | None = None
     widget_primary_color: str | None = None
     widget_listening_message: str | None = None
+
+    # Interview mode
+    interview_mode: InterviewMode | None = None
+    interview_guide: InterviewGuide | None = None
 
     silence_timeout_seconds: int | None = None
     silence_prompt: str | None = None
@@ -120,6 +163,9 @@ class AgentRead(BaseModel):
     widget_primary_color: str | None
     widget_listening_message: str | None
 
+    interview_mode: InterviewMode
+    interview_guide: dict | None
+
     silence_timeout_seconds: int | None
     silence_prompt: str | None
 
@@ -141,4 +187,5 @@ class AgentList(BaseModel):
     language: str
     widget_key: str
     participant_id_mode: ParticipantIdMode
+    interview_mode: InterviewMode
     created_at: datetime

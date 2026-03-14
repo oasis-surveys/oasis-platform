@@ -77,6 +77,8 @@ async def build_twilio_pipeline(
     stream_sid: str = "",
     call_sid: Optional[str] = None,
     study_id: Optional[uuid.UUID] = None,
+    interview_mode: Optional[str] = None,
+    interview_guide: Optional[dict] = None,
 ) -> PipelineTask:
     """
     Build a Pipecat pipeline for Twilio telephony.
@@ -84,6 +86,15 @@ async def build_twilio_pipeline(
     Uses TwilioFrameSerializer to handle μ-law ↔ PCM16 conversion
     and Twilio Media Streams JSON protocol.
     """
+    # ── Structured interview prompt enhancement ───────────────────
+    effective_prompt = system_prompt
+    if interview_mode == "structured" and interview_guide:
+        from app.pipeline.interview_guide import build_structured_prompt
+        effective_prompt = build_structured_prompt(system_prompt, interview_guide)
+        logger.info(
+            f"Twilio structured interview: {len(interview_guide.get('questions', []))} questions"
+        )
+
     from pipecat.serializers.twilio import TwilioFrameSerializer
 
     serializer = TwilioFrameSerializer(
@@ -130,7 +141,7 @@ async def build_twilio_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
-            system_prompt=system_prompt,
+            system_prompt=effective_prompt,
             welcome_message=welcome_message,
             language=language,
             max_duration_seconds=max_duration_seconds,
@@ -142,7 +153,7 @@ async def build_twilio_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
-            system_prompt=system_prompt,
+            system_prompt=effective_prompt,
             welcome_message=welcome_message,
             stt_provider=stt_provider,
             tts_provider=tts_provider,
@@ -172,11 +183,22 @@ async def build_pipeline(
     study_id: Optional[uuid.UUID] = None,
     silence_timeout_seconds: Optional[int] = None,
     silence_prompt: Optional[str] = None,
+    interview_mode: Optional[str] = None,
+    interview_guide: Optional[dict] = None,
 ) -> PipelineTask:
     """
     Build and return a ready-to-run PipelineTask.
     The caller only needs to `await runner.run(task)`.
     """
+
+    # ── Structured interview prompt enhancement ───────────────────
+    effective_prompt = system_prompt
+    if interview_mode == "structured" and interview_guide:
+        from app.pipeline.interview_guide import build_structured_prompt
+        effective_prompt = build_structured_prompt(system_prompt, interview_guide)
+        logger.info(
+            f"Structured interview mode: {len(interview_guide.get('questions', []))} questions loaded"
+        )
 
     # ── Transport (WebSocket ↔ browser) ───────────────────────────
     serializer = _build_serializer()
@@ -207,7 +229,7 @@ async def build_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
-            system_prompt=system_prompt,
+            system_prompt=effective_prompt,
             welcome_message=welcome_message,
             language=language,
             max_duration_seconds=max_duration_seconds,
@@ -221,7 +243,7 @@ async def build_pipeline(
             transport=transport,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
-            system_prompt=system_prompt,
+            system_prompt=effective_prompt,
             welcome_message=welcome_message,
             stt_provider=stt_provider,
             tts_provider=tts_provider,

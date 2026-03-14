@@ -177,6 +177,12 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             "tts_voice": agent.tts_voice,
             "language": agent.language,
             "max_duration_seconds": agent.max_duration_seconds,
+            "interview_mode": (
+                agent.interview_mode.value
+                if hasattr(agent.interview_mode, "value")
+                else (agent.interview_mode or "free_form")
+            ),
+            "interview_guide": agent.interview_guide,
         }
 
         # ── 3. Create session ─────────────────────────────────────
@@ -221,6 +227,8 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             language=agent_cfg["language"],
             max_duration_seconds=agent_cfg["max_duration_seconds"],
             notify_callback=_notify,
+            interview_mode=agent_cfg.get("interview_mode"),
+            interview_guide=agent_cfg.get("interview_guide"),
             stream_sid=stream_sid,
             call_sid=call_sid,
             study_id=agent_cfg["study_id"],

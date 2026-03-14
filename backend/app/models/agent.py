@@ -9,7 +9,7 @@ import enum
 import secrets
 import uuid
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +19,11 @@ from app.models.base import Base
 class PipelineType(str, enum.Enum):
     MODULAR = "modular"            # Path B: STT → LLM → TTS
     VOICE_TO_VOICE = "voice_to_voice"  # Path A: Direct multimodal
+
+
+class InterviewMode(str, enum.Enum):
+    FREE_FORM = "free_form"        # Open-ended conversation guided by system prompt
+    STRUCTURED = "structured"      # Pre-defined question guide with follow-up probes
 
 
 class AgentStatus(str, enum.Enum):
@@ -125,6 +130,20 @@ class Agent(Base):
     )
     widget_listening_message: Mapped[str | None] = mapped_column(
         String(255), nullable=True, default="Agent is listening…"
+    )
+
+    # ── Interview mode ──
+    interview_mode: Mapped[InterviewMode] = mapped_column(
+        Enum(
+            InterviewMode,
+            name="interview_mode",
+            values_callable=lambda e: [member.value for member in e],
+        ),
+        default=InterviewMode.FREE_FORM,
+        server_default=InterviewMode.FREE_FORM.value,
+    )
+    interview_guide: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None
     )
 
     # ── Silence handling ──
