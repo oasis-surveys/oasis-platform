@@ -1,5 +1,5 @@
 """
-SURVEYOR — Study-level analytics endpoint.
+OASIS — Study-level analytics endpoint.
 
 Provides aggregate statistics across all agents in a study.
 """

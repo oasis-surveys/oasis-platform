@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Lightweight protobuf encoder/decoder for Pipecat frames.
+ * OASIS — Lightweight protobuf encoder/decoder for Pipecat frames.
  *
  * Mirrors the pipecat `frames.proto` schema used by ProtobufFrameSerializer.
  * Uses protobufjs to stay compatible with the server's binary format.

@@ -1,5 +1,5 @@
 """
-SURVEYOR — Embedding and chunking utilities for RAG.
+OASIS — Embedding and chunking utilities for RAG.
 
 Handles:
 - Splitting text into manageable chunks with overlap

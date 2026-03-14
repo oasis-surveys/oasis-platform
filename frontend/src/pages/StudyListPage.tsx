@@ -5,8 +5,8 @@ import HelpTooltip from "../components/HelpTooltip";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-600",
-  active: "bg-emerald-50 text-emerald-700",
-  paused: "bg-amber-50 text-amber-700",
+  active: "bg-oasis-50 text-oasis-600",
+  paused: "bg-sand-300/50 text-sand-700",
   completed: "bg-blue-50 text-blue-700",
 };
 

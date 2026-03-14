@@ -1,18 +1,21 @@
 """
-SURVEYOR — Authentication endpoints.
+OASIS — Authentication endpoints.
 
 POST /api/auth/login   — Verify credentials, return JWT
-GET  /api/auth/me      — Return current user info (or auth status)
+GET  /api/auth/status  — Return auth configuration and current auth state
 """
 
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, Request, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.config import settings
-from app.auth import create_token, require_auth
+from app.auth import create_token, verify_token, require_auth
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+_security = HTTPBearer(auto_error=False)
 
 
 class LoginRequest(BaseModel):
@@ -61,13 +64,35 @@ async def login(data: LoginRequest):
 
 
 @router.get("/status", response_model=AuthStatusResponse)
-async def auth_status(user=Depends(require_auth)):
+async def auth_status(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_security),
+):
     """
-    Check whether authentication is enabled and if the current request
-    is authenticated.
+    Public endpoint — no auth required.
+
+    Returns whether auth is enabled and whether the caller's token (if any) is valid.
+    This lets the frontend decide whether to show the login page.
     """
+    if not settings.auth_enabled:
+        return AuthStatusResponse(
+            auth_enabled=False,
+            authenticated=True,
+            username=None,
+        )
+
+    # Auth is enabled — check if a valid token was provided
+    if credentials:
+        payload = verify_token(credentials.credentials)
+        if payload:
+            return AuthStatusResponse(
+                auth_enabled=True,
+                authenticated=True,
+                username=payload.get("sub"),
+            )
+
+    # No token or invalid token
     return AuthStatusResponse(
-        auth_enabled=settings.auth_enabled,
-        authenticated=user is not None or not settings.auth_enabled,
-        username=user.get("sub") if user else None,
+        auth_enabled=True,
+        authenticated=False,
+        username=None,
     )

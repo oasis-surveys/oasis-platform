@@ -1,14 +1,16 @@
 """
-SURVEYOR — Study CRUD endpoints.
+OASIS — Study CRUD endpoints.
 """
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from loguru import logger
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.agent import Agent, AgentStatus
 from app.models.study import Study
 from app.schemas.study import StudyCreate, StudyList, StudyRead, StudyUpdate
 
@@ -52,14 +54,57 @@ async def update_study(
     payload: StudyUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a study. Only provided fields are changed."""
+    """Update a study. Only provided fields are changed.
+
+    When the study status changes, agent statuses are cascaded:
+      study → active   ⇒  draft agents → active
+      study → paused   ⇒  active agents → paused
+      study → completed ⇒  active/paused agents → completed
+      study → draft    ⇒  no agent change
+    """
     study = await db.get(Study, study_id)
     if not study:
         raise HTTPException(status_code=404, detail="Study not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    old_status = study.status
     for field, value in update_data.items():
         setattr(study, field, value)
+
+    # ── Cascade status to agents ──────────────────────────────
+    new_status = update_data.get("status")
+    if new_status and new_status != old_status:
+        cascade_map = {
+            # new study status → (agent statuses to change, new agent status)
+            "active": (
+                [AgentStatus.DRAFT, AgentStatus.PAUSED],
+                AgentStatus.ACTIVE,
+            ),
+            "paused": ([AgentStatus.ACTIVE], AgentStatus.PAUSED),
+            # AgentStatus has no COMPLETED; pausing agents is the
+            # closest equivalent when a study is completed.
+            "completed": (
+                [AgentStatus.ACTIVE],
+                AgentStatus.PAUSED,
+            ),
+        }
+
+        if new_status in cascade_map:
+            from_statuses, to_status = cascade_map[new_status]
+            result = await db.execute(
+                update(Agent)
+                .where(
+                    Agent.study_id == study_id,
+                    Agent.status.in_(from_statuses),
+                )
+                .values(status=to_status)
+            )
+            affected = result.rowcount  # type: ignore[union-attr]
+            if affected:
+                logger.info(
+                    f"Study {study_id} → {new_status}: cascaded {affected} "
+                    f"agent(s) to {to_status.value}"
+                )
 
     await db.flush()
     await db.refresh(study)

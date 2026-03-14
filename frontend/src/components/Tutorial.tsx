@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Get Started tutorial walkthrough.
+ * OASIS — Get Started tutorial walkthrough.
  *
  * A step-by-step guided tour with spotlight overlay and popups.
  * Steps can point to elements by CSS selector.

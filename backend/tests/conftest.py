@@ -1,5 +1,5 @@
 """
-SURVEYOR — Shared test fixtures.
+OASIS — Shared test fixtures.
 
 Provides:
 - An in-memory SQLite database for fast, isolated tests.

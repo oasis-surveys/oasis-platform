@@ -1,5 +1,5 @@
 """
-SURVEYOR — Pydantic schemas for Participant Identifiers.
+OASIS — Pydantic schemas for Participant Identifiers.
 """
 
 from datetime import datetime

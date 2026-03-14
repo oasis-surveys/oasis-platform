@@ -1,5 +1,5 @@
 """
-SURVEYOR — Knowledge Base models for RAG.
+OASIS — Knowledge Base models for RAG.
 
 A KnowledgeDocument represents a file/text uploaded by the researcher
 to provide study context to the AI agent.
@@ -13,7 +13,7 @@ import uuid
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -42,7 +42,10 @@ class KnowledgeDocument(Base):
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # ── Relationships ──
-    study = relationship("Study", backref="knowledge_documents")
+    study = relationship(
+        "Study",
+        backref=backref("knowledge_documents", cascade="all, delete-orphan", passive_deletes=True),
+    )
     chunks = relationship(
         "KnowledgeChunk",
         back_populates="document",

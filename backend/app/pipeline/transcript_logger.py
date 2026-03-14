@@ -1,5 +1,5 @@
 """
-SURVEYOR — Pipecat FrameProcessor that logs transcript entries to PostgreSQL.
+OASIS — Pipecat FrameProcessor that logs transcript entries to PostgreSQL.
 
 Sits inside the pipeline and intercepts:
 - TranscriptionFrame  → user utterances  (from STT)

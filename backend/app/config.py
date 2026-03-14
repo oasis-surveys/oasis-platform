@@ -1,5 +1,5 @@
 """
-SURVEYOR — Application configuration.
+OASIS — Application configuration.
 
 All settings are loaded from environment variables (or .env file).
 """
@@ -15,15 +15,15 @@ class Settings(BaseSettings):
     )
 
     # ── Application ──
-    app_name: str = "SURVEYOR"
+    app_name: str = "OASIS"
     app_env: str = "development"
     secret_key: str = "change-me-to-a-random-secret-key"
     debug: bool = True
 
     # ── PostgreSQL ──
-    postgres_user: str = "surveyor"
+    postgres_user: str = "oasis"
     postgres_password: str = "change-me"
-    postgres_db: str = "surveyor"
+    postgres_db: str = "oasis"
     postgres_host: str = "postgres"
     postgres_port: int = 5432
 

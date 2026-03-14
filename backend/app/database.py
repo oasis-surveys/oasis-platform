@@ -1,5 +1,5 @@
 """
-SURVEYOR — Async database engine and session factory.
+OASIS — Async database engine and session factory.
 """
 
 from collections.abc import AsyncGenerator

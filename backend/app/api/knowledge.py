@@ -1,5 +1,5 @@
 """
-SURVEYOR — Knowledge Base API endpoints.
+OASIS — Knowledge Base API endpoints.
 
 Allows researchers to upload, list, and delete documents in a study's
 knowledge base. Documents are chunked and embedded for RAG during interviews.

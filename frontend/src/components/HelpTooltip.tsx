@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Help tooltip with ? icon.
+ * OASIS — Help tooltip with ? icon.
  *
  * Hover to show an explanation popup.
  *

@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Session list page.
+ * OASIS — Session list page.
  */
 
 import { useEffect, useState, useCallback } from "react";

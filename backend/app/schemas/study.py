@@ -1,5 +1,5 @@
 """
-SURVEYOR — Pydantic schemas for Study CRUD.
+OASIS — Pydantic schemas for Study CRUD.
 """
 
 from datetime import datetime

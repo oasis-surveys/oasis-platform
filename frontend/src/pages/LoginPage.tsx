@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Login page.
+ * OASIS — Login page.
  *
  * Simple username/password form for basic authentication.
  * Only shown when AUTH_ENABLED=true in the backend.
@@ -33,34 +33,22 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50/80 px-4">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "var(--oasis-bg)" }}>
       <div className="w-full max-w-sm">
         {/* Logo & Title */}
         <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-900 mb-4">
-            <svg
-              className="h-7 w-7 text-white"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 10v2a7 7 0 01-14 0v-2"
-              />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            SURVEYOR
+          <img
+            src="/oasis-logo.png"
+            alt="OASIS"
+            className="h-20 w-auto mx-auto mb-4"
+          />
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--oasis-charcoal)" }}>
+            OASIS
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-xs font-medium tracking-wide text-gray-400 uppercase">
+            Open Agentic Survey Interview System
+          </p>
+          <p className="mt-3 text-sm text-gray-500">
             Sign in to access the admin dashboard
           </p>
         </div>
@@ -88,7 +76,7 @@ export default function LoginPage() {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-oasis-500 focus:ring-1 focus:ring-oasis-500 outline-none transition-all"
               placeholder="admin"
               autoComplete="username"
               required
@@ -107,7 +95,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all"
+              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-oasis-500 focus:ring-1 focus:ring-oasis-500 outline-none transition-all"
               placeholder="••••••••"
               autoComplete="current-password"
               required
@@ -117,7 +105,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading || !username || !password}
-            className="w-full rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="w-full btn-primary"
           >
             {loading ? (
               <span className="inline-flex items-center gap-2">

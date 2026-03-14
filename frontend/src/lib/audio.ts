@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Browser audio capture & playback helpers.
+ * OASIS — Browser audio capture & playback helpers.
  *
  * Captures mic input as 16-bit PCM at 16 kHz and plays back raw PCM16
  * received from the pipeline.

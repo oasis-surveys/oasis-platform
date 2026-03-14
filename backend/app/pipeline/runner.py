@@ -1,5 +1,5 @@
 """
-SURVEYOR — Pipecat pipeline builder (pipecat 0.0.105).
+OASIS — Pipecat pipeline builder (pipecat 0.0.105).
 
 Supports two pipeline types:
 
@@ -260,6 +260,25 @@ async def build_pipeline(
 
 # ── RAG tool registration ────────────────────────────────────────────────────
 
+async def _study_has_knowledge(study_id: uuid.UUID) -> bool:
+    """Check if a study actually has knowledge documents before registering RAG."""
+    try:
+        from sqlalchemy import select, func
+        from app.models.knowledge import KnowledgeDocument
+
+        async with async_session_factory() as db:
+            result = await db.execute(
+                select(func.count(KnowledgeDocument.id)).where(
+                    KnowledgeDocument.study_id == study_id
+                )
+            )
+            count = result.scalar() or 0
+            return count > 0
+    except Exception as e:
+        logger.warning(f"Could not check knowledge documents for study={study_id}: {e}")
+        return False
+
+
 def _register_rag_tool(llm_service, study_id: uuid.UUID):
     """
     Register a 'search_knowledge_base' function on an LLM service.
@@ -443,9 +462,9 @@ async def _build_modular_pipeline(
     # ── LLM ───────────────────────────────────────────────────
     llm = await _build_llm(llm_model)
 
-    # ── RAG tool registration ─────────────────────────────────
+    # ── RAG tool registration (only if study has knowledge docs) ─
     tools = None
-    if study_id:
+    if study_id and await _study_has_knowledge(study_id):
         _register_rag_tool(llm, study_id)
         tools = _get_rag_tools_schema()
 
@@ -632,8 +651,8 @@ async def _build_openai_realtime_pipeline(
         ),
     )
 
-    # ── RAG tool registration ─────────────────────────────────
-    if study_id:
+    # ── RAG tool registration (only if study has knowledge docs) ─
+    if study_id and await _study_has_knowledge(study_id):
         _register_rag_tool(realtime_llm, study_id)
 
     # V2V pipeline: NO context aggregator needed.
@@ -730,8 +749,8 @@ async def _build_gemini_live_pipeline(
         ),
     )
 
-    # ── RAG tool registration ─────────────────────────────────
-    if study_id:
+    # ── RAG tool registration (only if study has knowledge docs) ─
+    if study_id and await _study_has_knowledge(study_id):
         _register_rag_tool(gemini_llm, study_id)
 
     # V2V pipeline: NO context aggregator needed.

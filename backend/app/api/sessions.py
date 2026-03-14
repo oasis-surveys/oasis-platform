@@ -1,5 +1,5 @@
 """
-SURVEYOR — Session read, filter, and export endpoints.
+OASIS — Session read, filter, and export endpoints.
 
 Sessions are created automatically when a participant connects via WebSocket.
 These endpoints let researchers view, filter, and export transcripts.

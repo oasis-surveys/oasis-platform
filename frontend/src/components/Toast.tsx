@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Toast notification component.
+ * OASIS — Toast notification component.
  *
  * Usage:
  *   const [toast, showToast] = useToast();

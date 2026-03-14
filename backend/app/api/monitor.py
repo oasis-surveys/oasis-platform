@@ -1,5 +1,5 @@
 """
-SURVEYOR — Real-time transcript monitor WebSocket.
+OASIS — Real-time transcript monitor WebSocket.
 
 Researchers connect to:
     ws://host/ws/monitor/{session_id}

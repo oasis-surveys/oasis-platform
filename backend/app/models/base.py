@@ -1,5 +1,5 @@
 """
-SURVEYOR — SQLAlchemy declarative base.
+OASIS — SQLAlchemy declarative base.
 
 All models inherit from this Base. It provides:
 - A default `id` primary key (UUID).

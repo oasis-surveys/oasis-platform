@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Auth context for managing authentication state.
+ * OASIS — Auth context for managing authentication state.
  *
  * When AUTH_ENABLED is false on the backend, everything passes through
  * without requiring login.

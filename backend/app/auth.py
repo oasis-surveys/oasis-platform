@@ -1,5 +1,5 @@
 """
-SURVEYOR — Simple JWT-based authentication.
+OASIS — Simple JWT-based authentication.
 
 Provides a basic security layer that can be toggled via environment variables:
   AUTH_ENABLED=true

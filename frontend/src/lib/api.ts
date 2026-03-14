@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — API client utility.
+ * OASIS — API client utility.
  *
  * Thin wrapper around fetch for communicating with the FastAPI backend.
  */
@@ -7,7 +7,7 @@
 const BASE = "/api";
 
 // ── Auth token management ─────────────────────────────────────
-const TOKEN_KEY = "surveyor_auth_token";
+const TOKEN_KEY = "oasis_auth_token";
 
 export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -105,6 +105,8 @@ export interface Agent {
   id: string;
   study_id: string;
   name: string;
+  modality: "voice" | "text";
+  avatar: string | null;
   status: "draft" | "active" | "paused";
   system_prompt: string;
   welcome_message: string | null;
@@ -144,6 +146,8 @@ export interface AgentListItem {
   id: string;
   study_id: string;
   name: string;
+  modality: "voice" | "text";
+  avatar: string | null;
   status: "draft" | "active" | "paused";
   pipeline_type: "modular" | "voice_to_voice";
   llm_model: string;
@@ -156,6 +160,8 @@ export interface AgentListItem {
 
 export interface WidgetConfig {
   widget_key: string;
+  modality: "voice" | "text";
+  avatar: string;
   widget_title: string | null;
   widget_description: string | null;
   widget_primary_color: string;

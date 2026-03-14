@@ -1,5 +1,5 @@
 """
-SURVEYOR — Real-time transcript broadcasting via Redis Pub/Sub.
+OASIS — Real-time transcript broadcasting via Redis Pub/Sub.
 
 When a pipeline logs a transcript entry, it publishes to a Redis channel.
 Researcher monitor WebSockets subscribe to the same channel and receive
@@ -17,7 +17,7 @@ from app.redis import get_redis
 
 def _channel(session_id: str) -> str:
     """Redis channel name for a given session."""
-    return f"surveyor:transcript:{session_id}"
+    return f"oasis:transcript:{session_id}"
 
 
 async def publish_transcript_event(session_id: str, payload: dict[str, Any]) -> None:

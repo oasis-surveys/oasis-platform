@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Session transcript viewer with live streaming.
+ * OASIS — Session transcript viewer with live streaming.
  */
 
 import { useEffect, useRef, useState } from "react";

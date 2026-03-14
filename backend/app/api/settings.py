@@ -1,5 +1,5 @@
 """
-SURVEYOR — Settings API endpoints.
+OASIS — Settings API endpoints.
 
 GET  /api/settings/keys       — List configured API keys (masked)
 PUT  /api/settings/keys       — Update API key overrides (stored in Redis)
@@ -19,7 +19,7 @@ from app.redis import get_redis
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 # Redis key for API key overrides
-_REDIS_KEY = "surveyor:settings:api_keys"
+_REDIS_KEY = "oasis:settings:api_keys"
 
 # All configurable API keys with their .env variable names
 _API_KEY_FIELDS = {

@@ -1,5 +1,5 @@
 """
-SURVEYOR — Twilio integration endpoints.
+OASIS — Twilio integration endpoints.
 
 Provides two endpoints for Twilio Media Streams:
 

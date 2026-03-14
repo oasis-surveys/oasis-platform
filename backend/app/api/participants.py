@@ -1,5 +1,5 @@
 """
-SURVEYOR — CRUD endpoints for participant identifiers.
+OASIS — CRUD endpoints for participant identifiers.
 
 Pre-defined participant IDs are managed here and linked to sessions
 when participants join via their unique link.

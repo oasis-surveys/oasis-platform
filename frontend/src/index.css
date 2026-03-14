@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── OASIS Brand Colors (CSS custom properties) ──────────────── */
+:root {
+  --oasis-primary: #0D7377;
+  --oasis-primary-dark: #095B5E;
+  --oasis-primary-light: #E6F5F5;
+  --oasis-gold: #D4A843;
+  --oasis-gold-warm: #F5E6C8;
+  --oasis-charcoal: #1A1A2E;
+  --oasis-slate: #4A4A5A;
+  --oasis-sand: #F0EBE3;
+  --oasis-bg: #FAFAF7;
+  --oasis-success: #2D9F5D;
+  --oasis-error: #C44536;
+}
+
 /* ── Smooth page transitions ────────────────────────────────── */
 @layer base {
   html {
@@ -10,9 +25,14 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Better focus styles */
+  body {
+    background-color: var(--oasis-bg);
+  }
+
+  /* Better focus styles — OASIS teal */
   *:focus-visible {
-    @apply outline-2 outline-offset-2 outline-gray-900/30;
+    @apply outline-2 outline-offset-2;
+    outline-color: rgba(13, 115, 119, 0.4);
   }
 
   /* Smooth transitions on interactive elements */
@@ -25,12 +45,12 @@
   }
 }
 
-/* ── Custom select styling ──────────────────────────────────── */
+/* ── Custom component styling ──────────────────────────────── */
 @layer components {
   .select-styled {
     @apply appearance-none bg-white rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm
-           shadow-sm hover:border-gray-300
-           focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10
+           shadow-sm hover:border-oasis-300
+           focus:border-oasis-500 focus:outline-none focus:ring-2 focus:ring-oasis-500/10
            transition-all duration-200;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -41,15 +61,15 @@
   .input-styled {
     @apply w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm
            shadow-sm placeholder:text-gray-400
-           hover:border-gray-300
-           focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10
+           hover:border-oasis-300
+           focus:border-oasis-500 focus:outline-none focus:ring-2 focus:ring-oasis-500/10
            transition-all duration-200;
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-5 py-2.5
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-oasis-500 px-5 py-2.5
            text-sm font-medium text-white shadow-sm
-           hover:bg-gray-800 hover:shadow-md
+           hover:bg-oasis-600 hover:shadow-md
            active:scale-[0.98]
            disabled:opacity-50 disabled:cursor-not-allowed
            transition-all duration-200;
@@ -98,6 +118,21 @@
 @keyframes orb-ring-expand {
   0% { transform: scale(0.85); opacity: 0.5; }
   100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* ── Typing indicator dots (chat) ──────────────────────────── */
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #0D7377;
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
 /* ── Page transition wrapper ────────────────────────────────── */

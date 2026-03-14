@@ -1,5 +1,5 @@
 """
-SURVEYOR — Redis-based active session manager.
+OASIS — Redis-based active session manager.
 
 Tracks active interview sessions in Redis with TTL-based automatic expiry.
 A background task periodically checks for zombie sessions and cleans them up.
@@ -18,8 +18,8 @@ from app.database import async_session_factory
 from app.models.session import Session, SessionStatus
 
 # Redis key prefixes
-_SESSION_KEY = "surveyor:session:{session_id}"
-_ACTIVE_SET = "surveyor:active_sessions"
+_SESSION_KEY = "oasis:session:{session_id}"
+_ACTIVE_SET = "oasis:active_sessions"
 
 # Default TTL for a session key — acts as an absolute safety net.
 # Even if the pipeline crashes without cleanup, Redis will expire the key.

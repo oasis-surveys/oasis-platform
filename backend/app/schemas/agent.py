@@ -1,5 +1,5 @@
 """
-SURVEYOR — Pydantic schemas for Agent CRUD.
+OASIS — Pydantic schemas for Agent CRUD.
 """
 
 from datetime import datetime
@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.agent import AgentStatus, InterviewMode, ParticipantIdMode, PipelineType
+from app.models.agent import AgentModality, AgentStatus, InterviewMode, ParticipantIdMode, PipelineType
 
 
 # ── Structured Interview Guide Sub-Schemas ───────────────────
@@ -50,6 +50,8 @@ class InterviewGuide(BaseModel):
 
 class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
+    modality: AgentModality = AgentModality.VOICE
+    avatar: str | None = Field("neutral", max_length=50)
     system_prompt: str = ""
     welcome_message: str | None = "Hello, thank you for participating in this study."
 
@@ -92,6 +94,8 @@ class AgentCreate(BaseModel):
 
 class AgentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
+    modality: AgentModality | None = None
+    avatar: str | None = None
     system_prompt: str | None = None
     welcome_message: str | None = None
 
@@ -137,6 +141,8 @@ class AgentRead(BaseModel):
     id: UUID
     study_id: UUID
     name: str
+    modality: AgentModality
+    avatar: str | None
     status: AgentStatus
     system_prompt: str
     welcome_message: str | None
@@ -181,6 +187,8 @@ class AgentList(BaseModel):
     id: UUID
     study_id: UUID
     name: str
+    modality: AgentModality
+    avatar: str | None
     status: AgentStatus
     pipeline_type: PipelineType
     llm_model: str

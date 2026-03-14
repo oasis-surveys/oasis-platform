@@ -3,6 +3,40 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      colors: {
+        oasis: {
+          50: "#E6F5F5",
+          100: "#CCE9E9",
+          200: "#99D4D4",
+          300: "#4DB8B8",
+          400: "#0F8B8F",
+          500: "#0D7377",   // PRIMARY
+          600: "#095B5E",
+          700: "#074648",
+          800: "#053335",
+          900: "#031F20",
+        },
+        sand: {
+          50: "#FAFAF7",    // page bg
+          100: "#F5F0E8",
+          200: "#F0EBE3",   // light sand
+          300: "#F5E6C8",   // warm sand / accent warm
+          400: "#E8D4A0",
+          500: "#D4A843",   // ACCENT GOLD
+          600: "#B88D2E",
+          700: "#8C6B22",
+          800: "#604A18",
+        },
+        charcoal: {
+          DEFAULT: "#1A1A2E",
+          700: "#4A4A5A",
+        },
+        terracotta: {
+          DEFAULT: "#C44536",
+          50: "#FDF2F1",
+          100: "#FAD5D1",
+        },
+      },
       keyframes: {
         "fade-in": {
           "0%": { opacity: "0", transform: "translateY(8px)" },

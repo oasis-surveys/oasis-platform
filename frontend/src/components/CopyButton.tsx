@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Copy-to-clipboard button with icon and tooltip.
+ * OASIS — Copy-to-clipboard button with icon and tooltip.
  *
  * Shows a clipboard icon that changes to a checkmark briefly after copying.
  */

@@ -1,15 +1,16 @@
 /**
- * SURVEYOR — Participant interview widget.
+ * OASIS — Participant interview widget.
  *
  * Accessible at /interview/:widgetKey — this is the page a study participant
- * sees when they join a voice interview via the shareable link.
+ * sees when they join a voice or text interview via the shareable link.
  *
  * Features:
- *  - Fetches widget config (title, description, colour, participant ID mode)
+ *  - Fetches widget config (title, description, colour, participant ID mode, modality)
  *  - Handles participant identification: random / predefined (via ?pid=) / user input
- *  - Animated orb visualisation with voice wave + listening state
+ *  - Voice mode: animated orb visualisation with voice wave + listening state
+ *  - Text mode: modern chat interface with avatars and typing indicators
  *  - Call timer
- *  - Backend still logs diarised transcripts for researcher review
+ *  - Backend logs diarised transcripts for researcher review
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -19,6 +20,21 @@ import { MicCapture, AudioPlayer } from "../lib/audio";
 import { encodeAudioFrame, decodeFrame } from "../lib/pipecat-proto";
 
 type Status = "loading" | "idle" | "input" | "connecting" | "active" | "ended" | "error";
+
+interface ChatMessage {
+  id: string;
+  role: "agent" | "user";
+  text: string;
+  timestamp: Date;
+}
+
+const AVATAR_EMOJI: Record<string, string> = {
+  robot: "🤖",
+  neutral: "🧑‍💼",
+  female: "👩‍💼",
+  male: "👨‍💼",
+  none: "",
+};
 
 /** Convert hex colour (#RRGGBB) to rgba with given alpha */
 function hexToRgba(hex: string, alpha: number): string {
@@ -49,6 +65,12 @@ export default function InterviewPage() {
   const [audioLevel, setAudioLevel] = useState(0);
   const [elapsed, setElapsed] = useState(0);
 
+  // ── Text chat state ──
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [agentTyping, setAgentTyping] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicCapture | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -56,8 +78,11 @@ export default function InterviewPage() {
   const speakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userSpeakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Derived colours
-  const primaryColor = config?.widget_primary_color || "#111827";
+  // Derived
+  const modality = config?.modality || "voice";
+  const isTextChat = modality === "text";
+  const agentAvatar = config?.avatar || "neutral";
+  const primaryColor = config?.widget_primary_color || "#0D7377";
   const listeningMessage = config?.widget_listening_message || "Agent is listening…";
 
   // ── 1. Fetch widget config on mount ─────────────────────────
@@ -88,6 +113,11 @@ export default function InterviewPage() {
         setErrorMsg("This interview is not available. Please check the link or contact your researcher.");
       });
   }, [widgetKey, pidFromUrl]);
+
+  // ── Auto-scroll chat to bottom ──────────────────────────────
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, agentTyping]);
 
   // ── Cleanup on unmount ──────────────────────────────────────
   useEffect(() => {
@@ -160,6 +190,10 @@ export default function InterviewPage() {
         );
       };
 
+      // Track whether we received a server-side error so ws.onclose
+      // doesn't overwrite the error state with "ended" (race condition).
+      let receivedError = false;
+
       ws.onmessage = (event) => {
         const data =
           event.data instanceof ArrayBuffer
@@ -170,6 +204,7 @@ export default function InterviewPage() {
           try {
             const json = JSON.parse(event.data as string);
             if (json.error) {
+              receivedError = true;
               setStatus("error");
               setErrorMsg(json.error);
             }
@@ -195,13 +230,28 @@ export default function InterviewPage() {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         micRef.current?.stop();
         if (timerRef.current) clearInterval(timerRef.current);
+
+        // Don't overwrite error status — the error message is more useful
+        // than a generic "Interview complete" screen.
+        if (receivedError) return;
+
+        // WebSocket close codes 4000+ are application-level errors
+        if (event.code >= 4000) {
+          setStatus("error");
+          setErrorMsg(
+            event.reason || "The interview could not be started. Please check the link or contact your researcher."
+          );
+          return;
+        }
+
         setStatus("ended");
       };
 
       ws.onerror = () => {
+        receivedError = true;
         setStatus("error");
         setErrorMsg("Connection lost. Please try again.");
       };
@@ -212,6 +262,115 @@ export default function InterviewPage() {
       );
     }
   }, [widgetKey, config, participantId, handleAudioLevel]);
+
+  // ── 2b. Start text chat ─────────────────────────────────────
+  const handleStartChat = useCallback(async () => {
+    if (!widgetKey) return;
+    setStatus("connecting");
+    setErrorMsg("");
+    setElapsed(0);
+    setChatMessages([]);
+    setAgentTyping(false);
+
+    try {
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      let wsUrl = `${proto}//${window.location.host}/ws/chat/${widgetKey}`;
+
+      const pid =
+        config?.participant_id_mode === "random"
+          ? undefined
+          : participantId.trim() || undefined;
+      if (pid) {
+        wsUrl += `?pid=${encodeURIComponent(pid)}`;
+      }
+
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setStatus("active");
+        const start = Date.now();
+        timerRef.current = setInterval(() => {
+          setElapsed(Math.floor((Date.now() - start) / 1000));
+        }, 1000);
+      };
+
+      let receivedError = false;
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data as string);
+          switch (msg.type) {
+            case "welcome":
+              setChatMessages((prev) => [
+                ...prev,
+                { id: crypto.randomUUID(), role: "agent", text: msg.text, timestamp: new Date() },
+              ]);
+              setAgentTyping(false);
+              break;
+            case "message":
+              setChatMessages((prev) => [
+                ...prev,
+                { id: crypto.randomUUID(), role: msg.role || "agent", text: msg.text, timestamp: new Date() },
+              ]);
+              setAgentTyping(false);
+              break;
+            case "typing":
+              setAgentTyping(true);
+              break;
+            case "ended":
+              setStatus("ended");
+              setAgentTyping(false);
+              break;
+            case "error":
+              receivedError = true;
+              setStatus("error");
+              setErrorMsg(msg.text);
+              setAgentTyping(false);
+              break;
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ws.onclose = (event) => {
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (receivedError) return;
+        if (event.code >= 4000) {
+          setStatus("error");
+          setErrorMsg(event.reason || "The interview could not be started.");
+          return;
+        }
+        setStatus("ended");
+      };
+
+      ws.onerror = () => {
+        receivedError = true;
+        setStatus("error");
+        setErrorMsg("Connection lost. Please try again.");
+      };
+    } catch (err) {
+      setStatus("error");
+      setErrorMsg(err instanceof Error ? err.message : "Failed to start");
+    }
+  }, [widgetKey, config, participantId]);
+
+  // ── Send text message ──────────────────────────────────────
+  const handleSendMessage = useCallback(() => {
+    const text = chatInput.trim();
+    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // Add user message to UI
+    setChatMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: "user", text, timestamp: new Date() },
+    ]);
+    setChatInput("");
+
+    // Send to server
+    wsRef.current.send(JSON.stringify({ type: "message", text }));
+  }, [chatInput]);
 
   const handleStop = useCallback(() => {
     wsRef.current?.close();
@@ -267,7 +426,7 @@ export default function InterviewPage() {
         {/* ── Title & description ─────────────────────────────── */}
         <div className="text-center mb-10 animate-fade-in">
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-2">
-            {config?.widget_title || "Voice Interview"}
+            {config?.widget_title || (isTextChat ? "Chat Interview" : "Voice Interview")}
           </h1>
           {status !== "active" && status !== "ended" && config?.widget_description && (
             <p className="text-sm text-gray-500 max-w-sm mx-auto leading-relaxed">
@@ -276,7 +435,7 @@ export default function InterviewPage() {
           )}
           {status === "active" && (
             <p className="text-sm text-gray-500 animate-fade-in">
-              Interview in progress — speak naturally
+              {isTextChat ? "Chat in progress — type naturally" : "Interview in progress — speak naturally"}
             </p>
           )}
           {status === "ended" && (
@@ -294,8 +453,111 @@ export default function InterviewPage() {
           )}
         </div>
 
-        {/* ── Orb ─────────────────────────────────────────────── */}
-        {(status === "active" || status === "connecting") && (
+        {/* ── Text Chat UI ───────────────────────────────────── */}
+        {isTextChat && (status === "active" || status === "connecting") && (
+          <div className="w-full max-w-lg mb-6 animate-scale-in">
+            {/* Chat messages area */}
+            <div
+              className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col"
+              style={{ height: "min(60vh, 500px)" }}
+            >
+              <div className="flex-1 overflow-y-auto p-4 space-y-3" id="chat-scroll">
+                {chatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex items-end gap-2 animate-fade-in ${
+                      msg.role === "user" ? "flex-row-reverse" : "flex-row"
+                    }`}
+                  >
+                    {/* Agent avatar */}
+                    {msg.role === "agent" && agentAvatar !== "none" && (
+                      <div
+                        className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm"
+                        style={{ backgroundColor: hexToRgba(primaryColor, 0.1) }}
+                      >
+                        {AVATAR_EMOJI[agentAvatar] || "🤖"}
+                      </div>
+                    )}
+
+                    {/* Bubble */}
+                    <div
+                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                        msg.role === "user"
+                          ? "text-white rounded-br-md"
+                          : "bg-gray-100 text-gray-800 rounded-bl-md"
+                      }`}
+                      style={msg.role === "user" ? { backgroundColor: primaryColor } : undefined}
+                    >
+                      {msg.text}
+                    </div>
+
+                    {/* User avatar */}
+                    {msg.role === "user" && agentAvatar !== "none" && (
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm">
+                        👤
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Typing indicator */}
+                {agentTyping && (
+                  <div className="flex items-end gap-2 animate-fade-in">
+                    {agentAvatar !== "none" && (
+                      <div
+                        className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm"
+                        style={{ backgroundColor: hexToRgba(primaryColor, 0.1) }}
+                      >
+                        {AVATAR_EMOJI[agentAvatar] || "🤖"}
+                      </div>
+                    )}
+                    <div className="bg-gray-100 rounded-2xl rounded-bl-md px-4 py-3 flex items-center gap-1">
+                      <span className="typing-dot" style={{ animationDelay: "0s" }} />
+                      <span className="typing-dot" style={{ animationDelay: "0.15s" }} />
+                      <span className="typing-dot" style={{ animationDelay: "0.3s" }} />
+                    </div>
+                  </div>
+                )}
+
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Input area */}
+              <div className="border-t border-gray-200 p-3 bg-gray-50">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all placeholder:text-gray-400"
+                    placeholder="Type your response…"
+                    autoFocus
+                    disabled={status !== "active"}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!chatInput.trim() || status !== "active"}
+                    className="flex-shrink-0 rounded-xl p-2.5 text-white transition-all hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                    </svg>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Voice Orb ──────────────────────────────────────── */}
+        {!isTextChat && (status === "active" || status === "connecting") && (
           <div className="relative mb-6 flex flex-col items-center animate-scale-in">
             <div className="relative flex items-center justify-center" style={{ width: 200, height: 200 }}>
               {/* Expanding rings when agent is speaking */}
@@ -419,8 +681,31 @@ export default function InterviewPage() {
           </div>
         )}
 
-        {/* ── Idle orb (before starting) ──────────────────────── */}
-        {status === "idle" && (
+        {/* ── Idle orb/icon (before starting) ─────────────────── */}
+        {status === "idle" && isTextChat && (
+          <div className="relative mb-10 flex items-center justify-center animate-scale-in">
+            <div
+              className="absolute rounded-full animate-orb-breathe"
+              style={{
+                width: 140,
+                height: 140,
+                backgroundColor: hexToRgba(primaryColor, 0.06),
+              }}
+            />
+            <div
+              className="rounded-full flex items-center justify-center"
+              style={{
+                width: 120,
+                height: 120,
+                background: `radial-gradient(circle at 35% 30%, ${hexToRgba(primaryColor, 0.75)}, ${hexToRgba(primaryColor, 0.55)} 80%)`,
+                boxShadow: `0 0 0 1px ${hexToRgba(primaryColor, 0.08)}, 0 8px 24px ${hexToRgba(primaryColor, 0.12)}`,
+              }}
+            >
+              <ChatIcon className="w-8 h-8 text-white opacity-80" />
+            </div>
+          </div>
+        )}
+        {status === "idle" && !isTextChat && (
           <div className="relative mb-10 flex items-center justify-center animate-scale-in">
             {/* Breathing glow */}
             <div
@@ -513,15 +798,15 @@ export default function InterviewPage() {
         <div className="flex justify-center animate-fade-in">
           {status === "idle" && (
             <button
-              onClick={handleStart}
+              onClick={isTextChat ? handleStartChat : handleStart}
               className="group flex items-center gap-3 rounded-2xl px-8 py-4 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.03] active:scale-[0.98]"
               style={{
                 backgroundColor: primaryColor,
                 boxShadow: `0 8px 30px ${hexToRgba(primaryColor, 0.25)}`,
               }}
             >
-              <MicIcon className="w-5 h-5" />
-              Start Interview
+              {isTextChat ? <ChatIcon className="w-5 h-5" /> : <MicIcon className="w-5 h-5" />}
+              {isTextChat ? "Start Chat" : "Start Interview"}
             </button>
           )}
 
@@ -573,7 +858,7 @@ export default function InterviewPage() {
 
       {/* Branding footer */}
       <p className="mt-16 text-[11px] text-gray-300 tracking-wider uppercase">
-        Powered by SURVEYOR
+        Powered by OASIS
       </p>
     </div>
   );
@@ -664,6 +949,18 @@ function Spinner({ className }: { className?: string }) {
         className="opacity-75"
         fill="currentColor"
         d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+      />
+    </svg>
+  );
+}
+
+function ChatIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
       />
     </svg>
   );

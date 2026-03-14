@@ -1,5 +1,5 @@
 """
-SURVEYOR — Study model.
+OASIS — Study model.
 
 A Study represents a research project. Each study contains one or more Agents
 that conduct the conversational interviews.
@@ -36,4 +36,9 @@ class Study(Base):
     )
 
     # Relationships
-    agents = relationship("Agent", back_populates="study", cascade="all, delete-orphan")
+    agents = relationship(
+        "Agent",
+        back_populates="study",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

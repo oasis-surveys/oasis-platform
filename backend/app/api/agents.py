@@ -1,5 +1,5 @@
 """
-SURVEYOR — Agent CRUD endpoints.
+OASIS — Agent CRUD endpoints.
 
 Agents are nested under their parent Study.
 Includes a public widget-config endpoint for the interview widget.

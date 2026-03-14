@@ -19,6 +19,7 @@ pydantic-settings==2.7.1
 # ── AI / Pipeline ──
 pipecat-ai[silero,websocket,google]==0.0.105
 openai>=1.50.0
+litellm>=1.40.0
 deepgram-sdk>=4.0.0
 elevenlabs>=1.0.0
 google-genai>=1.0.0

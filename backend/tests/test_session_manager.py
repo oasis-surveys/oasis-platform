@@ -35,13 +35,13 @@ class TestSessionManager:
         )
 
         # Verify the session key exists in Redis
-        key = f"surveyor:session:{session_id}"
+        key = f"oasis:session:{session_id}"
         data = await self.redis.get(key)
         assert data is not None
 
         # Verify it's in the active set
         is_member = await self.redis.sismember(
-            "surveyor:active_sessions", str(session_id)
+            "oasis:active_sessions", str(session_id)
         )
         assert is_member
 
@@ -54,12 +54,12 @@ class TestSessionManager:
         await register_session(session_id, agent_id)
         await unregister_session(session_id)
 
-        key = f"surveyor:session:{session_id}"
+        key = f"oasis:session:{session_id}"
         data = await self.redis.get(key)
         assert data is None
 
         is_member = await self.redis.sismember(
-            "surveyor:active_sessions", str(session_id)
+            "oasis:active_sessions", str(session_id)
         )
         assert not is_member
 

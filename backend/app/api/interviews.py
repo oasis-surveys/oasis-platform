@@ -1,5 +1,5 @@
 """
-SURVEYOR — WebSocket endpoint for live interviews.
+OASIS — WebSocket endpoint for live interviews.
 
 When a participant opens the widget, the frontend connects to:
     ws://host/ws/interview/{widget_key}?pid=<optional>
@@ -22,7 +22,7 @@ from loguru import logger
 from sqlalchemy import select
 
 from app.database import async_session_factory
-from app.models.agent import Agent, AgentStatus, ParticipantIdMode, ParticipantIdentifier
+from app.models.agent import Agent, AgentModality, AgentStatus, ParticipantIdMode, ParticipantIdentifier
 from app.models.session import Session, SessionStatus
 from app.realtime import publish_transcript_event
 from app.session_manager import register_session, unregister_session
@@ -60,7 +60,16 @@ async def interview_ws(
 
         if not agent:
             await websocket.send_json({"error": "Agent not found or inactive"})
-            await websocket.close(code=4004)
+            await websocket.close(code=4004, reason="Agent not found or inactive")
+            return
+
+        # Only voice agents can use the voice interview endpoint
+        agent_modality = (
+            agent.modality.value if hasattr(agent.modality, "value") else (agent.modality or "voice")
+        )
+        if agent_modality == "text":
+            await websocket.send_json({"error": "This is a text chat agent. Please use the chat endpoint."})
+            await websocket.close(code=4005, reason="Wrong modality")
             return
 
         # Snapshot config before leaving the DB session
@@ -102,7 +111,7 @@ async def interview_ws(
                 await websocket.send_json(
                     {"error": "This interview requires a valid participant link."}
                 )
-                await websocket.close(code=4003)
+                await websocket.close(code=4003, reason="Missing participant ID")
                 return
             pid_result = await db.execute(
                 select(ParticipantIdentifier).where(
@@ -113,13 +122,13 @@ async def interview_ws(
             pid_record = pid_result.scalar_one_or_none()
             if not pid_record:
                 await websocket.send_json({"error": "Invalid participant identifier."})
-                await websocket.close(code=4003)
+                await websocket.close(code=4003, reason="Invalid participant ID")
                 return
             if pid_record.used:
                 await websocket.send_json(
                     {"error": "This participant link has already been used."}
                 )
-                await websocket.close(code=4003)
+                await websocket.close(code=4003, reason="Participant ID already used")
                 return
             participant_id = pid
 

@@ -1,5 +1,5 @@
 """
-SURVEYOR — Redis connection utility.
+OASIS — Redis connection utility.
 
 Provides an async Redis client for session state, rate limiting,
 and call duration timers.

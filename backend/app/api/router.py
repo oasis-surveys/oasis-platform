@@ -1,5 +1,5 @@
 """
-SURVEYOR — Top-level API router.
+OASIS — Top-level API router.
 
 Aggregates all sub-routers under the /api prefix.
 Protected routes require authentication when AUTH_ENABLED=true.

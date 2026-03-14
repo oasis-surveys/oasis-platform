@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Tests for audio conversion helpers.
+ * OASIS — Tests for audio conversion helpers.
  *
  * Tests the PCM16 ↔ Float32 conversion functions used in audio.ts.
  * These are pure functions — no browser APIs needed.

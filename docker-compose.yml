@@ -14,7 +14,7 @@ services:
       - frontend
       - backend
     networks:
-      - surveyor_net
+      - oasis_net
 
   # ── Frontend ───────────────────────────────────────────────
   frontend:
@@ -25,7 +25,7 @@ services:
     expose:
       - "80"
     networks:
-      - surveyor_net
+      - oasis_net
 
   # ── Backend API ────────────────────────────────────────────
   backend:
@@ -43,27 +43,27 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - surveyor_net
+      - oasis_net
 
   # ── PostgreSQL (with pgvector for RAG embeddings) ─────────
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-surveyor}
+      POSTGRES_USER: ${POSTGRES_USER:-oasis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      POSTGRES_DB: ${POSTGRES_DB:-surveyor}
+      POSTGRES_DB: ${POSTGRES_DB:-oasis}
     volumes:
       - pgdata:/var/lib/postgresql/data
     expose:
       - "5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-surveyor}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oasis}"]
       interval: 5s
       timeout: 3s
       retries: 5
     networks:
-      - surveyor_net
+      - oasis_net
 
   # ── Redis ──────────────────────────────────────────────────
   redis:
@@ -79,7 +79,7 @@ services:
       timeout: 3s
       retries: 5
     networks:
-      - surveyor_net
+      - oasis_net
 
 volumes:
   pgdata:
@@ -88,5 +88,5 @@ volumes:
   caddy_config:
 
 networks:
-  surveyor_net:
+  oasis_net:
     driver: bridge

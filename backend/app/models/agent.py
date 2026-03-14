@@ -1,5 +1,5 @@
 """
-SURVEYOR — Agent model.
+OASIS — Agent model.
 
 An Agent is a configured conversational AI interviewer belonging to a Study.
 It holds the prompt, model selection, voice settings, and pipeline type.
@@ -14,6 +14,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+
+
+class AgentModality(str, enum.Enum):
+    VOICE = "voice"    # Audio-based interview (STT/LLM/TTS or V2V)
+    TEXT = "text"      # Text chat interview (LLM only)
 
 
 class PipelineType(str, enum.Enum):
@@ -52,8 +57,22 @@ class Agent(Base):
         nullable=False,
     )
 
+    # ── Modality ──
+    modality: Mapped[AgentModality] = mapped_column(
+        Enum(
+            AgentModality,
+            name="agent_modality",
+            values_callable=lambda e: [member.value for member in e],
+        ),
+        default=AgentModality.VOICE,
+        server_default=AgentModality.VOICE.value,
+    )
+
     # ── Identity ──
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    avatar: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default="neutral"
+    )
     status: Mapped[AgentStatus] = mapped_column(
         Enum(
             AgentStatus,
@@ -126,7 +145,7 @@ class Agent(Base):
     widget_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     widget_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     widget_primary_color: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, default="#111827"
+        String(20), nullable=True, default="#0D7377"
     )
     widget_listening_message: Mapped[str | None] = mapped_column(
         String(255), nullable=True, default="Agent is listening…"

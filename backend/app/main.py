@@ -1,5 +1,5 @@
 """
-SURVEYOR — FastAPI application entry point.
+OASIS — FastAPI application entry point.
 """
 
 from contextlib import asynccontextmanager
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.router import api_router
 from app.api.interviews import router as interviews_router
+from app.api.text_chat import router as text_chat_router
 from app.api.monitor import router as monitor_router
 from app.api.twilio import router as twilio_router
 from app.config import settings
@@ -70,6 +71,7 @@ app.include_router(api_router)
 
 # ── WebSocket Routes (outside /api prefix) ───────────────────
 app.include_router(interviews_router)
+app.include_router(text_chat_router)
 app.include_router(monitor_router)
 
 # ── Twilio Routes (voice webhook + media streams WebSocket) ──
@@ -98,9 +100,15 @@ async def widget_config(widget_key: str, db: AsyncSession = Depends(get_db)):
 
     return {
         "widget_key": agent.widget_key,
+        "modality": (
+            agent.modality.value
+            if hasattr(agent.modality, "value")
+            else (agent.modality or "voice")
+        ),
+        "avatar": agent.avatar or "neutral",
         "widget_title": agent.widget_title,
         "widget_description": agent.widget_description,
-        "widget_primary_color": agent.widget_primary_color or "#111827",
+        "widget_primary_color": agent.widget_primary_color or "#0D7377",
         "widget_listening_message": agent.widget_listening_message or "Agent is listening…",
         "participant_id_mode": agent.participant_id_mode.value
             if hasattr(agent.participant_id_mode, "value")

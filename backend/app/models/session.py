@@ -1,5 +1,5 @@
 """
-SURVEYOR — Session and TranscriptEntry models.
+OASIS — Session and TranscriptEntry models.
 
 A Session represents a single interview between a participant and an agent.
 TranscriptEntry holds each diarized (user/agent) utterance within that session.
@@ -11,7 +11,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -61,7 +61,10 @@ class Session(Base):
     participant_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # ── Relationships ──
-    agent = relationship("Agent", backref="sessions")
+    agent = relationship(
+        "Agent",
+        backref=backref("sessions", cascade="all, delete-orphan", passive_deletes=True),
+    )
     entries = relationship(
         "TranscriptEntry",
         back_populates="session",

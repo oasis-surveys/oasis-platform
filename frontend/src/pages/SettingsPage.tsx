@@ -1,5 +1,5 @@
 /**
- * SURVEYOR — Settings page.
+ * OASIS — Settings page.
  *
  * Allows admins to view/update API keys at runtime without restarting.
  * Dashboard overrides take priority over .env values.

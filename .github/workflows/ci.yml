@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────
-# SURVEYOR — CI Pipeline
+# OASIS — CI Pipeline
 #
 # Runs on every push and pull request.
 # No paid API keys required — all external calls are mocked.
@@ -136,7 +136,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build backend Docker image
-        run: docker build -t surveyor-backend:test ./backend
+        run: docker build -t oasis-backend:test ./backend
 
       - name: Build frontend Docker image
-        run: docker build -t surveyor-frontend:test ./frontend
+        run: docker build -t oasis-frontend:test ./frontend
