@@ -1,0 +1,648 @@
+"""
+SURVEYOR — Pipecat pipeline builder (pipecat 0.0.105).
+
+Supports two pipeline types:
+
+  Modular:
+    Transport(in) → STT → TranscriptLogger → UserCtx → LLM → TTS → Transport(out)
+
+  Voice-to-Voice:
+    OpenAI Realtime:   Transport(in) → OpenAIRealtimeLLM → TranscriptLogger → Transport(out)
+    Gemini Live:       Transport(in) → GeminiLiveLLM → TranscriptLogger → Transport(out)
+
+Uses the *modern* pipecat 0.0.105 API:
+  - LLMContext  (not the deprecated OpenAILLMContext)
+  - LLMContextAggregatorPair  (not llm.create_context_aggregator)
+  - Settings dataclasses  (not deprecated keyword args)
+"""
+
+import uuid
+from typing import Optional
+
+from loguru import logger
+
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.transports.websocket.fastapi import (
+    FastAPIWebsocketParams,
+    FastAPIWebsocketTransport,
+)
+from pipecat.serializers.protobuf import ProtobufFrameSerializer
+from pipecat.frames.frames import (
+    EndFrame,
+    LLMContextFrame,
+    LLMMessagesFrame,
+    TTSSpeakFrame,
+)
+
+# Modern context API — NOT the deprecated OpenAILLMContext
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+)
+
+from app.config import settings
+from app.database import async_session_factory
+from app.pipeline.transcript_logger import TranscriptLogger
+
+
+async def build_pipeline(
+    *,
+    websocket,
+    session_id: uuid.UUID,
+    system_prompt: str,
+    welcome_message: Optional[str],
+    pipeline_type: str = "modular",
+    llm_model: str,
+    stt_provider: str = "deepgram",
+    tts_provider: str = "elevenlabs",
+    tts_voice: Optional[str] = None,
+    language: str = "en",
+    max_duration_seconds: Optional[int] = None,
+    notify_callback=None,
+) -> PipelineTask:
+    """
+    Build and return a ready-to-run PipelineTask.
+    The caller only needs to `await runner.run(task)`.
+    """
+
+    # ── Transport (WebSocket ↔ browser) ───────────────────────────
+    serializer = _build_serializer()
+
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket,
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            vad_enabled=True,
+            vad_analyzer=_get_vad(),
+            vad_audio_passthrough=True,
+            serializer=serializer,
+            session_timeout=max_duration_seconds,
+        ),
+    )
+
+    # ── Transcript logger ──────────────────────────────────────────
+    transcript_logger = TranscriptLogger(
+        session_id=session_id,
+        db_session_factory=async_session_factory,
+        notify_callback=notify_callback,
+    )
+
+    if pipeline_type == "voice_to_voice":
+        task = _build_v2v_pipeline(
+            transport=transport,
+            transcript_logger=transcript_logger,
+            llm_model=llm_model,
+            system_prompt=system_prompt,
+            welcome_message=welcome_message,
+            language=language,
+            max_duration_seconds=max_duration_seconds,
+            voice=tts_voice,  # V2V pipelines use tts_voice for voice selection
+        )
+    else:
+        task = _build_modular_pipeline(
+            transport=transport,
+            transcript_logger=transcript_logger,
+            llm_model=llm_model,
+            system_prompt=system_prompt,
+            welcome_message=welcome_message,
+            stt_provider=stt_provider,
+            tts_provider=tts_provider,
+            tts_voice=tts_voice,
+            language=language,
+            max_duration_seconds=max_duration_seconds,
+        )
+
+    return task
+
+
+# ── Modular pipeline (STT → LLM → TTS) ──────────────────────────────────────
+
+def _build_llm(llm_model: str):
+    """Instantiate the correct LLM service based on the model prefix."""
+    from pipecat.services.openai.llm import OpenAILLMService, OpenAILLMSettings
+
+    if llm_model.startswith("scaleway/"):
+        model_name = llm_model[len("scaleway/"):]
+        if not settings.scaleway_api_key:
+            raise ValueError(
+                "SCALEWAY_SECRET_KEY is not set. Add it to your .env file."
+            )
+        return OpenAILLMService(
+            api_key=settings.scaleway_api_key,
+            base_url=settings.scaleway_api_url,
+            settings=OpenAILLMSettings(model=model_name),
+        )
+
+    if llm_model.startswith("azure/"):
+        model_name = llm_model[len("azure/"):]
+        if not settings.azure_openai_api_key:
+            raise ValueError(
+                "AZURE_OPENAI_API_KEY is not set. Add it to your .env file."
+            )
+        from openai import AsyncAzureOpenAI
+        client = AsyncAzureOpenAI(
+            api_key=settings.azure_openai_api_key,
+            azure_endpoint=settings.azure_openai_endpoint,
+            api_version=settings.azure_openai_api_version,
+        )
+        return OpenAILLMService(
+            client=client,
+            settings=OpenAILLMSettings(model=model_name),
+        )
+
+    if llm_model.startswith("gcp/"):
+        model_name = llm_model[len("gcp/"):]
+        if not settings.gcp_project_id:
+            raise ValueError(
+                "GCP_PROJECT_ID is not set. Add it to your .env file for Vertex AI."
+            )
+        # Vertex AI uses an OpenAI-compatible endpoint
+        base_url = (
+            f"https://{settings.gcp_location}-aiplatform.googleapis.com/v1/"
+            f"projects/{settings.gcp_project_id}/locations/{settings.gcp_location}/"
+            f"publishers/google/models"
+        )
+        api_key = settings.gcp_api_key or "dummy"  # ADC may be used instead
+        return OpenAILLMService(
+            api_key=api_key,
+            base_url=base_url,
+            settings=OpenAILLMSettings(model=model_name),
+        )
+
+    # Default: OpenAI (strip optional "openai/" prefix)
+    model_name = _resolve_model_name(llm_model)
+    return OpenAILLMService(
+        api_key=settings.openai_api_key,
+        settings=OpenAILLMSettings(model=model_name),
+    )
+
+
+def _build_modular_pipeline(
+    *,
+    transport: FastAPIWebsocketTransport,
+    transcript_logger: TranscriptLogger,
+    llm_model: str,
+    system_prompt: str,
+    welcome_message: Optional[str],
+    stt_provider: str,
+    tts_provider: str,
+    tts_voice: Optional[str],
+    language: str,
+    max_duration_seconds: Optional[int],
+) -> PipelineTask:
+    """Build the modular STT → LLM → TTS pipeline."""
+
+    # ── STT ───────────────────────────────────────────────────
+    stt = _build_stt(stt_provider, language)
+
+    # ── LLM ───────────────────────────────────────────────────
+    llm = _build_llm(llm_model)
+
+    # Modern context API
+    messages = [{"role": "system", "content": system_prompt}]
+    context = LLMContext(messages=messages)
+    context_aggregator = LLMContextAggregatorPair(context=context)
+
+    # ── TTS ───────────────────────────────────────────────────
+    tts = _build_tts(tts_provider, tts_voice, language)
+
+    # ── Pipeline wiring ───────────────────────────────────────
+    pipeline = Pipeline(
+        [
+            transport.input(),          # audio from browser
+            stt,                        # speech → text
+            transcript_logger,          # log user transcript + agent text
+            context_aggregator.user(),  # accumulate user turns
+            llm,                        # text → LLM response
+            tts,                        # text → speech
+            transport.output(),         # audio back to browser
+        ]
+    )
+
+    task = PipelineTask(
+        pipeline,
+        params=PipelineParams(
+            allow_interruptions=True,
+            enable_metrics=True,
+        ),
+    )
+
+    # ── Welcome message (spoken by TTS on connect) ────────────
+    @transport.event_handler("on_client_connected")
+    async def _on_connected(transport_ref, ws):
+        if welcome_message:
+            # TTSSpeakFrame bypasses text-aggregation so the greeting is
+            # spoken immediately instead of being buffered.
+            await task.queue_frames(
+                [TTSSpeakFrame(text=welcome_message)]
+            )
+        else:
+            # No explicit welcome message — trigger the LLM to generate
+            # a greeting from the system prompt.
+            await task.queue_frames(
+                [LLMMessagesFrame(messages=messages)]
+            )
+
+    # ── Client disconnect → shut down pipeline ────────────────
+    @transport.event_handler("on_client_disconnected")
+    async def _on_disconnected(transport_ref, ws):
+        logger.info("Client disconnected — ending modular pipeline")
+        await task.queue_frames([EndFrame()])
+
+    # ── Session timeout ───────────────────────────────────────
+    if max_duration_seconds:
+        @transport.event_handler("on_session_timeout")
+        async def _on_timeout(transport_ref, ws):
+            logger.info("Session timeout — ending modular pipeline")
+            await task.queue_frames([EndFrame()])
+
+    return task
+
+
+# ── Voice-to-Voice pipeline dispatcher ──────────────────────────────────────
+
+def _build_v2v_pipeline(
+    *,
+    transport: FastAPIWebsocketTransport,
+    transcript_logger: TranscriptLogger,
+    llm_model: str,
+    system_prompt: str,
+    welcome_message: Optional[str],
+    language: str,
+    max_duration_seconds: Optional[int],
+    voice: Optional[str] = None,
+) -> PipelineTask:
+    """Dispatch to the correct V2V backend based on the model prefix."""
+    if llm_model.startswith("google/"):
+        return _build_gemini_live_pipeline(
+            transport=transport,
+            transcript_logger=transcript_logger,
+            llm_model=llm_model,
+            system_prompt=system_prompt,
+            welcome_message=welcome_message,
+            language=language,
+            max_duration_seconds=max_duration_seconds,
+            voice=voice or "Charon",
+        )
+    # Default: OpenAI Realtime
+    return _build_openai_realtime_pipeline(
+        transport=transport,
+        transcript_logger=transcript_logger,
+        llm_model=llm_model,
+        system_prompt=system_prompt,
+        welcome_message=welcome_message,
+        language=language,
+        max_duration_seconds=max_duration_seconds,
+        voice=voice or "coral",
+    )
+
+
+def _build_openai_realtime_pipeline(
+    *,
+    transport: FastAPIWebsocketTransport,
+    transcript_logger: TranscriptLogger,
+    llm_model: str,
+    system_prompt: str,
+    welcome_message: Optional[str],
+    language: str,
+    max_duration_seconds: Optional[int],
+    voice: str = "coral",
+) -> PipelineTask:
+    """Build the voice-to-voice pipeline using OpenAI Realtime API.
+
+    Key differences from the modular pipeline:
+    - NO context aggregator — the Realtime API manages its own context
+    - Audio frames flow directly: transport → Realtime LLM → transport
+    - The Realtime service connects to OpenAI's WebSocket and handles
+      VAD, transcription, and audio generation internally
+    - We push LLMMessagesFrame on connect to set initial context and
+      trigger the first greeting response
+    """
+    from pipecat.services.openai.realtime.llm import (
+        OpenAIRealtimeLLMService,
+        OpenAIRealtimeLLMSettings,
+    )
+    from pipecat.services.openai.realtime.events import (
+        SessionProperties,
+        AudioConfiguration,
+        AudioOutput,
+    )
+
+    model_name = _resolve_model_name(llm_model)
+    logger.info(f"Building OpenAI Realtime pipeline with model={model_name}, voice={voice}")
+
+    # The OpenAI Realtime API (2025+) requires output_modalities to be
+    # EITHER ["text"] or ["audio"], NOT ["text", "audio"] combined.
+    # Voice is configured under audio.output.voice.
+    realtime_llm = OpenAIRealtimeLLMService(
+        api_key=settings.openai_api_key,
+        settings=OpenAIRealtimeLLMSettings(
+            model=model_name,
+            system_instruction=system_prompt,
+            session_properties=SessionProperties(
+                output_modalities=["audio"],
+                audio=AudioConfiguration(
+                    output=AudioOutput(voice=voice),
+                ),
+            ),
+        ),
+    )
+
+    # V2V pipeline: NO context aggregator needed.
+    # The Realtime service handles context management internally.
+    pipeline = Pipeline(
+        [
+            transport.input(),
+            realtime_llm,
+            transcript_logger,
+            transport.output(),
+        ]
+    )
+
+    task = PipelineTask(
+        pipeline,
+        params=PipelineParams(allow_interruptions=True, enable_metrics=True),
+    )
+
+    # ── Initial context + greeting on connect ─────────────────
+    # Push LLMContextFrame so the Realtime service sets up the
+    # conversation context (system prompt) and generates a greeting.
+    # NOTE: LLMContextFrame (not LLMMessagesFrame) is required because
+    # OpenAIRealtimeLLMService.process_frame only handles LLMContextFrame.
+    @transport.event_handler("on_client_connected")
+    async def _on_connected(transport_ref, ws):
+        logger.info("V2V client connected — pushing initial context")
+        messages = [{"role": "system", "content": system_prompt}]
+        if welcome_message:
+            # Add a user message that prompts the agent to greet
+            messages.append(
+                {"role": "user", "content": welcome_message}
+            )
+        context = LLMContext(messages=messages)
+        await task.queue_frames(
+            [LLMContextFrame(context=context)]
+        )
+
+    # ── Client disconnect → shut down pipeline ────────────────
+    @transport.event_handler("on_client_disconnected")
+    async def _on_disconnected(transport_ref, ws):
+        logger.info("Client disconnected — ending OpenAI Realtime pipeline")
+        await task.queue_frames([EndFrame()])
+
+    if max_duration_seconds:
+        @transport.event_handler("on_session_timeout")
+        async def _on_timeout(transport_ref, ws):
+            logger.info("Session timeout — ending OpenAI Realtime pipeline")
+            await task.queue_frames([EndFrame()])
+
+    return task
+
+
+def _build_gemini_live_pipeline(
+    *,
+    transport: FastAPIWebsocketTransport,
+    transcript_logger: TranscriptLogger,
+    llm_model: str,
+    system_prompt: str,
+    welcome_message: Optional[str],
+    language: str,
+    max_duration_seconds: Optional[int],
+    voice: str = "Charon",
+) -> PipelineTask:
+    """Build the voice-to-voice pipeline using Google Gemini Live native audio."""
+    try:
+        from pipecat.services.google.gemini_live.llm import (
+            GeminiLiveLLMService,
+            GeminiLiveLLMSettings,
+        )
+    except ImportError:
+        raise ImportError(
+            "Gemini Live support requires the google-genai package. "
+            "Install it with: pip install pipecat-ai[google]"
+        )
+
+    # Strip "google/" prefix to get the actual model name
+    model_name = llm_model[len("google/"):]
+
+    if not settings.google_api_key:
+        raise ValueError(
+            "GOOGLE_API_KEY is not set in .env. Required for Gemini Live models."
+        )
+
+    logger.info(f"Building Gemini Live pipeline with model=models/{model_name}, voice={voice}")
+
+    gemini_llm = GeminiLiveLLMService(
+        api_key=settings.google_api_key,
+        settings=GeminiLiveLLMSettings(
+            model=f"models/{model_name}",
+            system_instruction=system_prompt,
+            voice=voice,
+        ),
+    )
+
+    # V2V pipeline: NO context aggregator needed.
+    pipeline = Pipeline(
+        [
+            transport.input(),
+            gemini_llm,
+            transcript_logger,
+            transport.output(),
+        ]
+    )
+
+    task = PipelineTask(
+        pipeline,
+        params=PipelineParams(allow_interruptions=True, enable_metrics=True),
+    )
+
+    # ── Initial context + greeting on connect ─────────────────
+    @transport.event_handler("on_client_connected")
+    async def _on_connected(transport_ref, ws):
+        logger.info("Gemini Live client connected — pushing initial context")
+        messages = [{"role": "system", "content": system_prompt}]
+        if welcome_message:
+            messages.append(
+                {"role": "user", "content": welcome_message}
+            )
+        context = LLMContext(messages=messages)
+        await task.queue_frames(
+            [LLMContextFrame(context=context)]
+        )
+
+    @transport.event_handler("on_client_disconnected")
+    async def _on_disconnected(transport_ref, ws):
+        logger.info("Client disconnected — ending Gemini Live pipeline")
+        await task.queue_frames([EndFrame()])
+
+    if max_duration_seconds:
+        @transport.event_handler("on_session_timeout")
+        async def _on_timeout(transport_ref, ws):
+            logger.info("Session timeout — ending Gemini Live pipeline")
+            await task.queue_frames([EndFrame()])
+
+    return task
+
+
+# ── Protobuf serializer with TTS frame support ──────────────────────────────
+
+def _build_serializer() -> ProtobufFrameSerializer:
+    """
+    Create a ProtobufFrameSerializer that knows about all audio frame
+    sub-types produced by TTS services.
+
+    Pipecat's default serializer only recognises OutputAudioRawFrame by
+    *exact* type match (no isinstance).  TTS services like ElevenLabs emit
+    TTSAudioRawFrame which is a subclass and would be silently dropped
+    unless we register it here.
+    """
+    serializer = ProtobufFrameSerializer()
+
+    from pipecat.frames.frames import TTSAudioRawFrame
+    serializer.SERIALIZABLE_TYPES[TTSAudioRawFrame] = "audio"
+
+    try:
+        from pipecat.frames.frames import SpeechOutputAudioRawFrame
+        serializer.SERIALIZABLE_TYPES[SpeechOutputAudioRawFrame] = "audio"
+    except ImportError:
+        pass
+
+    return serializer
+
+
+# ── Factory helpers ──────────────────────────────────────────────────────────
+
+def _resolve_model_name(llm_model: str) -> str:
+    """
+    Strip LiteLLM provider prefix if present.
+    e.g. 'openai/gpt-4o-mini' → 'gpt-4o-mini'
+    """
+    if "/" in llm_model:
+        return llm_model.split("/", 1)[1]
+    return llm_model
+
+
+def _get_vad():
+    """Return a Silero VAD analyzer instance."""
+    from pipecat.audio.vad.silero import SileroVADAnalyzer
+    return SileroVADAnalyzer()
+
+
+def _build_stt(provider: str, language: str):
+    """Instantiate the correct STT service based on the agent config."""
+    provider = provider.lower()
+
+    if provider == "deepgram":
+        from pipecat.services.deepgram.stt import DeepgramSTTService
+        return DeepgramSTTService(
+            api_key=settings.deepgram_api_key,
+        )
+
+    if provider in ("whisper", "openai"):
+        from pipecat.services.openai.stt import OpenAISTTService
+        return OpenAISTTService(
+            api_key=settings.openai_api_key,
+            language=language,
+        )
+
+    if provider == "scaleway":
+        # Scaleway exposes Whisper Large V3 via an OpenAI-compatible endpoint
+        from pipecat.services.openai.stt import OpenAISTTService, OpenAISTTSettings
+        if not settings.scaleway_api_key:
+            raise ValueError(
+                "SCALEWAY_SECRET_KEY is not set. Required for Scaleway STT."
+            )
+        return OpenAISTTService(
+            api_key=settings.scaleway_api_key,
+            base_url=settings.scaleway_api_url,
+            language=language,
+            settings=OpenAISTTSettings(model="whisper-large-v3"),
+        )
+
+    if provider == "azure":
+        from pipecat.services.azure.stt import AzureSTTService
+        return AzureSTTService()
+
+    raise ValueError(f"Unsupported STT provider: {provider}")
+
+
+def _build_tts(provider: str, voice: Optional[str], language: str):
+    """Instantiate the correct TTS service based on the agent config."""
+    provider = provider.lower()
+
+    if provider == "elevenlabs":
+        from pipecat.services.elevenlabs.tts import (
+            ElevenLabsTTSService,
+            ElevenLabsTTSSettings,
+        )
+        resolved_voice = _resolve_elevenlabs_voice(voice)
+        return ElevenLabsTTSService(
+            api_key=settings.elevenlabs_api_key,
+            settings=ElevenLabsTTSSettings(voice=resolved_voice),
+        )
+
+    if provider == "openai":
+        from pipecat.services.openai.tts import OpenAITTSService, OpenAITTSSettings
+        return OpenAITTSService(
+            api_key=settings.openai_api_key,
+            settings=OpenAITTSSettings(voice=voice or "alloy"),
+        )
+
+    if provider == "cartesia":
+        from pipecat.services.cartesia.tts import CartesiaTTSService
+        cartesia_key = getattr(settings, "cartesia_api_key", None)
+        if not cartesia_key:
+            raise ValueError("Cartesia API key is not set (CARTESIA_API_KEY)")
+        return CartesiaTTSService(
+            api_key=cartesia_key,
+            voice_id=voice or "a0e99841-438c-4a64-b679-ae501e7d6091",
+        )
+
+    if provider == "azure":
+        from pipecat.services.azure.tts import AzureTTSService
+        return AzureTTSService()
+
+    raise ValueError(f"Unsupported TTS provider: {provider}")
+
+
+# ── ElevenLabs voice name → ID mapping ──────────────────────────────────────
+# Common default voices — users can also paste the actual voice ID directly.
+_ELEVENLABS_VOICES = {
+    "rachel": "21m00Tcm4TlvDq8ikWAM",
+    "domi": "AZnzlk1XvdvUeBnXmlld",
+    "bella": "EXAVITQu4vr4xnSDxMaL",
+    "antoni": "ErXwobaYiN019PkySvjV",
+    "elli": "MF3mGyEYCl7XYWbV9V6O",
+    "josh": "TxGEqnHWrfWFTfGW9XjX",
+    "arnold": "VR6AewLTigWG4xSOukaG",
+    "adam": "pNInz6obpgDQGcFmaJgB",
+    "sam": "yoZ06aMxZJJ28mfd3POQ",
+    "charlie": "IKne3meq5aSn9XLyUdCD",
+    "emily": "LcfcDJNUP1GQjkzn1xUU",
+    "alice": "Xb7hH8MSUJpSbSDYk0k2",
+    "bill": "pqHfZKP75CvOlQylNhV4",
+    "george": "JBFqnCBsd6RMkjVDRZzb",
+    "lily": "pFZP5JQG7iQjIQuC4Bku",
+    "sarah": "EXAVITQu4vr4xnSDxMaL",
+    "chris": "iP95p4xoKVk53GoZ742B",
+}
+
+
+def _resolve_elevenlabs_voice(voice: Optional[str]) -> str:
+    """
+    Resolve a voice name or ID to an ElevenLabs voice ID.
+    Accepts either a friendly name (e.g. 'rachel') or a raw voice ID.
+    Falls back to Rachel's voice ID if nothing is provided.
+    """
+    if not voice:
+        return "21m00Tcm4TlvDq8ikWAM"  # Rachel default
+
+    # Check if it's a known friendly name (case-insensitive)
+    lower = voice.strip().lower()
+    if lower in _ELEVENLABS_VOICES:
+        return _ELEVENLABS_VOICES[lower]
+
+    # Assume it's a raw voice ID
+    return voice
