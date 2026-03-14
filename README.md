@@ -134,8 +134,8 @@ OASIS runs as five Docker containers on a single internal network:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/oasis-surveys/oasis.git
-cd oasis
+git clone https://github.com/oasis-surveys/oasis-platform.git
+cd oasis-platform
 ```
 
 ### 2. Configure environment variables
@@ -265,7 +265,7 @@ The long-term goal is for OASIS to become a standard open-source tool that surve
 
 Contributions are very welcome. If you are interested in contributing, improving the platform, or building on it for your own research, please reach out first. Open an issue or send an email to [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk).
 
-For feature requests and bug reports, please use [GitHub Issues](https://github.com/oasis-surveys/oasis/issues).
+For feature requests and bug reports, please use [GitHub Issues](https://github.com/oasis-surveys/oasis-platform/issues).
 
 ## License
 
@@ -284,7 +284,7 @@ If you use OASIS in your research, please cite it:
   author       = {Lang, Max M.},
   title        = {{OASIS}: Open Agentic Survey Interview System},
   year         = {2026},
-  url          = {https://github.com/oasis-surveys/oasis},
+  url          = {https://github.com/oasis-surveys/oasis-platform},
   note         = {Self-hosted platform for AI-powered conversational interviews}
 }
 ```
