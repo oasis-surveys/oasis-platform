@@ -280,7 +280,7 @@ See the full [LICENSE](LICENSE) file for details.
 If you use OASIS in your research, please cite it:
 
 ```bibtex
-@software{lang2025oasis,
+@software{lang2026oasis,
   author       = {Lang, Max M.},
   title        = {{OASIS}: Open Agentic Survey Interview System},
   year         = {2026},
