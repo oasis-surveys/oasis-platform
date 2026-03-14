@@ -37,21 +37,19 @@ It was built out of a simple frustration: existing commercial tools for conversa
 
 ## Demo
 
-<!-- Replace these with actual hosted video URLs or GIFs when available -->
-
 <p align="center">
-  <strong>Setup a Study</strong><br/>
-  <em>Placeholder: video/GIF of study creation flow</em>
+  <strong>1. Setup a Study</strong><br/><br/>
+  <img src="misc/demo1-fast.gif" alt="Setup a Study" width="700"/>
 </p>
 
 <p align="center">
-  <strong>Create and Configure an Agent</strong><br/>
-  <em>Placeholder: video/GIF of agent configuration</em>
+  <strong>2. Create and Configure an Agent</strong><br/><br/>
+  <img src="misc/demo2-fast.gif" alt="Create and Configure an Agent" width="700"/>
 </p>
 
 <p align="center">
-  <strong>Collect and Manage Data</strong><br/>
-  <em>Placeholder: video/GIF of data collection and transcript view</em>
+  <strong>3. Collect and Manage Data</strong><br/><br/>
+  <img src="misc/demo3-fast.gif" alt="Collect and Manage Data" width="700"/>
 </p>
 
 ## Features
