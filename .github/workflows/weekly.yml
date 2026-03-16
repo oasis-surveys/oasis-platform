@@ -175,6 +175,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create minimal .env for validation
+        run: |
+          cat > .env << EOF
+          OPENAI_API_KEY=sk-test
+          DEEPGRAM_API_KEY=dg-test
+          ELEVENLABS_API_KEY=el-test
+          SECRET_KEY=test-secret
+          EOF
+
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
 
@@ -183,11 +192,5 @@ jobs:
 
       - name: Check container startup (dry run)
         run: |
-          # Create a minimal .env for validation
-          cat > .env << EOF
-          OPENAI_API_KEY=sk-test
-          DEEPGRAM_API_KEY=dg-test
-          ELEVENLABS_API_KEY=el-test
-          EOF
           docker compose up -d --no-start
           docker compose down
