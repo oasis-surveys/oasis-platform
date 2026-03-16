@@ -177,12 +177,11 @@ jobs:
 
       - name: Create minimal .env for validation
         run: |
-          cat > .env << EOF
-          OPENAI_API_KEY=sk-test
-          DEEPGRAM_API_KEY=dg-test
-          ELEVENLABS_API_KEY=el-test
-          SECRET_KEY=test-secret
-          EOF
+          touch .env
+          echo "OPENAI_API_KEY=sk-test" >> .env
+          echo "DEEPGRAM_API_KEY=dg-test" >> .env
+          echo "ELEVENLABS_API_KEY=el-test" >> .env
+          echo "SECRET_KEY=test-secret" >> .env
 
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
