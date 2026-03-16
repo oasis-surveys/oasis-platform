@@ -295,6 +295,7 @@ If you use OASIS in your research, please cite it:
   title        = {{OASIS}: Open Agentic Survey Interview System},
   year         = {2026},
   url          = {https://github.com/oasis-surveys/oasis-platform},
-  note         = {Self-hosted platform for AI-powered conversational interviews}
+  note         = {Self-hosted platform for AI-powered conversational interviews},
+  doi          = {10.5281/zenodo.19041570}
 }
 ```
