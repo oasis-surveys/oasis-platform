@@ -1,5 +1,5 @@
 """
-Tests for the TranscriptLogger FrameProcessor.
+Tests for the TranscriptLogger / TranscriptUserCapture FrameProcessors.
 
 Mocks the database session to avoid needing a real DB.
 """
@@ -9,12 +9,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.pipeline.transcript_logger import TranscriptLogger
+from app.pipeline.transcript_logger import (
+    TranscriptLoggerState,
+    TranscriptUserCapture,
+    TranscriptLogger,
+)
 
 
 class TestTranscriptLogger:
-    def _make_logger(self, notify_callback=None):
-        """Create a TranscriptLogger with a mocked DB session factory."""
+    def _make_state(self, notify_callback=None):
+        """Create a TranscriptLoggerState with a mocked DB session factory."""
         mock_session = AsyncMock()
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
@@ -23,58 +27,64 @@ class TestTranscriptLogger:
         mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        logger = TranscriptLogger(
+        state = TranscriptLoggerState(
             session_id=uuid.uuid4(),
             db_session_factory=mock_factory,
             notify_callback=notify_callback,
         )
-        return logger, mock_session
+        return state, mock_session
+
+    def _make_logger(self, notify_callback=None):
+        """Create a TranscriptLogger with shared state and a mocked DB."""
+        state, mock_session = self._make_state(notify_callback)
+        logger = TranscriptLogger(state=state)
+        return logger, state, mock_session
 
     async def test_persist_entry_user(self):
-        logger, mock_session = self._make_logger()
-        await logger._persist_entry("user", "Hello, world!")
+        state, mock_session = self._make_state()
+        await state.persist_entry("user", "Hello, world!")
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
 
     async def test_persist_entry_agent(self):
-        logger, mock_session = self._make_logger()
-        await logger._persist_entry("agent", "Agent response")
+        state, mock_session = self._make_state()
+        await state.persist_entry("agent", "Agent response")
         mock_session.add.assert_called_once()
 
     async def test_persist_entry_empty_skipped(self):
-        logger, mock_session = self._make_logger()
-        await logger._persist_entry("user", "   ")
+        state, mock_session = self._make_state()
+        await state.persist_entry("user", "   ")
         mock_session.add.assert_not_called()
 
     async def test_sequence_increments(self):
-        logger, _ = self._make_logger()
-        await logger._persist_entry("user", "First")
-        assert logger._sequence == 1
-        await logger._persist_entry("agent", "Second")
-        assert logger._sequence == 2
+        state, _ = self._make_state()
+        await state.persist_entry("user", "First")
+        assert state.sequence == 1
+        await state.persist_entry("agent", "Second")
+        assert state.sequence == 2
 
     async def test_agent_buffer_accumulates(self):
-        logger, _ = self._make_logger()
-        logger._agent_buffer.append("Hello ")
-        logger._agent_buffer.append("world!")
-        assert "".join(logger._agent_buffer) == "Hello world!"
+        state, _ = self._make_state()
+        state.agent_buffer.append("Hello ")
+        state.agent_buffer.append("world!")
+        assert "".join(state.agent_buffer) == "Hello world!"
 
     async def test_flush_agent_buffer(self):
-        logger, mock_session = self._make_logger()
-        logger._agent_buffer = ["Hello ", "world!"]
-        await logger._flush_agent_buffer()
+        state, mock_session = self._make_state()
+        state.agent_buffer = ["Hello ", "world!"]
+        await state.flush_agent_buffer()
         mock_session.add.assert_called_once()
-        assert logger._agent_buffer == []
+        assert state.agent_buffer == []
 
     async def test_flush_empty_buffer(self):
-        logger, mock_session = self._make_logger()
-        await logger._flush_agent_buffer()
+        state, mock_session = self._make_state()
+        await state.flush_agent_buffer()
         mock_session.add.assert_not_called()
 
     async def test_notify_callback_called(self):
         callback = AsyncMock()
-        logger, _ = self._make_logger(notify_callback=callback)
-        await logger._persist_entry("user", "Test message")
+        state, _ = self._make_state(notify_callback=callback)
+        await state.persist_entry("user", "Test message")
         callback.assert_called_once()
         payload = callback.call_args[0][0]
         assert payload["type"] == "transcript"
@@ -84,12 +94,12 @@ class TestTranscriptLogger:
     async def test_notify_callback_error_handled(self):
         """Even if the callback raises, it shouldn't crash the logger."""
         callback = AsyncMock(side_effect=Exception("Network error"))
-        logger, _ = self._make_logger(notify_callback=callback)
+        state, _ = self._make_state(notify_callback=callback)
         # Should not raise
-        await logger._persist_entry("user", "Test")
+        await state.persist_entry("user", "Test")
 
     async def test_cleanup_flushes_buffer(self):
-        logger, mock_session = self._make_logger()
-        logger._agent_buffer = ["Pending text"]
+        logger, state, mock_session = self._make_logger()
+        state.agent_buffer = ["Pending text"]
         await logger.cleanup()
         mock_session.add.assert_called_once()
