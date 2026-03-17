@@ -4,11 +4,11 @@ OASIS — Pipecat pipeline builder (pipecat 0.0.105).
 Supports two pipeline types:
 
   Modular:
-    Transport(in) → STT → TranscriptLogger → UserCtx → LLM → TTS → Transport(out)
+    Transport(in) → STT → UserCapture → UserCtx → LLM → TranscriptLogger → TTS → Transport(out)
 
   Voice-to-Voice:
-    OpenAI Realtime:   Transport(in) → OpenAIRealtimeLLM → TranscriptLogger → Transport(out)
-    Gemini Live:       Transport(in) → GeminiLiveLLM → TranscriptLogger → Transport(out)
+    OpenAI Realtime:   Transport(in) → RealtimeLLM → UserCapture → TranscriptLogger → Transport(out)
+    Gemini Live:       Transport(in) → GeminiLiveLLM → UserCapture → TranscriptLogger → Transport(out)
 
 Uses the *modern* pipecat 0.0.105 API:
   - LLMContext  (not the deprecated OpenAILLMContext)
@@ -43,7 +43,11 @@ from pipecat.processors.aggregators.llm_response_universal import (
 
 from app.config import settings
 from app.database import async_session_factory
-from app.pipeline.transcript_logger import TranscriptLogger
+from app.pipeline.transcript_logger import (
+    TranscriptLoggerState,
+    TranscriptUserCapture,
+    TranscriptLogger,
+)
 
 
 async def _get_key(field: str) -> str:
@@ -126,11 +130,13 @@ async def build_twilio_pipeline(
         ),
     )
 
-    transcript_logger = TranscriptLogger(
+    transcript_state = TranscriptLoggerState(
         session_id=session_id,
         db_session_factory=async_session_factory,
         notify_callback=notify_callback,
     )
+    user_capture = TranscriptUserCapture(transcript_state)
+    transcript_logger = TranscriptLogger(transcript_state)
 
     # Twilio calls always use the modular pipeline (STT → LLM → TTS)
     # because the telephony audio is 8kHz μ-law, not suitable for
@@ -139,6 +145,7 @@ async def build_twilio_pipeline(
     if pipeline_type == "voice_to_voice":
         task = await _build_v2v_pipeline(
             transport=transport,
+            user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
             system_prompt=effective_prompt,
@@ -151,6 +158,7 @@ async def build_twilio_pipeline(
     else:
         task = await _build_modular_pipeline(
             transport=transport,
+            user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
             system_prompt=effective_prompt,
@@ -217,16 +225,19 @@ async def build_pipeline(
         ),
     )
 
-    # ── Transcript logger ──────────────────────────────────────────
-    transcript_logger = TranscriptLogger(
+    # ── Transcript logging (shared state, two processors) ──────────
+    transcript_state = TranscriptLoggerState(
         session_id=session_id,
         db_session_factory=async_session_factory,
         notify_callback=notify_callback,
     )
+    user_capture = TranscriptUserCapture(transcript_state)
+    transcript_logger = TranscriptLogger(transcript_state)
 
     if pipeline_type == "voice_to_voice":
         task = await _build_v2v_pipeline(
             transport=transport,
+            user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
             system_prompt=effective_prompt,
@@ -241,6 +252,7 @@ async def build_pipeline(
     else:
         task = await _build_modular_pipeline(
             transport=transport,
+            user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
             system_prompt=effective_prompt,
@@ -441,6 +453,7 @@ async def _build_llm(llm_model: str):
 async def _build_modular_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
     system_prompt: str,
@@ -499,19 +512,24 @@ async def _build_modular_pipeline(
         )
 
     # ── Pipeline wiring ───────────────────────────────────────
+    # user_capture sits before the context aggregator to capture
+    # TranscriptionFrame (user speech) before it's consumed.
+    # transcript_logger sits after the LLM to capture TextFrame
+    # (agent responses) as they stream downstream to TTS.
     pipeline_nodes = [
         transport.input(),          # audio from browser
         stt,                        # speech → text
-        transcript_logger,          # log user transcript + agent text
+        user_capture,               # log user transcriptions
         context_aggregator.user(),  # accumulate user turns
         llm,                        # text → LLM response
+        transcript_logger,          # log agent text (TextFrame)
         tts,                        # text → speech
         transport.output(),         # audio back to browser
     ]
 
-    # Insert idle processor after STT (before user context aggregator)
+    # Insert idle processor after user_capture (before user context aggregator)
     if idle_processor:
-        pipeline_nodes.insert(3, idle_processor)  # after transcript_logger, before context_aggregator.user()
+        pipeline_nodes.insert(3, idle_processor)  # after user_capture, before context_aggregator.user()
 
     pipeline = Pipeline(pipeline_nodes)
 
@@ -560,6 +578,7 @@ async def _build_modular_pipeline(
 async def _build_v2v_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
     system_prompt: str,
@@ -575,6 +594,7 @@ async def _build_v2v_pipeline(
     if llm_model.startswith("google/"):
         return await _build_gemini_live_pipeline(
             transport=transport,
+            user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
             system_prompt=system_prompt,
@@ -587,6 +607,7 @@ async def _build_v2v_pipeline(
     # Default: OpenAI Realtime
     return await _build_openai_realtime_pipeline(
         transport=transport,
+        user_capture=user_capture,
         transcript_logger=transcript_logger,
         llm_model=llm_model,
         system_prompt=system_prompt,
@@ -601,6 +622,7 @@ async def _build_v2v_pipeline(
 async def _build_openai_realtime_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
     system_prompt: str,
@@ -657,10 +679,14 @@ async def _build_openai_realtime_pipeline(
 
     # V2V pipeline: NO context aggregator needed.
     # The Realtime service handles context management internally.
+    # Both user_capture and transcript_logger sit after the Realtime LLM
+    # because it emits TranscriptionFrame (user) and TextFrame (agent)
+    # downstream.
     pipeline = Pipeline(
         [
             transport.input(),
             realtime_llm,
+            user_capture,
             transcript_logger,
             transport.output(),
         ]
@@ -708,6 +734,7 @@ async def _build_openai_realtime_pipeline(
 async def _build_gemini_live_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
     system_prompt: str,
@@ -758,6 +785,7 @@ async def _build_gemini_live_pipeline(
         [
             transport.input(),
             gemini_llm,
+            user_capture,
             transcript_logger,
             transport.output(),
         ]

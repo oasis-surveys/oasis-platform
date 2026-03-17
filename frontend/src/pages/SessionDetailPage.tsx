@@ -21,6 +21,58 @@ const ROLE_LABELS: Record<string, string> = {
 
 const WS_MONITOR_URL = `ws://${window.location.host}/ws/monitor`;
 
+/**
+ * Simple markdown-to-HTML renderer for transcript display.
+ * Handles **bold**, *italic*, `code`, lists, and line breaks.
+ */
+function renderMarkdown(text: string): string {
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-black/5 rounded-lg p-2 my-1 text-xs font-mono overflow-x-auto whitespace-pre-wrap">$1</pre>');
+  html = html.replace(/`([^`]+)`/g, '<code class="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">$1</code>');
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(?<!\w)\*(.+?)\*(?!\w)/g, "<em>$1</em>");
+  html = html.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="underline hover:opacity-80">$1</a>'
+  );
+
+  const lines = html.split("\n");
+  const result: string[] = [];
+  let inUl = false;
+  let inOl = false;
+
+  for (const line of lines) {
+    const ulMatch = line.match(/^\s*[-•]\s+(.+)/);
+    const olMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
+
+    if (ulMatch) {
+      if (!inUl) { result.push('<ul class="list-disc list-inside my-1 space-y-0.5">'); inUl = true; }
+      if (inOl) { result.push("</ol>"); inOl = false; }
+      result.push(`<li>${ulMatch[1]}</li>`);
+    } else if (olMatch) {
+      if (!inOl) { result.push('<ol class="list-decimal list-inside my-1 space-y-0.5">'); inOl = true; }
+      if (inUl) { result.push("</ul>"); inUl = false; }
+      result.push(`<li>${olMatch[1]}</li>`);
+    } else {
+      if (inUl) { result.push("</ul>"); inUl = false; }
+      if (inOl) { result.push("</ol>"); inOl = false; }
+      result.push(line);
+    }
+  }
+  if (inUl) result.push("</ul>");
+  if (inOl) result.push("</ol>");
+
+  html = result.join("\n").replace(/\n/g, "<br>");
+  html = html.replace(/<br><(ul|ol)/g, "<$1");
+  html = html.replace(/<\/(ul|ol)><br>/g, "</$1>");
+
+  return html;
+}
+
 interface LiveEntry {
   role: "user" | "agent" | "system";
   content: string;
@@ -290,7 +342,7 @@ export default function SessionDetailPage() {
                     ROLE_STYLES[entry.role] || ""
                   }`}
                 >
-                  <p>{entry.content}</p>
+                  <div dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.content) }} />
                   {entry.spoken_at && (
                     <p
                       className={`text-[10px] mt-1 ${
