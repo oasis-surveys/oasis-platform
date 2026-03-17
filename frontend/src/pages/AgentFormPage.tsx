@@ -1,10 +1,12 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   agents,
   participants,
+  settingsApi,
   type Agent,
   type ParticipantIdentifier,
+  type ApiKeyStatus,
 } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import CopyButton from "../components/CopyButton";
@@ -87,8 +89,8 @@ const GEMINI_LIVE_VOICES = [
 ];
 
 const STT_PROVIDERS = [
+  { value: "openai", label: "OpenAI Whisper (default)" },
   { value: "deepgram", label: "Deepgram" },
-  { value: "openai", label: "OpenAI Whisper" },
   { value: "scaleway", label: "Scaleway Whisper" },
 ];
 
@@ -414,8 +416,8 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     pipeline_type: (obj.pipeline_type as "modular" | "voice_to_voice") || "modular",
     llm_model: isKnown ? storedModel : "__custom__",
     llm_model_custom: isKnown ? "" : storedModel,
-    stt_provider: (obj.stt_provider as string) || "deepgram",
-    stt_model: (obj.stt_model as string) || "nova-2",
+    stt_provider: (obj.stt_provider as string) || "openai",
+    stt_model: (obj.stt_model as string) || "gpt-4o-transcribe",
     tts_provider: (obj.tts_provider as string) || "openai",
     tts_model: (obj.tts_model as string) || "gpt-4o-mini-tts",
     tts_voice: (obj.tts_voice as string) || "alloy",
@@ -478,10 +480,10 @@ const DEFAULT_FORM: FormData = {
   system_prompt: "",
   welcome_message: "Hello, thank you for participating in this study.",
   pipeline_type: "modular",
-  llm_model: "openai/gpt-5.4",
+  llm_model: "openai/gpt-4o",
   llm_model_custom: "",
-  stt_provider: "deepgram",
-  stt_model: "nova-2",
+  stt_provider: "openai",
+  stt_model: "gpt-4o-transcribe",
   tts_provider: "openai",
   tts_model: "gpt-4o-mini-tts",
   tts_voice: "alloy",
@@ -546,6 +548,13 @@ export default function AgentFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, showToast] = useToast();
   const [loading, setLoading] = useState(!isNew);
+
+  // API key status (for missing key warnings)
+  const [apiKeys, setApiKeys] = useState<ApiKeyStatus[]>([]);
+  const isKeySet = useCallback(
+    (field: string) => apiKeys.find((k) => k.field === field)?.is_set ?? true,
+    [apiKeys]
+  );
 
   // Participant identifiers (predefined mode)
   const [pidList, setPidList] = useState<ParticipantIdentifier[]>([]);
@@ -630,6 +639,58 @@ export default function AgentFormPage() {
   const ttsVoiceOptions =
     form.tts_provider === "openai" ? OPENAI_TTS_VOICES : ELEVENLABS_VOICES;
 
+  // Fetch API key status on mount for missing-key warnings
+  useEffect(() => {
+    settingsApi.getKeys().then((res) => setApiKeys(res.keys)).catch(() => {});
+  }, []);
+
+  // Determine which API keys are required for current config
+  // (computed here; isModularPipeline is inline since the full isModular is defined later)
+  const resolvedModel = form.llm_model === "__custom__" ? form.llm_model_custom : form.llm_model;
+  const isModularPipeline = form.modality === "text" || form.pipeline_type === "modular";
+  const missingKeys: { label: string; field: string; envVar: string }[] = [];
+
+  if (apiKeys.length > 0) {
+    // LLM provider
+    if (resolvedModel.startsWith("openai/") || (!resolvedModel.includes("/") && !resolvedModel.startsWith("__"))) {
+      if (!isKeySet("openai_api_key")) missingKeys.push({ label: "OpenAI API Key", field: "openai_api_key", envVar: "OPENAI_API_KEY" });
+    } else if (resolvedModel.startsWith("google/")) {
+      if (!isKeySet("google_api_key")) missingKeys.push({ label: "Google API Key", field: "google_api_key", envVar: "GOOGLE_API_KEY" });
+    } else if (resolvedModel.startsWith("scaleway/")) {
+      if (!isKeySet("scaleway_secret_key")) missingKeys.push({ label: "Scaleway Secret Key", field: "scaleway_secret_key", envVar: "SCALEWAY_SECRET_KEY" });
+    } else if (resolvedModel.startsWith("azure/")) {
+      if (!isKeySet("azure_openai_api_key")) missingKeys.push({ label: "Azure OpenAI API Key", field: "azure_openai_api_key", envVar: "AZURE_OPENAI_API_KEY" });
+    } else if (resolvedModel.startsWith("gcp/")) {
+      if (!isKeySet("gcp_api_key")) missingKeys.push({ label: "GCP API Key", field: "gcp_api_key", envVar: "GCP_API_KEY" });
+    }
+
+    // STT provider (voice only, modular only)
+    if (form.modality === "voice" && isModularPipeline) {
+      if (form.stt_provider === "deepgram" && !isKeySet("deepgram_api_key")) {
+        missingKeys.push({ label: "Deepgram API Key", field: "deepgram_api_key", envVar: "DEEPGRAM_API_KEY" });
+      } else if (form.stt_provider === "openai" && !isKeySet("openai_api_key")) {
+        if (!missingKeys.some((k) => k.field === "openai_api_key")) {
+          missingKeys.push({ label: "OpenAI API Key", field: "openai_api_key", envVar: "OPENAI_API_KEY" });
+        }
+      } else if (form.stt_provider === "scaleway" && !isKeySet("scaleway_secret_key")) {
+        if (!missingKeys.some((k) => k.field === "scaleway_secret_key")) {
+          missingKeys.push({ label: "Scaleway Secret Key", field: "scaleway_secret_key", envVar: "SCALEWAY_SECRET_KEY" });
+        }
+      }
+    }
+
+    // TTS provider (voice only, modular only)
+    if (form.modality === "voice" && isModularPipeline) {
+      if (form.tts_provider === "elevenlabs" && !isKeySet("elevenlabs_api_key")) {
+        missingKeys.push({ label: "ElevenLabs API Key", field: "elevenlabs_api_key", envVar: "ELEVENLABS_API_KEY" });
+      } else if (form.tts_provider === "openai" && !isKeySet("openai_api_key")) {
+        if (!missingKeys.some((k) => k.field === "openai_api_key")) {
+          missingKeys.push({ label: "OpenAI API Key", field: "openai_api_key", envVar: "OPENAI_API_KEY" });
+        }
+      }
+    }
+  }
+
   useEffect(() => {
     if (isNew || !studyId || !agentId) return;
     agents
@@ -652,7 +713,7 @@ export default function AgentFormPage() {
           llm_model: isKnown ? storedModel : "__custom__",
           llm_model_custom: isKnown ? "" : storedModel,
           stt_provider: a.stt_provider,
-          stt_model: a.stt_model || "nova-2",
+          stt_model: a.stt_model || "gpt-4o-transcribe",
           tts_provider: a.tts_provider,
           tts_model: a.tts_model || "gpt-4o-mini-tts",
           tts_voice: a.tts_voice || "alloy",
@@ -1634,7 +1695,7 @@ export default function AgentFormPage() {
                               ? "nova-2"
                               : p === "scaleway"
                                 ? "whisper-large-v3"
-                                : "whisper-1",
+                                : "gpt-4o-transcribe",
                         }));
                       }}
                       className="select-styled"
@@ -1725,6 +1786,32 @@ export default function AgentFormPage() {
               </>
             )}
           </div>
+
+          {/* ── Missing API key warnings ── */}
+          {missingKeys.length > 0 && (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 animate-slide-up">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <h4 className="text-sm font-semibold text-amber-800 mb-1">Missing API Key{missingKeys.length > 1 ? "s" : ""}</h4>
+                  <p className="text-xs text-amber-700 mb-2">
+                    The current configuration requires API keys that are not yet configured. The agent will not work until these are set.
+                  </p>
+                  <ul className="space-y-1">
+                    {missingKeys.map((k) => (
+                      <li key={k.field} className="text-xs text-amber-700 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                        <strong>{k.label}</strong> — set <code className="bg-amber-100 px-1 rounded text-[11px]">{k.envVar}</code> in your <code className="bg-amber-100 px-1 rounded text-[11px]">.env</code> file or via{" "}
+                        <Link to="/settings" className="underline font-medium hover:text-amber-900">Settings</Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Interview Settings ── */}

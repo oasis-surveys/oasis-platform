@@ -51,6 +51,84 @@ function hexToRgb(hex: string): string {
   return `${parseInt(h.substring(0, 2), 16)}, ${parseInt(h.substring(2, 4), 16)}, ${parseInt(h.substring(4, 6), 16)}`;
 }
 
+/**
+ * Lightweight markdown-to-HTML renderer for chat messages.
+ * Handles: **bold**, *italic*, `inline code`, [links](url), line breaks,
+ * unordered lists (- item), ordered lists (1. item).
+ * Sanitises HTML entities to prevent XSS.
+ */
+function renderMarkdown(text: string): string {
+  // Escape HTML entities first
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // Code blocks (``` ... ```)
+  html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-black/5 rounded-lg p-2 my-1 text-xs font-mono overflow-x-auto whitespace-pre-wrap">$1</pre>');
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code class="bg-black/10 rounded px-1 py-0.5 text-xs font-mono">$1</code>');
+
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+  // Italic (single asterisk, not inside a word)
+  html = html.replace(/(?<!\w)\*(.+?)\*(?!\w)/g, "<em>$1</em>");
+
+  // Links [text](url)
+  html = html.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="underline hover:opacity-80">$1</a>'
+  );
+
+  // Process lines for lists
+  const lines = html.split("\n");
+  const result: string[] = [];
+  let inUl = false;
+  let inOl = false;
+
+  for (const line of lines) {
+    const ulMatch = line.match(/^\s*[-•]\s+(.+)/);
+    const olMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
+
+    if (ulMatch) {
+      if (!inUl) { result.push('<ul class="list-disc list-inside my-1 space-y-0.5">'); inUl = true; }
+      if (inOl) { result.push("</ol>"); inOl = false; }
+      result.push(`<li>${ulMatch[1]}</li>`);
+    } else if (olMatch) {
+      if (!inOl) { result.push('<ol class="list-decimal list-inside my-1 space-y-0.5">'); inOl = true; }
+      if (inUl) { result.push("</ul>"); inUl = false; }
+      result.push(`<li>${olMatch[1]}</li>`);
+    } else {
+      if (inUl) { result.push("</ul>"); inUl = false; }
+      if (inOl) { result.push("</ol>"); inOl = false; }
+      result.push(line);
+    }
+  }
+  if (inUl) result.push("</ul>");
+  if (inOl) result.push("</ol>");
+
+  // Join lines, convert remaining newlines to <br>
+  html = result.join("\n").replace(/\n/g, "<br>");
+  // Clean up double <br> from list boundaries
+  html = html.replace(/<br><(ul|ol)/g, "<$1");
+  html = html.replace(/<\/(ul|ol)><br>/g, "</$1>");
+
+  return html;
+}
+
+/** Chat bubble content component that renders markdown safely */
+function ChatBubbleContent({ text, isUser }: { text: string; isUser: boolean }) {
+  const html = renderMarkdown(text);
+  return (
+    <div
+      className={isUser ? "chat-content-user" : "chat-content-agent"}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
 export default function InterviewPage() {
   const { widgetKey } = useParams<{ widgetKey: string }>();
   const [searchParams] = useSearchParams();
@@ -488,7 +566,7 @@ export default function InterviewPage() {
                       }`}
                       style={msg.role === "user" ? { backgroundColor: primaryColor } : undefined}
                     >
-                      {msg.text}
+                      <ChatBubbleContent text={msg.text} isUser={msg.role === "user"} />
                     </div>
 
                     {/* User avatar */}
