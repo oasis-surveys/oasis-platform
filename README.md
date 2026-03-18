@@ -281,7 +281,9 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 
 OASIS is released under the **Open Non-Commercial Research License (ONCRL) v1.0**.
 
-You are free to use, modify, and share OASIS for non-commercial research purposes. If you want to use it in a funded project, a commercial product, or any context that goes beyond personal or academic exploration, you need written approval from the copyright holder.
+You are free to use, modify, and share OASIS for non-commercial research and educational purposes. Use as a core component of a funded research project or grant application requires prior written approval from the copyright holder — this is not meant to be a barrier, it just helps us understand how the project is being used and ensure proper attribution.
+
+For universities and research institutions that prefer not to self-host, the OASIS Project may offer the platform as a hosted or managed service. Contributed code may be included in such offerings (see section 3 and 5 of the license). If you have questions about this, please [get in touch](mailto:max.lang@stx.ox.ac.uk).
 
 See the full [LICENSE](LICENSE) file for details.
 

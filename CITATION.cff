@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+title: "OASIS: Open Agentic Survey Interview System"
+message: "If you use OASIS in your research, please cite it using the metadata below."
+type: software
+authors:
+  - family-names: Lang
+    given-names: Max M.
+    orcid: ""
+    affiliation: University of Oxford
+repository-code: https://github.com/oasis-surveys/oasis-platform
+url: https://oasis-surveys.github.io
+license: LicenseRef-ONCRL-1.0
+version: 1.0.0
+date-released: "2026-03-14"
+doi: 10.5281/zenodo.19041570
+abstract: >-
+  OASIS is a self-hosted, open-source platform for conducting AI-powered
+  conversational interviews. It supports voice and text modalities,
+  semi-structured interview guides, multi-provider LLM pipelines, and
+  real-time transcript diarisation. Built for survey researchers and
+  qualitative methodologists who need full control over their data and
+  infrastructure.
+keywords:
+  - conversational AI
+  - survey research
+  - qualitative interviews
+  - semi-structured interviews
+  - AI agents
+  - open source
+  - self-hosted
+  - speech-to-text
+  - text-to-speech
+  - large language models
+  - research methodology

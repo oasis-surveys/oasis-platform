@@ -1,6 +1,6 @@
 Open Non-Commercial Research License (ONCRL) v1.0
 
-Copyright (c) 2025 Max M. Lang. All rights reserved.
+Copyright (c) 2025–2026 Max M. Lang. All rights reserved.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to use,
@@ -20,7 +20,14 @@ educational purposes only, subject to the following conditions:
    written approval from the copyright holder. Approval requests should be
    directed to: max.lang@stx.ox.ac.uk
 
-3. ATTRIBUTION
+3. HOSTED AND MANAGED OFFERINGS
+   The OASIS Project may offer the Software as a hosted or managed service
+   for universities, research institutions, and other academic organisations
+   that prefer a ready-to-use solution over self-hosting and maintaining
+   their own infrastructure. Contributions to the project (see section 5)
+   may be included in such offerings.
+
+4. ATTRIBUTION
    All copies or substantial portions of the Software must retain this
    copyright notice and permission notice. Any published work making use of
    the Software must cite the original repository:
@@ -28,7 +35,20 @@ educational purposes only, subject to the following conditions:
        OASIS: Open Agentic Survey Interview System
        https://github.com/oasis-surveys/oasis-platform
 
-4. NO WARRANTY
+5. CONTRIBUTIONS
+   By submitting a contribution (pull request, patch, or any other form) to
+   this project, you agree to the following:
+
+   a) Your contribution is licensed under the same terms as this license.
+   b) You retain full copyright over your own work. You may reuse,
+      republish, or build on your own contributions however you wish.
+   c) Your contribution may be included in hosted or managed offerings of
+      OASIS as described in section 3.
+   d) You have the right to make the contribution. The work is your own (or
+      you have permission from your employer or institution), and it does not
+      violate anyone else's intellectual property.
+
+6. NO WARRANTY
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
    OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
@@ -37,12 +57,7 @@ educational purposes only, subject to the following conditions:
    OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
    USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-5. CONTRIBUTIONS
-   By submitting a contribution (pull request, patch, or any other form) to
-   this project, you agree that your contribution is licensed under the same
-   terms as this license unless explicitly stated otherwise.
-
-6. TERMINATION
+7. TERMINATION
    This license is automatically terminated if you fail to comply with any
    of its terms. Upon termination, you must destroy all copies of the
    Software in your possession.
