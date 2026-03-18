@@ -81,19 +81,29 @@ def chunk_text(text_content: str, chunk_size: int = CHUNK_SIZE, overlap: int = C
 
 # ── Embedding generation ─────────────────────────────────────
 
+async def _get_openai_key() -> str:
+    """Get effective OpenAI key: dashboard override (Redis) > .env value."""
+    try:
+        from app.api.settings import get_effective_key
+        return await get_effective_key("openai_api_key")
+    except Exception:
+        return getattr(settings, "openai_api_key", "")
+
+
 async def generate_embeddings(texts: list[str]) -> list[list[float]]:
     """
     Generate embedding vectors for a list of texts using OpenAI.
 
     Returns a list of float vectors (1536 dimensions each).
     """
-    if not settings.openai_api_key:
+    api_key = await _get_openai_key()
+    if not api_key:
         raise ValueError(
             "OPENAI_API_KEY is required for generating embeddings. "
-            "Add it to your .env file."
+            "Add it to your .env file or set it in the dashboard Settings."
         )
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=api_key)
 
     # OpenAI supports batching up to 2048 texts
     response = await client.embeddings.create(

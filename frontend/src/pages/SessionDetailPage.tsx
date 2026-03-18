@@ -19,7 +19,7 @@ const ROLE_LABELS: Record<string, string> = {
   system: "System",
 };
 
-const WS_MONITOR_URL = `ws://${window.location.host}/ws/monitor`;
+const WS_MONITOR_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws/monitor`;
 
 /**
  * Simple markdown-to-HTML renderer for transcript display.

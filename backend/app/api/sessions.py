@@ -121,6 +121,9 @@ async def session_stats(
 
 # ── Export transcripts ────────────────────────────────────────────────────────
 
+_EXPORT_BATCH_SIZE = 100  # Process sessions in batches to limit memory
+
+
 @router.get("/export/csv")
 async def export_sessions_csv(
     study_id: UUID,
@@ -134,26 +137,28 @@ async def export_sessions_csv(
     """
     Export all sessions and transcripts as a CSV file.
 
-    Columns: session_id, status, duration_seconds, created_at, ended_at,
-             entry_sequence, role, content, spoken_at
+    Columns: session_id, participant_id, status, duration_seconds,
+             created_at, ended_at, entry_sequence, role, content, spoken_at
+
+    Uses batched fetching to avoid loading all sessions into memory at once.
     """
     await _get_agent_or_404(study_id, agent_id, db)
 
-    stmt = (
-        select(Session)
+    # First pass: get matching session IDs only (lightweight)
+    id_stmt = (
+        select(Session.id)
         .where(Session.agent_id == agent_id)
-        .options(selectinload(Session.entries))
         .order_by(Session.created_at.desc())
     )
-    stmt = _apply_filters(stmt, status, date_from, date_to, session_ids)
-
-    result = await db.execute(stmt)
-    all_sessions = result.scalars().all()
+    id_stmt = _apply_filters(id_stmt, status, date_from, date_to, session_ids)
+    id_result = await db.execute(id_stmt)
+    all_ids = [row[0] for row in id_result.all()]
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
         "session_id",
+        "participant_id",
         "session_status",
         "duration_seconds",
         "session_created_at",
@@ -164,29 +169,45 @@ async def export_sessions_csv(
         "spoken_at",
     ])
 
-    for session in all_sessions:
-        if not session.entries:
-            writer.writerow([
-                str(session.id),
-                session.status.value,
-                session.duration_seconds,
-                session.created_at.isoformat(),
-                session.ended_at.isoformat() if session.ended_at else "",
-                "", "", "", "",
-            ])
-        else:
-            for entry in session.entries:
+    # Process in batches
+    for i in range(0, len(all_ids), _EXPORT_BATCH_SIZE):
+        batch_ids = all_ids[i : i + _EXPORT_BATCH_SIZE]
+        batch_result = await db.execute(
+            select(Session)
+            .where(Session.id.in_(batch_ids))
+            .options(selectinload(Session.entries))
+            .order_by(Session.created_at.desc())
+        )
+        batch_sessions = batch_result.scalars().all()
+
+        for session in batch_sessions:
+            if not session.entries:
                 writer.writerow([
                     str(session.id),
+                    session.participant_id or "",
                     session.status.value,
                     session.duration_seconds,
                     session.created_at.isoformat(),
                     session.ended_at.isoformat() if session.ended_at else "",
-                    entry.sequence,
-                    entry.role.value,
-                    entry.content,
-                    entry.spoken_at.isoformat(),
+                    "", "", "", "",
                 ])
+            else:
+                for entry in sorted(session.entries, key=lambda e: e.sequence):
+                    writer.writerow([
+                        str(session.id),
+                        session.participant_id or "",
+                        session.status.value,
+                        session.duration_seconds,
+                        session.created_at.isoformat(),
+                        session.ended_at.isoformat() if session.ended_at else "",
+                        entry.sequence,
+                        entry.role.value,
+                        entry.content,
+                        entry.spoken_at.isoformat(),
+                    ])
+
+        # Expire loaded objects to free memory between batches
+        db.expire_all()
 
     csv_content = output.getvalue()
     return Response(
@@ -210,42 +231,58 @@ async def export_sessions_json(
 ):
     """
     Export all sessions and transcripts as a JSON file.
+
+    Uses batched fetching to avoid loading all sessions into memory at once.
     """
     await _get_agent_or_404(study_id, agent_id, db)
 
-    stmt = (
-        select(Session)
+    # First pass: get matching session IDs only (lightweight)
+    id_stmt = (
+        select(Session.id)
         .where(Session.agent_id == agent_id)
-        .options(selectinload(Session.entries))
         .order_by(Session.created_at.desc())
     )
-    stmt = _apply_filters(stmt, status, date_from, date_to, session_ids)
-
-    result = await db.execute(stmt)
-    all_sessions = result.scalars().all()
+    id_stmt = _apply_filters(id_stmt, status, date_from, date_to, session_ids)
+    id_result = await db.execute(id_stmt)
+    all_ids = [row[0] for row in id_result.all()]
 
     data = []
-    for session in all_sessions:
-        data.append({
-            "session_id": str(session.id),
-            "status": session.status.value,
-            "duration_seconds": session.duration_seconds,
-            "total_tokens": session.total_tokens,
-            "participant_id": session.participant_id,
-            "created_at": session.created_at.isoformat(),
-            "ended_at": session.ended_at.isoformat() if session.ended_at else None,
-            "transcript": [
-                {
-                    "sequence": entry.sequence,
-                    "role": entry.role.value,
-                    "content": entry.content,
-                    "spoken_at": entry.spoken_at.isoformat(),
-                    "prompt_tokens": entry.prompt_tokens,
-                    "completion_tokens": entry.completion_tokens,
-                }
-                for entry in session.entries
-            ],
-        })
+
+    # Process in batches
+    for i in range(0, len(all_ids), _EXPORT_BATCH_SIZE):
+        batch_ids = all_ids[i : i + _EXPORT_BATCH_SIZE]
+        batch_result = await db.execute(
+            select(Session)
+            .where(Session.id.in_(batch_ids))
+            .options(selectinload(Session.entries))
+            .order_by(Session.created_at.desc())
+        )
+        batch_sessions = batch_result.scalars().all()
+
+        for session in batch_sessions:
+            data.append({
+                "session_id": str(session.id),
+                "status": session.status.value,
+                "duration_seconds": session.duration_seconds,
+                "total_tokens": session.total_tokens,
+                "participant_id": session.participant_id,
+                "created_at": session.created_at.isoformat(),
+                "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+                "transcript": [
+                    {
+                        "sequence": entry.sequence,
+                        "role": entry.role.value,
+                        "content": entry.content,
+                        "spoken_at": entry.spoken_at.isoformat(),
+                        "prompt_tokens": entry.prompt_tokens,
+                        "completion_tokens": entry.completion_tokens,
+                    }
+                    for entry in sorted(session.entries, key=lambda e: e.sequence)
+                ],
+            })
+
+        # Expire loaded objects to free memory between batches
+        db.expire_all()
 
     json_content = json.dumps(data, indent=2, ensure_ascii=False)
     return Response(

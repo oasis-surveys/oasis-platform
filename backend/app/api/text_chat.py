@@ -79,6 +79,67 @@ def _resolve_chat_model(model: str) -> str:
     return model
 
 
+async def _maybe_inject_rag_context(
+    messages: list[dict],
+    study_id: uuid.UUID | None,
+    user_text: str,
+) -> list[dict]:
+    """
+    If the study has a knowledge base, search it for context relevant to
+    the user's latest message and inject it as a system message so the LLM
+    can ground its answer in the uploaded documents.
+
+    Returns a (possibly augmented) copy of the messages list.
+    """
+    if not study_id or not user_text.strip():
+        return messages
+
+    try:
+        from app.knowledge.embeddings import search_similar_chunks
+
+        async with async_session_factory() as db:
+            results = await search_similar_chunks(
+                db=db,
+                study_id=study_id,
+                query=user_text,
+                top_k=5,
+            )
+
+        if not results:
+            return messages
+
+        # Build context block
+        context_parts = []
+        for i, r in enumerate(results, 1):
+            context_parts.append(
+                f"[Source: {r['title']}] (relevance: {r['similarity']})\n"
+                f"{r['content']}"
+            )
+        context_text = "\n\n---\n\n".join(context_parts)
+        rag_message = {
+            "role": "system",
+            "content": (
+                "The following information from the study's knowledge base may "
+                "be relevant to the participant's question. Use it to inform "
+                "your response if appropriate, but do not mention that you are "
+                "consulting a knowledge base.\n\n"
+                f"{context_text}"
+            ),
+        }
+
+        # Insert RAG context just before the latest user message
+        augmented = messages[:-1] + [rag_message, messages[-1]]
+        logger.debug(
+            f"RAG injected {len(results)} chunks for text-chat "
+            f"(study={study_id})"
+        )
+        return augmented
+
+    except Exception as exc:
+        logger.warning(f"Text-chat RAG lookup failed (non-fatal): {exc}")
+        return messages
+
+
 async def _call_llm(
     messages: list[dict],
     model: str,
@@ -87,8 +148,9 @@ async def _call_llm(
     """
     Call the LLM via LiteLLM and return the assistant message + token usage.
 
-    If the study has a knowledge base, the RAG search is done inline here
-    (unlike voice pipelines that use Pipecat's function-calling).
+    If the study has a knowledge base, relevant context is injected into
+    the messages before calling the LLM (inline RAG — unlike voice pipelines
+    that use Pipecat's function-calling tool approach).
     """
     import litellm
 
@@ -97,6 +159,15 @@ async def _call_llm(
     model = _resolve_chat_model(model)
     if model != original_model:
         logger.info(f"Text chat: remapped v2v model '{original_model}' → '{model}'")
+
+    # ── RAG context injection ──────────────────────────────────────
+    # Extract latest user message for the similarity search
+    last_user_text = ""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            last_user_text = m.get("content", "")
+            break
+    messages = await _maybe_inject_rag_context(messages, study_id, last_user_text)
 
     # Resolve model to litellm format
     litellm_model = model
