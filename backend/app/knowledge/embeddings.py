@@ -199,17 +199,20 @@ async def search_similar_chunks(
 
     # Use pgvector cosine distance for similarity search
     # Lower distance = more similar; cosine distance = 1 - cosine_similarity
+    # NOTE: Use CAST(… AS vector) instead of ::vector because
+    # SQLAlchemy's text() confuses the PostgreSQL :: cast operator
+    # with its own :param_name binding syntax when using asyncpg.
     result = await db.execute(
         text("""
             SELECT
                 kc.content,
                 kd.title,
-                1 - (kc.embedding <=> :query_embedding::vector) AS similarity
+                1 - (kc.embedding <=> CAST(:query_embedding AS vector)) AS similarity
             FROM knowledge_chunks kc
             JOIN knowledge_documents kd ON kd.id = kc.document_id
-            WHERE kd.study_id = :study_id
+            WHERE kd.study_id = CAST(:study_id AS uuid)
               AND kc.embedding IS NOT NULL
-            ORDER BY kc.embedding <=> :query_embedding::vector
+            ORDER BY kc.embedding <=> CAST(:query_embedding AS vector)
             LIMIT :top_k
         """),
         {
