@@ -45,3 +45,4 @@ pgdata/
 
 # Redis
 dump.rdb
+GOVERNANCE.md
