@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <a href="https://oasis-surveys.github.io">Website</a> · <a href="https://oasis-surveys.github.io/docs">Docs</a> · <a href="https://oasis-surveys.github.io/about">About</a> · <a href="https://oasis-surveys.github.io/license">License</a>
+  <a href="https://oasis-surveys.github.io">Website</a> · <a href="https://oasis-surveys.github.io/docs">Docs</a> · <a href="FAQ.md">FAQ</a> · <a href="https://oasis-surveys.github.io/about">About</a> · <a href="https://oasis-surveys.github.io/license">License</a>
 </p>
 
 ---
@@ -83,8 +83,8 @@ https://github.com/user-attachments/assets/bbf5a613-a28a-4dd0-a962-9250ac1f05a1
 - Any LiteLLM-compatible provider, plus a custom model identifier option
 
 **STT and TTS providers**
-- Deepgram, Scaleway Whisper (STT)
-- ElevenLabs, Cartesia, Scaleway (TTS)
+- OpenAI Whisper, Deepgram, Scaleway Whisper, self-hosted OpenAI-compatible (STT)
+- OpenAI TTS, ElevenLabs, Cartesia, self-hosted OpenAI-compatible (TTS)
 
 **Research-first design**
 - Study-level organization with multiple agents per study
