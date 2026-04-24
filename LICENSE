@@ -1,66 +1,41 @@
-Open Non-Commercial Research License (ONCRL) v1.0
+OASIS
+Copyright (C) 2025–2026 Max M. Lang
 
-Copyright (c) 2025–2026 Max M. Lang. All rights reserved.
+OASIS is free software; You can redistribute it and/or modify it under the terms of:
+  - the GNU Affero General Public License version 3 as published by the Free Software Foundation.
+You don't have to do anything special to accept the license and you don't have to notify anyone which that you have made that decision.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to use,
-copy, modify, and distribute the Software for non-commercial research and
-educational purposes only, subject to the following conditions:
+OASIS is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See your chosen license for more details.
 
-1. NON-COMMERCIAL USE ONLY
-   The Software may not be used, in whole or in part, for any commercial
-   purpose. This includes, but is not limited to, selling the Software,
-   offering it as a hosted service for profit, or incorporating it into a
-   commercial product. Any use in connection with revenue-generating
-   activities requires prior written approval from the copyright holder.
+You should have received a copy of both licenses along with OASIS.
+If not, see <http://www.gnu.org/licenses/>.
 
-2. FUNDED PROJECTS AND GRANT APPLICATIONS
-   Use of the Software as a core component of a funded research project,
-   grant application, or externally sponsored initiative requires prior
-   written approval from the copyright holder. Approval requests should be
-   directed to: max.lang@stx.ox.ac.uk
 
-3. HOSTED AND MANAGED OFFERINGS
-   The OASIS Project may offer the Software as a hosted or managed service
-   for universities, research institutions, and other academic organisations
-   that prefer a ready-to-use solution over self-hosting and maintaining
-   their own infrastructure. Contributions to the project (see section 5)
-   may be included in such offerings.
+There is a strong belief within us that the license we have chosen provides not only the best solution for providing you with the essential freedom necessary to use OASIS within your projects, but also for maintaining enough copyleft strength for us to feel confident and secure with releasing our hard work to the public. For your convenience we've included our own interpretation of the license we chose, which can be seen below.
 
-4. ATTRIBUTION
-   All copies or substantial portions of the Software must retain this
-   copyright notice and permission notice. Any published work making use of
-   the Software must cite the original repository:
+Our interpretation of the GNU Affero General Public License version 3: (Quoted words are words in which there exists a definition within the license to avoid ambiguity.)
+  1. You must always provide the source code, copyright and license information of OASIS whenever you "convey" any part of OASIS;
+     be it a verbatim copy or a modified copy.
+  2. OASIS was developed as a library and has therefore been designed without knowledge of your work; as such the following should be implied:
+     a) OASIS was developed without knowledge of your work; as such the following should be implied:
+        i)  OASIS should not fall under a work which is "based on" your work.
+        ii) You should be free to use OASIS in a work covered by the:
+            - GNU General Public License version 2
+            - GNU Lesser General Public License version 2.1
+            This is due to those licenses classifying OASIS as a work which would fall under an "aggregate" work by their terms and definitions;
+            as such it should not be covered by their terms and conditions. The relevant passages start at:
+            - Line 129 of the GNU General Public License version 2
+            - Line 206 of the GNU Lesser General Public License version 2.1
+     b) If you have not "modified", "adapted" or "extended" OASIS then your work should not be bound by this license,
+        as you are using OASIS under the definition of an "aggregate" work.
+     c) If you have "modified", "adapted" or "extended" OASIS then any of those modifications/extensions/adaptations which you have made
+        should indeed be bound by this license, as you are using OASIS under the definition of a "based on" work.
 
-       OASIS: Open Agentic Survey Interview System
-       https://github.com/oasis-surveys/oasis-platform
+Our hopes is that our own interpretation of license aligns perfectly with your own values and goals for using our work freely and securely. If you have any questions at all about the licensing chosen for OASIS you can email us directly at max.lang@stx.ox.ac.uk or you can get in touch with the license authors (the Free Software Foundation) at licensing@fsf.org to gain their opinion too.
 
-5. CONTRIBUTIONS
-   By submitting a contribution (pull request, patch, or any other form) to
-   this project, you agree to the following:
+Alternatively you can provide feedback and acquire the support you need at our GitHub issues page. We'll definitely try and help you as soon as possible, and to the best of our ability; as we understand that user experience is everything, so we want to make you as happy as possible! So feel free to get in touch and chat with other users of OASIS here at:
+https://github.com/oasis-surveys/oasis-platform/issues
 
-   a) Your contribution is licensed under the same terms as this license.
-   b) You retain full copyright over your own work. You may reuse,
-      republish, or build on your own contributions however you wish.
-   c) Your contribution may be included in hosted or managed offerings of
-      OASIS as described in section 3.
-   d) You have the right to make the contribution. The work is your own (or
-      you have permission from your employer or institution), and it does not
-      violate anyone else's intellectual property.
-
-6. NO WARRANTY
-   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-   NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-   DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-   USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-7. TERMINATION
-   This license is automatically terminated if you fail to comply with any
-   of its terms. Upon termination, you must destroy all copies of the
-   Software in your possession.
-
-For permissions beyond the scope of this license, please contact:
-max.lang@stx.ox.ac.uk
+Thanks, and we hope you enjoy using OASIS and that it's everything you ever hoped it could be.

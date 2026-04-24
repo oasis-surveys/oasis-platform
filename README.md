@@ -194,11 +194,11 @@ Contributions welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
 ## License
 
-**Open Non-Commercial Research License (ONCRL) v1.0.**
+OASIS is licensed under the **GNU Affero General Public License v3 (AGPL-3.0)**.
 
-Free to use, modify, and share for non-commercial research and education. Using OASIS as a core component of a funded research project or grant application requires prior written approval from the copyright holder (not meant as a barrier, just helps us track usage and attribution).
+You're free to use, modify, and distribute OASIS for any purpose, including funded academic research. If you deploy a modified version as a network service, you must make your changes available under the same license. That's the deal.
 
-For hosted/managed service inquiries, [get in touch](mailto:max.lang@stx.ox.ac.uk). See the full [LICENSE](LICENSE) file.
+See the full [LICENSE](LICENSE) file for details and the [FAQ](FAQ.md#whats-the-deal-with-the-license) for a plain-English explanation. If you use OASIS in your research, a citation would be appreciated (see below).
 
 ## Citation
 

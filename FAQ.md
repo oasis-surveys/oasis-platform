@@ -14,6 +14,7 @@ Things people ask. Updated when new ones come in.
 - [Where does my data go?](#where-does-my-data-go)
 - [Can I use this for phone interviews?](#can-i-use-this-for-phone-interviews)
 - [How many concurrent interviews can it handle?](#how-many-concurrent-interviews-can-it-handle)
+- [What's the deal with the license?](#whats-the-deal-with-the-license)
 - [Something is broken](#something-is-broken)
 
 ---
@@ -111,6 +112,23 @@ Incoming calls only for now. No outbound calling yet.
 Depends on your setup. The OASIS backend is async (FastAPI + WebSockets) and handles many concurrent sessions fine. The bottleneck is usually the AI providers, each voice session holds a persistent connection to STT/LLM/TTS.
 
 Cloud providers: limited by their rate limits and your API tier. Self-hosted: limited by your GPU capacity.
+
+</details>
+
+<details>
+<summary><strong>What's the deal with the license?</strong></summary>
+
+OASIS is licensed under the **GNU Affero General Public License v3 (AGPL-3.0)**.
+
+In plain terms: you can use OASIS for anything, including funded research, grant-backed studies, university projects, whatever. No need to ask permission first. NSF grant, Wellcome Trust award, EU Horizon project, doesn't matter. Just use it.
+
+The one thing AGPL requires: if you modify OASIS and deploy it as a network service (i.e. you run a modified version for other people to use over the internet), you need to make your source code available under the same license. This is specifically designed to prevent companies from taking the code, building a paid SaaS on top of it, and not contributing back. If you're running it internally for your own research, this doesn't apply to you.
+
+We previously used a custom non-commercial license (ONCRL) but it created ambiguity around funded academic work, which is exactly the use case we want to support. AGPL fixes that.
+
+If you use OASIS in published research, we'd appreciate a citation. There's a BibTeX entry and Zenodo DOI in the [README](README.md#citation). It's not a legal requirement, just a nice thing to do that helps the project.
+
+Questions? [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk)
 
 </details>
 
