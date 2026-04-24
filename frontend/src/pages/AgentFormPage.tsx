@@ -92,6 +92,7 @@ const STT_PROVIDERS = [
   { value: "openai", label: "OpenAI Whisper (default)" },
   { value: "deepgram", label: "Deepgram" },
   { value: "scaleway", label: "Scaleway Whisper" },
+  { value: "self_hosted", label: "Self-Hosted (OpenAI-compatible)" },
 ];
 
 const DEEPGRAM_MODELS = [
@@ -117,6 +118,7 @@ const SCALEWAY_STT_MODELS = [
 const TTS_PROVIDERS = [
   { value: "openai", label: "OpenAI TTS" },
   { value: "elevenlabs", label: "ElevenLabs" },
+  { value: "self_hosted", label: "Self-Hosted (OpenAI-compatible)" },
 ];
 
 const OPENAI_TTS_VOICES = [
@@ -642,7 +644,9 @@ export default function AgentFormPage() {
       ? DEEPGRAM_MODELS
       : form.stt_provider === "scaleway"
         ? SCALEWAY_STT_MODELS
-        : OPENAI_STT_MODELS;
+        : form.stt_provider === "self_hosted"
+          ? []
+          : OPENAI_STT_MODELS;
 
   // V2V voice options based on selected model
   const isGoogleV2V = form.llm_model.startsWith("google/");
@@ -650,7 +654,11 @@ export default function AgentFormPage() {
 
   // TTS voice options based on provider
   const ttsVoiceOptions =
-    form.tts_provider === "openai" ? OPENAI_TTS_VOICES : ELEVENLABS_VOICES;
+    form.tts_provider === "openai"
+      ? OPENAI_TTS_VOICES
+      : form.tts_provider === "self_hosted"
+        ? OPENAI_TTS_VOICES
+        : ELEVENLABS_VOICES;
 
   // Fetch API key status on mount for missing-key warnings
   useEffect(() => {
@@ -689,6 +697,8 @@ export default function AgentFormPage() {
         if (!missingKeys.some((k) => k.field === "scaleway_secret_key")) {
           missingKeys.push({ label: "Scaleway Secret Key", field: "scaleway_secret_key", envVar: "SCALEWAY_SECRET_KEY" });
         }
+      } else if (form.stt_provider === "self_hosted" && !isKeySet("self_hosted_stt_url")) {
+        missingKeys.push({ label: "Self-Hosted STT URL", field: "self_hosted_stt_url", envVar: "SELF_HOSTED_STT_URL" });
       }
     }
 
@@ -700,6 +710,8 @@ export default function AgentFormPage() {
         if (!missingKeys.some((k) => k.field === "openai_api_key")) {
           missingKeys.push({ label: "OpenAI API Key", field: "openai_api_key", envVar: "OPENAI_API_KEY" });
         }
+      } else if (form.tts_provider === "self_hosted" && !isKeySet("self_hosted_tts_url")) {
+        missingKeys.push({ label: "Self-Hosted TTS URL", field: "self_hosted_tts_url", envVar: "SELF_HOSTED_TTS_URL" });
       }
     }
   }
@@ -1685,6 +1697,16 @@ export default function AgentFormPage() {
                 <strong>Scaleway STT:</strong> Uses the Whisper Large V3 model via Scaleway's OpenAI-compatible API. Requires <code>SCALEWAY_SECRET_KEY</code>.
               </InfoBanner>
             )}
+            {isModular && form.stt_provider === "self_hosted" && (
+              <InfoBanner color="sky">
+                <strong>Self-Hosted STT:</strong> Point this at any OpenAI-compatible speech-to-text server (e.g. Speaches/faster-whisper, LocalAI). Configure <code>SELF_HOSTED_STT_URL</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
+              </InfoBanner>
+            )}
+            {isModular && form.tts_provider === "self_hosted" && (
+              <InfoBanner color="sky">
+                <strong>Self-Hosted TTS:</strong> Point this at any OpenAI-compatible text-to-speech server (e.g. Kokoro, Piper, LocalAI). Configure <code>SELF_HOSTED_TTS_URL</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
+              </InfoBanner>
+            )}
 
             {/* STT / TTS — only visible for voice modular pipeline */}
             {form.modality === "voice" && isModular && (
@@ -1694,7 +1716,7 @@ export default function AgentFormPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
                       Speech-to-Text
-                      <HelpTooltip text="The STT provider converts participant audio into text for the LLM. Deepgram offers real-time streaming; Whisper models work for batch processing." />
+                      <HelpTooltip text="The STT provider converts participant audio into text for the LLM. Deepgram offers real-time streaming; Whisper models work for batch processing. Self-Hosted uses any OpenAI-compatible STT server." />
                     </label>
                     <select
                       value={form.stt_provider}
@@ -1708,7 +1730,9 @@ export default function AgentFormPage() {
                               ? "nova-2"
                               : p === "scaleway"
                                 ? "whisper-large-v3"
-                                : "gpt-4o-transcribe",
+                                : p === "self_hosted"
+                                  ? "whisper-1"
+                                  : "gpt-4o-transcribe",
                         }));
                       }}
                       className="select-styled"
@@ -1718,20 +1742,35 @@ export default function AgentFormPage() {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      STT Model
-                    </label>
-                    <select
-                      value={form.stt_model}
-                      onChange={set("stt_model")}
-                      className="select-styled"
-                    >
-                      {sttModelOptions.map((m) => (
-                        <option key={m.value} value={m.value}>{m.label}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {form.stt_provider !== "self_hosted" ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        STT Model
+                      </label>
+                      <select
+                        value={form.stt_model}
+                        onChange={set("stt_model")}
+                        className="select-styled"
+                      >
+                        {sttModelOptions.map((m) => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        STT Model
+                      </label>
+                      <input
+                        type="text"
+                        value={form.stt_model}
+                        onChange={set("stt_model")}
+                        placeholder="whisper-1"
+                        className="input-styled"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* TTS row */}
@@ -1739,7 +1778,7 @@ export default function AgentFormPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
                       Text-to-Speech
-                      <HelpTooltip text="The TTS provider converts the LLM's text response back into speech for the participant." />
+                      <HelpTooltip text="The TTS provider converts the LLM's text response back into speech for the participant. Self-Hosted uses any OpenAI-compatible TTS server." />
                     </label>
                     <select
                       value={form.tts_provider}
@@ -1748,8 +1787,8 @@ export default function AgentFormPage() {
                         setForm((f) => ({
                           ...f,
                           tts_provider: p,
-                          tts_voice: p === "openai" ? "alloy" : "rachel",
-                          tts_model: p === "openai" ? "gpt-4o-mini-tts" : "",
+                          tts_voice: p === "elevenlabs" ? "rachel" : "alloy",
+                          tts_model: p === "openai" ? "gpt-4o-mini-tts" : p === "self_hosted" ? "tts-1" : "",
                         }));
                       }}
                       className="select-styled"
@@ -1775,19 +1814,43 @@ export default function AgentFormPage() {
                       </select>
                     </div>
                   )}
+                  {form.tts_provider === "self_hosted" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        TTS Model
+                      </label>
+                      <input
+                        type="text"
+                        value={form.tts_model}
+                        onChange={set("tts_model")}
+                        placeholder="tts-1"
+                        className="input-styled"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       Voice
                     </label>
-                    <select
-                      value={form.tts_voice}
-                      onChange={set("tts_voice")}
-                      className="select-styled"
-                    >
-                      {ttsVoiceOptions.map((v) => (
-                        <option key={v.value} value={v.value}>{v.label}</option>
-                      ))}
-                    </select>
+                    {form.tts_provider === "self_hosted" ? (
+                      <input
+                        type="text"
+                        value={form.tts_voice}
+                        onChange={set("tts_voice")}
+                        placeholder="alloy"
+                        className="input-styled"
+                      />
+                    ) : (
+                      <select
+                        value={form.tts_voice}
+                        onChange={set("tts_voice")}
+                        className="select-styled"
+                      >
+                        {ttsVoiceOptions.map((v) => (
+                          <option key={v.value} value={v.value}>{v.label}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </div>
 

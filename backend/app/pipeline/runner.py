@@ -900,6 +900,23 @@ async def _build_stt(provider: str, language: str):
         from pipecat.services.azure.stt import AzureSTTService
         return AzureSTTService()
 
+    if provider == "self_hosted":
+        from pipecat.services.openai.stt import OpenAISTTService, OpenAISTTSettings
+        base_url = await _get_key("self_hosted_stt_url") or settings.self_hosted_stt_url
+        if not base_url:
+            raise ValueError(
+                "SELF_HOSTED_STT_URL is not set. Provide the base URL for your "
+                "OpenAI-compatible STT server (e.g. http://my-server:8000/v1)."
+            )
+        api_key = await _get_key("self_hosted_stt_api_key") or "not-needed"
+        model = settings.self_hosted_stt_model or "whisper-1"
+        return OpenAISTTService(
+            api_key=api_key,
+            base_url=base_url,
+            language=language,
+            settings=OpenAISTTSettings(model=model),
+        )
+
     raise ValueError(f"Unsupported STT provider: {provider}")
 
 
@@ -940,6 +957,25 @@ async def _build_tts(provider: str, voice: Optional[str], language: str):
     if provider == "azure":
         from pipecat.services.azure.tts import AzureTTSService
         return AzureTTSService()
+
+    if provider == "self_hosted":
+        from pipecat.services.openai.tts import OpenAITTSService, OpenAITTSSettings
+        base_url = await _get_key("self_hosted_tts_url") or settings.self_hosted_tts_url
+        if not base_url:
+            raise ValueError(
+                "SELF_HOSTED_TTS_URL is not set. Provide the base URL for your "
+                "OpenAI-compatible TTS server (e.g. http://my-server:8100/v1)."
+            )
+        api_key = await _get_key("self_hosted_tts_api_key") or "not-needed"
+        model = settings.self_hosted_tts_model or "tts-1"
+        return OpenAITTSService(
+            api_key=api_key,
+            base_url=base_url,
+            settings=OpenAITTSSettings(
+                model=model,
+                voice=voice or "alloy",
+            ),
+        )
 
     raise ValueError(f"Unsupported TTS provider: {provider}")
 

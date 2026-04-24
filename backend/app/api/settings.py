@@ -33,6 +33,12 @@ _API_KEY_FIELDS = {
     "azure_openai_endpoint": "AZURE_OPENAI_ENDPOINT",
     "gcp_project_id": "GCP_PROJECT_ID",
     "gcp_api_key": "GCP_API_KEY",
+    "self_hosted_stt_url": "SELF_HOSTED_STT_URL",
+    "self_hosted_stt_api_key": "SELF_HOSTED_STT_API_KEY",
+    "self_hosted_stt_model": "SELF_HOSTED_STT_MODEL",
+    "self_hosted_tts_url": "SELF_HOSTED_TTS_URL",
+    "self_hosted_tts_api_key": "SELF_HOSTED_TTS_API_KEY",
+    "self_hosted_tts_model": "SELF_HOSTED_TTS_MODEL",
     "twilio_account_sid": "TWILIO_ACCOUNT_SID",
     "twilio_auth_token": "TWILIO_AUTH_TOKEN",
     "twilio_phone_number": "TWILIO_PHONE_NUMBER",
@@ -70,6 +76,12 @@ class ApiKeyUpdate(BaseModel):
     azure_openai_endpoint: Optional[str] = None
     gcp_project_id: Optional[str] = None
     gcp_api_key: Optional[str] = None
+    self_hosted_stt_url: Optional[str] = None
+    self_hosted_stt_api_key: Optional[str] = None
+    self_hosted_stt_model: Optional[str] = None
+    self_hosted_tts_url: Optional[str] = None
+    self_hosted_tts_api_key: Optional[str] = None
+    self_hosted_tts_model: Optional[str] = None
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
     twilio_phone_number: Optional[str] = None

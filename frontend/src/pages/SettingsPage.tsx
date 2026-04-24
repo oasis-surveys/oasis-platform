@@ -63,6 +63,36 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
     description: "Alternative to Application Default Credentials for GCP.",
     category: "Self-Hosted",
   },
+  self_hosted_stt_url: {
+    label: "Self-Hosted STT URL",
+    description: "Base URL for an OpenAI-compatible STT server (e.g. Speaches, faster-whisper).",
+    category: "Self-Hosted",
+  },
+  self_hosted_stt_api_key: {
+    label: "Self-Hosted STT API Key",
+    description: "API key for the self-hosted STT server (optional — many local servers ignore this).",
+    category: "Self-Hosted",
+  },
+  self_hosted_stt_model: {
+    label: "Self-Hosted STT Model",
+    description: "Model name to pass to the STT server (default: whisper-1).",
+    category: "Self-Hosted",
+  },
+  self_hosted_tts_url: {
+    label: "Self-Hosted TTS URL",
+    description: "Base URL for an OpenAI-compatible TTS server (e.g. Kokoro, Piper).",
+    category: "Self-Hosted",
+  },
+  self_hosted_tts_api_key: {
+    label: "Self-Hosted TTS API Key",
+    description: "API key for the self-hosted TTS server (optional — many local servers ignore this).",
+    category: "Self-Hosted",
+  },
+  self_hosted_tts_model: {
+    label: "Self-Hosted TTS Model",
+    description: "Model name to pass to the TTS server (default: tts-1).",
+    category: "Self-Hosted",
+  },
   twilio_account_sid: {
     label: "Twilio Account SID",
     description: "Required for telephony (phone call) interviews.",

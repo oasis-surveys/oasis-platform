@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     gcp_location: str = "us-central1"
     gcp_api_key: str = ""  # alternative to Application Default Credentials
 
+    # ── Self-Hosted STT/TTS (OpenAI-compatible endpoints) ──
+    self_hosted_stt_url: str = ""       # e.g. http://my-server:8000/v1
+    self_hosted_stt_api_key: str = ""   # optional, many local servers ignore this
+    self_hosted_stt_model: str = "whisper-1"
+    self_hosted_tts_url: str = ""       # e.g. http://my-server:8100/v1
+    self_hosted_tts_api_key: str = ""
+    self_hosted_tts_model: str = "tts-1"
+
     # ── Telephony ──
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
