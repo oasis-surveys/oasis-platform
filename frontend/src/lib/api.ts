@@ -151,6 +151,11 @@ export interface AgentListItem {
   status: "draft" | "active" | "paused";
   pipeline_type: "modular" | "voice_to_voice";
   llm_model: string;
+  stt_provider: string;
+  stt_model: string | null;
+  tts_provider: string;
+  tts_model: string | null;
+  tts_voice: string | null;
   language: string;
   widget_key: string;
   participant_id_mode: "random" | "predefined" | "input";
@@ -309,6 +314,34 @@ export const agents = {
     request<void>(`/studies/${studyId}/agents/${agentId}`, {
       method: "DELETE",
     }),
+
+  /** Instantiate an Agent in this study from a built-in template. */
+  createFromTemplate: (
+    studyId: string,
+    templateId: string,
+    body?: { name?: string },
+  ) =>
+    request<Agent>(`/studies/${studyId}/agents/from-template/${templateId}`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+};
+
+// ── Templates (public listing, auth-required to instantiate) ────
+
+export interface AgentTemplate {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  modality: "voice" | "text";
+  pipeline_type: "modular" | "voice_to_voice";
+  llm_model: string;
+  interview_mode: "free_form" | "structured";
+}
+
+export const templates = {
+  list: () => request<AgentTemplate[]>("/templates"),
 };
 
 // ── Widget Config (public) ───────────────────────────────────
@@ -326,7 +359,11 @@ export const participants = {
       `/studies/${studyId}/agents/${agentId}/participants`
     ),
 
-  create: (studyId: string, agentId: string, data: { identifier: string; label?: string }) =>
+  create: (
+    studyId: string,
+    agentId: string,
+    data: { identifier: string; label?: string | null },
+  ) =>
     request<ParticipantIdentifier>(
       `/studies/${studyId}/agents/${agentId}/participants`,
       { method: "POST", body: JSON.stringify(data) }
@@ -342,6 +379,13 @@ export const participants = {
     request<void>(
       `/studies/${studyId}/agents/${agentId}/participants/${participantId}`,
       { method: "DELETE" }
+    ),
+
+  /** Re-mark a predefined participant identifier as available. */
+  release: (studyId: string, agentId: string, participantId: string) =>
+    request<ParticipantIdentifier>(
+      `/studies/${studyId}/agents/${agentId}/participants/${participantId}/release`,
+      { method: "POST" }
     ),
 };
 
@@ -465,7 +509,59 @@ export const sessions = {
     const qs = searchParams.toString();
     return `${BASE}/studies/${studyId}/agents/${agentId}/sessions/export/json${qs ? `?${qs}` : ""}`;
   },
+
+  /**
+   * Trigger an authenticated CSV download. Uses a Bearer-authed fetch so the
+   * browser doesn't strip the Authorization header (which it does for plain
+   * <a download> clicks). Falls back to the response Content-Disposition
+   * filename when present.
+   */
+  downloadCsv: (studyId: string, agentId: string, params?: SessionListParams) =>
+    downloadAuthed(sessions.exportCsvUrl(studyId, agentId, params), "sessions.csv"),
+
+  downloadJson: (studyId: string, agentId: string, params?: SessionListParams) =>
+    downloadAuthed(sessions.exportJsonUrl(studyId, agentId, params), "sessions.json"),
 };
+
+/** Fetch a URL with the auth token, then save the blob with a sensible filename. */
+export async function downloadAuthed(url: string, fallbackName: string): Promise<void> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(url, { headers });
+  if (res.status === 401) {
+    clearAuthToken();
+    if (window.location.pathname !== "/login") window.location.href = "/login";
+    throw new Error("Authentication required");
+  }
+  if (!res.ok) {
+    let detail = `Download failed: ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      // not JSON, ignore
+    }
+    throw new Error(detail);
+  }
+
+  // Pull the filename from Content-Disposition when the backend sets it.
+  let filename = fallbackName;
+  const disp = res.headers.get("Content-Disposition") || "";
+  const match = disp.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+  if (match) filename = decodeURIComponent(match[1] || match[2] || fallbackName);
+
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(objectUrl);
+}
 
 // ── Settings (API Keys) ─────────────────────────────────────────
 
@@ -481,11 +577,30 @@ export interface ApiKeysResponse {
   keys: ApiKeyStatus[];
 }
 
+export interface FlagStatus {
+  field: string;
+  env_var: string;
+  enabled: boolean;
+  source: "env" | "dashboard" | "default";
+}
+
+export interface FlagsResponse {
+  flags: FlagStatus[];
+}
+
 export const settingsApi = {
   getKeys: () => request<ApiKeysResponse>("/settings/keys"),
 
   updateKeys: (updates: Record<string, string>) =>
     request<ApiKeysResponse>("/settings/keys", {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    }),
+
+  getFlags: () => request<FlagsResponse>("/settings/flags"),
+
+  updateFlags: (updates: Record<string, boolean>) =>
+    request<FlagsResponse>("/settings/flags", {
       method: "PUT",
       body: JSON.stringify(updates),
     }),

@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     cartesia_api_key: str = ""
 
+    # ── OpenAI data-residency (EU regional API) ──
+    # When OPENAI_USE_EU=true, all calls to OpenAI (chat, realtime, STT, TTS,
+    # embeddings) are routed through https://eu.api.openai.com instead of the
+    # default api.openai.com. Requires that the OpenAI project the API key
+    # belongs to has data-residency enabled and a Modified Abuse Monitoring or
+    # Zero Data Retention amendment in place. See
+    # https://developers.openai.com/api/docs/guides/your-data
+    openai_use_eu: bool = False
+
     # ── Scaleway (OpenAI-compatible LLM API) ──
     # Uses SCALEWAY_SECRET_KEY as the Bearer token (secret part of the API keypair)
     scaleway_secret_key: str = ""          # maps to SCALEWAY_SECRET_KEY in .env
@@ -62,8 +71,17 @@ class Settings(BaseSettings):
         """Return the Scaleway secret key for use as a Bearer token."""
         return self.scaleway_secret_key
 
-    # ── Google AI (Gemini Live native audio) ──
+    # ── Google AI (Gemini Live native audio + Gemini text models) ──
     google_api_key: str = ""               # maps to GOOGLE_API_KEY in .env
+
+    # ── Anthropic (Claude text models) ──
+    anthropic_api_key: str = ""            # maps to ANTHROPIC_API_KEY in .env
+
+    # ── OpenAI-Compatible Custom LLM (LiteLLM proxy, vLLM, etc.) ──
+    # Point at any base URL that speaks the OpenAI Chat Completions protocol.
+    # Used by voice pipelines when llm_model starts with "custom/".
+    openai_compatible_llm_url: str = ""    # e.g. http://my-litellm:4000/v1
+    openai_compatible_llm_api_key: str = ""
 
     # ── Azure OpenAI (self-hosted) ──
     azure_openai_api_key: str = ""

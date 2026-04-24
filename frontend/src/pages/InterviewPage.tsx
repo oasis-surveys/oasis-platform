@@ -380,6 +380,11 @@ export default function InterviewPage() {
           const msg = JSON.parse(event.data as string);
           switch (msg.type) {
             case "welcome":
+              // The server includes the agent's avatar in the payload; use it
+              // to keep the chat in sync if the agent was edited mid-flight.
+              if (msg.avatar && msg.avatar !== config?.avatar) {
+                setConfig((prev) => (prev ? { ...prev, avatar: msg.avatar } : prev));
+              }
               setChatMessages((prev) => [
                 ...prev,
                 { id: crypto.randomUUID(), role: "agent", text: msg.text, timestamp: new Date() },

@@ -102,3 +102,63 @@ class TestParticipantsCRUD:
             f"/api/studies/{study_id}/agents/{agent_id}/participants/{fake_id}"
         )
         assert resp.status_code == 404
+
+
+class TestParticipantRelease:
+    async def test_release_marks_unused(
+        self, client: AsyncClient, study_agent, db_session_factory
+    ):
+        """Releasing a used identifier resets ``used`` to False."""
+        from app.models.agent import ParticipantIdentifier
+        import uuid as _uuid
+
+        study_id, agent_id = study_agent
+        create_resp = await client.post(
+            f"/api/studies/{study_id}/agents/{agent_id}/participants",
+            json={"identifier": "P-USED"},
+        )
+        pid = create_resp.json()["id"]
+
+        # Mark as used directly via the DB to simulate a finished session
+        async with db_session_factory() as db:
+            obj = await db.get(ParticipantIdentifier, _uuid.UUID(pid))
+            obj.used = True
+            await db.commit()
+
+        # Sanity check
+        list_resp = await client.get(
+            f"/api/studies/{study_id}/agents/{agent_id}/participants"
+        )
+        assert any(p["id"] == pid and p["used"] for p in list_resp.json())
+
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents/{agent_id}/participants/{pid}/release"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == pid
+        assert body["used"] is False
+        assert body["session_id"] is None
+
+    async def test_release_unused_is_idempotent(self, client: AsyncClient, study_agent):
+        study_id, agent_id = study_agent
+        create_resp = await client.post(
+            f"/api/studies/{study_id}/agents/{agent_id}/participants",
+            json={"identifier": "P-FRESH"},
+        )
+        pid = create_resp.json()["id"]
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents/{agent_id}/participants/{pid}/release"
+        )
+        assert resp.status_code == 200
+        assert resp.json()["used"] is False
+
+    async def test_release_nonexistent_returns_404(
+        self, client: AsyncClient, study_agent
+    ):
+        study_id, agent_id = study_agent
+        fake_id = str(uuid.uuid4())
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents/{agent_id}/participants/{fake_id}/release"
+        )
+        assert resp.status_code == 404

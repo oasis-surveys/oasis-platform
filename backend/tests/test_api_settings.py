@@ -67,3 +67,55 @@ class TestSettingsAPI:
         data = resp.json()
         assert "auth_enabled" in data
         assert "username" in data
+
+
+class TestFlagsAPI:
+    """Tests for the boolean feature flag endpoints (data residency, etc.)."""
+
+    async def test_list_flags(self, client: AsyncClient):
+        resp = await client.get("/api/settings/flags")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "flags" in data
+        flags = data["flags"]
+        assert isinstance(flags, list)
+        names = [f["field"] for f in flags]
+        assert "openai_use_eu" in names
+
+    async def test_flag_default_is_off(self, client: AsyncClient):
+        resp = await client.get("/api/settings/flags")
+        flag = next(f for f in resp.json()["flags"] if f["field"] == "openai_use_eu")
+        assert flag["enabled"] is False
+        assert flag["source"] in ("env", "default")
+        assert flag["env_var"] == "OPENAI_USE_EU"
+
+    async def test_enable_flag_via_dashboard(self, client: AsyncClient):
+        resp = await client.put(
+            "/api/settings/flags",
+            json={"openai_use_eu": True},
+        )
+        assert resp.status_code == 200
+        flag = next(f for f in resp.json()["flags"] if f["field"] == "openai_use_eu")
+        assert flag["enabled"] is True
+        assert flag["source"] == "dashboard"
+
+    async def test_disable_flag_via_dashboard(self, client: AsyncClient):
+        # Enable then disable — both should land as dashboard overrides.
+        await client.put("/api/settings/flags", json={"openai_use_eu": True})
+        resp = await client.put(
+            "/api/settings/flags",
+            json={"openai_use_eu": False},
+        )
+        flag = next(f for f in resp.json()["flags"] if f["field"] == "openai_use_eu")
+        assert flag["enabled"] is False
+        assert flag["source"] == "dashboard"
+
+    async def test_get_effective_flag_helper(self, client: AsyncClient):
+        from app.api.settings import get_effective_flag
+
+        # Default
+        assert await get_effective_flag("openai_use_eu") is False
+
+        # Enable via API
+        await client.put("/api/settings/flags", json={"openai_use_eu": True})
+        assert await get_effective_flag("openai_use_eu") is True

@@ -79,8 +79,8 @@ class Agent(Base):
             name="agent_status",
             values_callable=lambda e: [member.value for member in e],
         ),
-        default=AgentStatus.DRAFT,
-        server_default=AgentStatus.DRAFT.value,
+        default=AgentStatus.ACTIVE,
+        server_default=AgentStatus.ACTIVE.value,
     )
 
     # ── Prompt / Behaviour ──

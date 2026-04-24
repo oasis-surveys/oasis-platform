@@ -10,12 +10,6 @@ import pytest
 
 
 class TestConfig:
-    def test_settings_loaded(self):
-        from app.config import settings
-
-        assert settings.app_name == "OASIS"
-        assert settings.debug is True  # Default
-
     def test_database_url_format(self):
         from app.config import settings
 

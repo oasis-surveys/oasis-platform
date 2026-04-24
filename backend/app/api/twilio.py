@@ -31,13 +31,58 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import async_session_factory
 from app.models.agent import Agent, AgentStatus, ParticipantIdMode
-from app.models.session import Session, SessionStatus
+from app.models.session import Session, SessionStatus, aggregate_session_tokens
 from app.realtime import publish_transcript_event
 
 router = APIRouter()
 
 # Maximum pipeline runtime (seconds)
 _MAX_PIPELINE_SECONDS = 7200
+
+
+def _normalize_e164(value: str | None) -> str:
+    """Normalize a phone number for comparison.
+
+    Strips spaces, dashes and parentheses; ensures a leading ``+``. Empty
+    inputs return ``""`` so they never match.
+    """
+    if not value:
+        return ""
+    cleaned = "".join(c for c in value if c.isdigit() or c == "+")
+    if not cleaned:
+        return ""
+    if not cleaned.startswith("+"):
+        cleaned = "+" + cleaned
+    return cleaned
+
+
+async def _resolve_twilio_agent(
+    db, agent_id: str, called_number: str | None
+) -> Agent | None:
+    """Resolve the agent for an inbound Twilio call.
+
+    Preference order:
+      1. An ACTIVE agent whose ``twilio_phone_number`` matches the called
+         number (E.164 normalized). Useful when several agents share the
+         same backend webhook URL but use different Twilio numbers.
+      2. The ACTIVE agent identified by ``agent_id`` in the URL path.
+    """
+    normalized = _normalize_e164(called_number)
+    if normalized:
+        result = await db.execute(
+            select(Agent).where(Agent.status == AgentStatus.ACTIVE.value)
+        )
+        for candidate in result.scalars().all():
+            if _normalize_e164(candidate.twilio_phone_number) == normalized:
+                return candidate
+
+    result = await db.execute(
+        select(Agent).where(
+            Agent.id == uuid.UUID(agent_id),
+            Agent.status == AgentStatus.ACTIVE.value,
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 @router.post("/api/twilio/voice/{agent_id}")
@@ -48,15 +93,16 @@ async def twilio_voice_webhook(agent_id: str, request: Request):
     Returns TwiML XML instructing Twilio to connect the call to
     our WebSocket endpoint via Media Streams.
     """
-    # Validate the agent exists and is active
+    # Twilio posts the called number as the ``To`` form field. We use this
+    # to route to the right agent when several share the same webhook URL.
+    try:
+        form = await request.form()
+        called_number = form.get("To")
+    except Exception:
+        called_number = None
+
     async with async_session_factory() as db:
-        result = await db.execute(
-            select(Agent).where(
-                Agent.id == uuid.UUID(agent_id),
-                Agent.status == AgentStatus.ACTIVE.value,
-            )
-        )
-        agent = result.scalar_one_or_none()
+        agent = await _resolve_twilio_agent(db, agent_id, called_number)
 
     if not agent:
         # Return TwiML that says the agent is unavailable
@@ -67,20 +113,24 @@ async def twilio_voice_webhook(agent_id: str, request: Request):
 </Response>"""
         return Response(content=twiml, media_type="application/xml")
 
-    # Build the WebSocket URL for Twilio to connect to
-    # Twilio requires wss:// in production; for local dev ws:// works via ngrok
+    # Build the WebSocket URL using the resolved agent's id (which may
+    # differ from the path's agent_id if To-number routing matched).
+    resolved_agent_id = str(agent.id)
     host = request.headers.get("host", "localhost")
     scheme = "wss" if request.url.scheme == "https" else "ws"
-    ws_url = f"{scheme}://{host}/ws/twilio/{agent_id}"
+    ws_url = f"{scheme}://{host}/ws/twilio/{resolved_agent_id}"
 
-    logger.info(f"Twilio voice webhook: agent={agent_id}, ws_url={ws_url}")
+    logger.info(
+        f"Twilio voice webhook: path_agent={agent_id}, resolved_agent={resolved_agent_id}, "
+        f"called_number={called_number}, ws_url={ws_url}"
+    )
 
     # Return TwiML that connects the call to our WebSocket
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Connect>
     <Stream url="{ws_url}">
-      <Parameter name="agent_id" value="{agent_id}" />
+      <Parameter name="agent_id" value="{resolved_agent_id}" />
     </Stream>
   </Connect>
 </Response>"""
@@ -173,7 +223,9 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             ),
             "llm_model": agent.llm_model,
             "stt_provider": agent.stt_provider,
+            "stt_model": agent.stt_model,
             "tts_provider": agent.tts_provider,
+            "tts_model": agent.tts_model,
             "tts_voice": agent.tts_voice,
             "language": agent.language,
             "max_duration_seconds": agent.max_duration_seconds,
@@ -222,7 +274,9 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             pipeline_type=agent_cfg["pipeline_type"],
             llm_model=agent_cfg["llm_model"],
             stt_provider=agent_cfg["stt_provider"],
+            stt_model=agent_cfg["stt_model"],
             tts_provider=agent_cfg["tts_provider"],
+            tts_model=agent_cfg["tts_model"],
             tts_voice=agent_cfg["tts_voice"],
             language=agent_cfg["language"],
             max_duration_seconds=agent_cfg["max_duration_seconds"],
@@ -263,6 +317,7 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
                     sess.status = final_status
                     sess.ended_at = end_time
                     sess.duration_seconds = duration
+                    sess.total_tokens = await aggregate_session_tokens(db, session_id)
                     await db.commit()
 
             await publish_transcript_event(

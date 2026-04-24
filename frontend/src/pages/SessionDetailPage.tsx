@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { sessions, type SessionDetail } from "../lib/api";
+import { sessions, getAuthToken, type SessionDetail } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 
 const ROLE_STYLES: Record<string, string> = {
@@ -114,7 +114,13 @@ export default function SessionDetailPage() {
   useEffect(() => {
     if (!isLive || !sessionId) return;
 
-    const socket = new WebSocket(`${WS_MONITOR_URL}/${sessionId}`);
+    // Attach JWT as a query param when present — the monitor endpoint reads
+    // ?token=… and rejects with close code 4401 when AUTH_ENABLED=true.
+    const token = getAuthToken();
+    const url = token
+      ? `${WS_MONITOR_URL}/${sessionId}?token=${encodeURIComponent(token)}`
+      : `${WS_MONITOR_URL}/${sessionId}`;
+    const socket = new WebSocket(url);
     ws.current = socket;
 
     socket.onopen = () => setLiveStatus("connected");
@@ -202,8 +208,18 @@ export default function SessionDetailPage() {
     ...newLiveEntries,
   ].sort((a, b) => a.sequence - b.sequence);
 
-  const exportCsvUrl = sessions.exportCsvUrl(studyId!, agentId!);
-  const exportJsonUrl = sessions.exportJsonUrl(studyId!, agentId!);
+  const handleDownload = async (format: "csv" | "json") => {
+    try {
+      if (format === "csv") {
+        await sessions.downloadCsv(studyId!, agentId!, { session_ids: sessionId! });
+      } else {
+        await sessions.downloadJson(studyId!, agentId!, { session_ids: sessionId! });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Export failed";
+      alert(msg);
+    }
+  };
 
   return (
     <div>
@@ -255,20 +271,34 @@ export default function SessionDetailPage() {
                 {terminating ? "Terminating…" : "Terminate"}
               </button>
             )}
-            <a href={exportCsvUrl} download className="btn-secondary !py-1.5 !px-3 !text-xs">
+            <button
+              type="button"
+              onClick={() => handleDownload("csv")}
+              className="btn-secondary !py-1.5 !px-3 !text-xs"
+            >
               <DownloadIcon /> CSV
-            </a>
-            <a href={exportJsonUrl} download className="btn-secondary !py-1.5 !px-3 !text-xs">
+            </button>
+            <button
+              type="button"
+              onClick={() => handleDownload("json")}
+              className="btn-secondary !py-1.5 !px-3 !text-xs"
+            >
               <DownloadIcon /> JSON
-            </a>
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
           <div>
             <span className="text-gray-400 block text-[10px] font-semibold uppercase tracking-wider">Status</span>
             <span className="capitalize font-medium text-gray-900">
               {isLive ? "active" : session.status.replace("_", " ")}
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-400 block text-[10px] font-semibold uppercase tracking-wider">Participant</span>
+            <span className="font-mono font-medium text-gray-900 text-xs break-all">
+              {session.participant_id || "—"}
             </span>
           </div>
           <div>

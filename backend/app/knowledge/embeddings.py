@@ -114,7 +114,19 @@ async def _build_embedding_client() -> tuple[AsyncOpenAI, str]:
                 "No embedding provider configured. Either set EMBEDDING_API_URL "
                 "for a self-hosted server, or set OPENAI_API_KEY for OpenAI."
             )
-        client = AsyncOpenAI(api_key=api_key)
+        # Honour the OpenAI EU data-residency flag for embeddings too.
+        try:
+            from app.api.settings import get_effective_flag
+            use_eu = await get_effective_flag("openai_use_eu")
+        except Exception:
+            use_eu = bool(getattr(settings, "openai_use_eu", False))
+        if use_eu:
+            client = AsyncOpenAI(
+                api_key=api_key, base_url="https://eu.api.openai.com/v1"
+            )
+            logger.debug("Using OpenAI EU regional API for embeddings")
+        else:
+            client = AsyncOpenAI(api_key=api_key)
 
     return client, model
 

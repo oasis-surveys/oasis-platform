@@ -7,31 +7,44 @@ const TUTORIAL_STEPS: TutorialStep[] = [
   {
     title: "Welcome to OASIS",
     body: "This guided tour will walk you through the key features of the platform. Let's get started!",
+    route: "/",
   },
   {
     title: "Create a Study",
-    body: "Start by creating a study. A study is a research project that contains one or more conversational agents. Click '+ New Study' to begin.",
+    body: "Start by creating a study. A study is a research project that contains one or more conversational agents. Click '+ New Study' to begin — or use 'Try a template' to spin up a demo study with a ready-made agent.",
     selector: "[data-tour='new-study']",
+    route: "/",
+  },
+  {
+    title: "Configure API Keys",
+    body: "Set your provider API keys here (OpenAI, Deepgram, ElevenLabs, etc.) so your agents can connect. Dashboard overrides take priority over .env values.",
+    selector: "[data-tour='settings-keys']",
+    route: "/settings",
   },
   {
     title: "Configure an Agent",
     body: "Each study has agents — AI interviewers with their own prompt, voice model, and settings. Create and configure agents from the study detail page.",
+    route: "/",
   },
   {
     title: "Choose a Pipeline",
     body: "Select 'Modular' for STT → LLM → TTS chains, or 'Voice-to-Voice' for direct multimodal models like OpenAI Realtime or Gemini Live.",
+    route: "/",
   },
   {
     title: "Share the Interview Link",
     body: "Once your agent is active, copy the interview link or embed code and share it with participants. Each interview is recorded with a diarised transcript.",
+    route: "/",
   },
   {
     title: "Monitor Sessions",
     body: "View live sessions, read transcripts, and export data from the Sessions page. You can also terminate sessions remotely.",
+    route: "/",
   },
   {
     title: "You're Ready!",
     body: "That's it! Create your first study and start conducting AI-powered interviews. Use the ? icons throughout the dashboard for contextual help.",
+    route: "/",
   },
 ];
 

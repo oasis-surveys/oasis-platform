@@ -58,15 +58,13 @@ If you notice something in the docs that is wrong, unclear, or missing, a PR to 
 
 When you submit a pull request or other contribution to OASIS, you agree to the following:
 
-1. **Your contribution is licensed under the same terms as the project** — the [ONCRL v1.0](LICENSE). This means it can be freely used by anyone for non-commercial academic and research purposes.
+1. **Your contribution is licensed under the same terms as the project** — the [GNU Affero General Public License v3 (AGPL-3.0)](LICENSE). This means anyone can use, modify, and distribute it for any purpose, including commercial use, as long as derivative works (including modified versions deployed as network services) are released under the same license.
 
 2. **You retain full copyright over your own work.** You can reuse, republish, or build on your contributions however you wish — just as you would retain copyright over a journal article after granting a publisher a license to distribute it.
 
-3. **Your contribution may be included in hosted or managed offerings of OASIS.** The OASIS Project may offer the platform as a hosted service for universities and research institutions that prefer a ready-to-use solution over self-hosting. Your contributed code can be part of those offerings. If you have questions about this, feel free to [reach out](mailto:max.lang@stx.ox.ac.uk).
+3. **You have the right to make the contribution.** The work is your own (or you have permission from your employer or institution), and it does not violate anyone else's intellectual property.
 
-4. **You have the right to make the contribution.** The work is your own (or you have permission from your employer or institution), and it does not violate anyone else's intellectual property.
-
-There is no separate CLA to sign. Submitting a pull request constitutes acceptance of these terms. See the [LICENSE](LICENSE) file (section 5) for the formal version.
+There is no separate CLA to sign. Submitting a pull request constitutes acceptance of these terms (this is the standard "inbound = outbound" model used by most AGPL/GPL projects). See the [LICENSE](LICENSE) file for the formal terms and the [FAQ](FAQ.md#whats-the-deal-with-the-license) for a plain-English explanation.
 
 ## A note on scope
 

@@ -69,7 +69,7 @@ class AgentCreate(BaseModel):
     language: str = Field("en", max_length=10)
     max_duration_seconds: int | None = Field(None, ge=60, le=7200)
 
-    status: AgentStatus = AgentStatus.DRAFT
+    status: AgentStatus = AgentStatus.ACTIVE
 
     # Participant ID
     participant_id_mode: ParticipantIdMode = ParticipantIdMode.RANDOM
@@ -192,6 +192,11 @@ class AgentList(BaseModel):
     status: AgentStatus
     pipeline_type: PipelineType
     llm_model: str
+    stt_provider: str
+    stt_model: str | None
+    tts_provider: str
+    tts_model: str | None
+    tts_voice: str | None
     language: str
     widget_key: str
     participant_id_mode: ParticipantIdMode

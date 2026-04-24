@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useState, useEffect, useRef, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export interface TutorialStep {
   /** Title of this step */
@@ -19,6 +20,8 @@ export interface TutorialStep {
   body: string;
   /** CSS selector to highlight (optional — if omitted, shows centered modal) */
   selector?: string;
+  /** If set, navigate to this route before showing the step */
+  route?: string;
 }
 
 interface TutorialOverlayProps {
@@ -35,21 +38,52 @@ function TutorialOverlay({ steps, currentStep, onNext, onPrev, onDone }: Tutoria
   const isFirst = currentStep === 0;
   const popupRef = useRef<HTMLDivElement>(null);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Navigate to the step's target route if we're not already there. This
+  // gives the page a moment to render before we look for the highlight target.
+  useEffect(() => {
+    if (step.route && location.pathname !== step.route) {
+      navigate(step.route);
+    }
+  }, [step.route, location.pathname, navigate]);
 
   useEffect(() => {
-    if (step.selector) {
+    let cancelled = false;
+    let attempts = 0;
+
+    const findTarget = () => {
+      if (cancelled) return;
+      if (!step.selector) {
+        setTargetRect(null);
+        return;
+      }
       const el = document.querySelector(step.selector);
       if (el) {
         const rect = el.getBoundingClientRect();
         setTargetRect(rect);
         el.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Re-measure after scroll
+        setTimeout(() => {
+          if (!cancelled) setTargetRect(el.getBoundingClientRect());
+        }, 350);
+        return;
+      }
+      // Wait for the page to render after a route change, retry a few times.
+      if (attempts < 10) {
+        attempts += 1;
+        setTimeout(findTarget, 120);
       } else {
         setTargetRect(null);
       }
-    } else {
-      setTargetRect(null);
-    }
-  }, [step.selector, currentStep]);
+    };
+
+    findTarget();
+    return () => {
+      cancelled = true;
+    };
+  }, [step.selector, currentStep, location.pathname]);
 
   // Position popup relative to target
   const getPopupStyle = (): React.CSSProperties => {

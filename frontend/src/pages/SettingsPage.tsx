@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { settingsApi, type ApiKeyStatus } from "../lib/api";
+import { settingsApi, type ApiKeyStatus, type FlagStatus } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import HelpTooltip from "../components/HelpTooltip";
 import { useToast } from "../components/Toast";
@@ -35,12 +35,32 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
   },
   google_api_key: {
     label: "Google AI API Key",
-    description: "Required for Gemini Live voice-to-voice models.",
+    description: "Required for Gemini text models (google/...) and Gemini Live voice-to-voice.",
     category: "AI Providers",
+  },
+  anthropic_api_key: {
+    label: "Anthropic API Key",
+    description: "Required for Claude models (anthropic/claude-...).",
+    category: "AI Providers",
+  },
+  openai_compatible_llm_url: {
+    label: "OpenAI-Compatible LLM URL",
+    description: "Base URL for any custom OpenAI-compatible LLM endpoint (LiteLLM proxy, vLLM, Ollama). Used by 'custom/<model>' selections.",
+    category: "Self-Hosted",
+  },
+  openai_compatible_llm_api_key: {
+    label: "OpenAI-Compatible LLM API Key",
+    description: "Bearer token for the custom LLM endpoint (optional — many local servers ignore this).",
+    category: "Self-Hosted",
   },
   scaleway_secret_key: {
     label: "Scaleway Secret Key",
     description: "Required for Scaleway LLM, STT (Whisper), and Voxtral models.",
+    category: "AI Providers",
+  },
+  scaleway_project_id: {
+    label: "Scaleway Project ID",
+    description: "Required for Scaleway Generative APIs (sent as X-Project-ID).",
     category: "AI Providers",
   },
   azure_openai_api_key: {
@@ -53,9 +73,19 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
     description: "The base URL for your Azure OpenAI deployment.",
     category: "Self-Hosted",
   },
+  azure_openai_api_version: {
+    label: "Azure OpenAI API Version",
+    description: "API version string used by the Azure OpenAI client (e.g. 2024-08-01-preview).",
+    category: "Self-Hosted",
+  },
   gcp_project_id: {
     label: "GCP Project ID",
     description: "Required for GCP Vertex AI models.",
+    category: "Self-Hosted",
+  },
+  gcp_location: {
+    label: "GCP Location",
+    description: "Vertex AI region (e.g. us-central1, europe-west4).",
     category: "Self-Hosted",
   },
   gcp_api_key: {
@@ -131,16 +161,22 @@ export default function SettingsPage() {
   const { authEnabled, username } = useAuth();
   const [toastNode, showToast] = useToast();
   const [keys, setKeys] = useState<ApiKeyStatus[]>([]);
+  const [flags, setFlags] = useState<FlagStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [flagSaving, setFlagSaving] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     try {
-      const res = await settingsApi.getKeys();
-      setKeys(res.keys);
+      const [k, f] = await Promise.all([
+        settingsApi.getKeys(),
+        settingsApi.getFlags(),
+      ]);
+      setKeys(k.keys);
+      setFlags(f.flags);
     } catch (err) {
-      console.error("Failed to load API keys:", err);
+      console.error("Failed to load settings:", err);
     } finally {
       setLoading(false);
     }
@@ -149,6 +185,21 @@ export default function SettingsPage() {
   useEffect(() => {
     loadKeys();
   }, [loadKeys]);
+
+  const handleFlagToggle = async (field: string, value: boolean) => {
+    setFlagSaving(field);
+    try {
+      const res = await settingsApi.updateFlags({ [field]: value });
+      setFlags(res.flags);
+      showToast(value ? "Setting enabled" : "Setting disabled", "success");
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, "warning");
+    } finally {
+      setFlagSaving(null);
+    }
+  };
+
+  const openaiUseEu = flags.find((f) => f.field === "openai_use_eu");
 
   const handleEdit = (field: string) => {
     setEditingFields((prev) => ({ ...prev, [field]: "" }));
@@ -238,15 +289,98 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* OpenAI data residency toggle */}
+      {openaiUseEu && (
+        <div className="card p-5">
+          <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
+            OpenAI Data Residency
+            <HelpTooltip text="Routes every OpenAI call (chat, realtime, STT, TTS, embeddings) through eu.api.openai.com instead of api.openai.com so customer content stays in the EEA region." />
+          </h2>
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-gray-900">
+                  Use EU API endpoint (eu.api.openai.com)
+                </span>
+                <code className="text-[10px] text-gray-400 bg-gray-50 rounded px-1.5 py-0.5">
+                  OPENAI_USE_EU
+                </code>
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    openaiUseEu.source === "dashboard"
+                      ? "bg-blue-50 text-blue-700"
+                      : openaiUseEu.source === "env"
+                      ? "bg-green-50 text-green-700"
+                      : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {openaiUseEu.source === "dashboard"
+                    ? "Dashboard"
+                    : openaiUseEu.source === "env"
+                    ? ".env"
+                    : "Default"}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Keep customer content (prompts, audio, transcripts) inside the
+                EEA region. Affects all OpenAI calls: chat, Realtime
+                voice-to-voice, Whisper STT, TTS, and embeddings (RAG).
+              </p>
+              <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-3 py-2 leading-relaxed">
+                <strong>Confirm with your institution first.</strong> The
+                OpenAI project your API key belongs to needs data-residency
+                enabled and a Modified Abuse Monitoring or Zero Data Retention
+                amendment in place.{" "}
+                <a
+                  href="https://developers.openai.com/api/docs/guides/your-data"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-amber-900"
+                >
+                  Read the OpenAI guide
+                </a>
+                .
+              </p>
+            </div>
+
+            <div className="flex-shrink-0 pt-1">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={openaiUseEu.enabled}
+                disabled={flagSaving === "openai_use_eu"}
+                onClick={() =>
+                  handleFlagToggle("openai_use_eu", !openaiUseEu.enabled)
+                }
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
+                  openaiUseEu.enabled ? "bg-gray-900" : "bg-gray-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    openaiUseEu.enabled ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* API Keys by Category */}
-      {CATEGORIES.map((category) => {
+      {CATEGORIES.map((category, idx) => {
         const categoryKeys = keys.filter(
           (k) => KEY_INFO[k.field]?.category === category
         );
         if (categoryKeys.length === 0) return null;
 
         return (
-          <div key={category} className="card">
+          <div
+            key={category}
+            className="card"
+            data-tour={idx === 0 ? "settings-keys" : undefined}
+          >
             <div className="px-5 py-4 border-b border-gray-100">
               <h2 className="text-sm font-semibold text-gray-900">{category}</h2>
             </div>

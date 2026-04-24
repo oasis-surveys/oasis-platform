@@ -48,6 +48,15 @@ const LLM_MODELS_MODULAR = [
   { value: "gcp/gemini-2.5-flash", label: "GCP Gemini 2.5 Flash", group: "GCP (Vertex AI)" },
   { value: "gcp/gemini-2.5-pro", label: "GCP Gemini 2.5 Pro", group: "GCP (Vertex AI)" },
   { value: "gcp/gemini-2.0-flash", label: "GCP Gemini 2.0 Flash", group: "GCP (Vertex AI)" },
+  // Anthropic — Claude (text only)
+  { value: "anthropic/claude-sonnet-4-5", label: "Claude Sonnet 4.5", group: "Anthropic" },
+  { value: "anthropic/claude-opus-4-5", label: "Claude Opus 4.5", group: "Anthropic" },
+  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5 (fast)", group: "Anthropic" },
+  { value: "anthropic/claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet (legacy)", group: "Anthropic" },
+  // Google Gemini — text models (uses GOOGLE_API_KEY directly, no GCP project)
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", group: "Google AI" },
+  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", group: "Google AI" },
+  { value: "google/gemini-2.0-flash", label: "Gemini 2.0 Flash", group: "Google AI" },
 ];
 
 const LLM_MODELS_V2V = [
@@ -92,6 +101,7 @@ const STT_PROVIDERS = [
   { value: "openai", label: "OpenAI Whisper (default)" },
   { value: "deepgram", label: "Deepgram" },
   { value: "scaleway", label: "Scaleway Whisper" },
+  { value: "azure", label: "Azure Speech" },
   { value: "self_hosted", label: "Self-Hosted (OpenAI-compatible)" },
 ];
 
@@ -118,7 +128,19 @@ const SCALEWAY_STT_MODELS = [
 const TTS_PROVIDERS = [
   { value: "openai", label: "OpenAI TTS" },
   { value: "elevenlabs", label: "ElevenLabs" },
+  { value: "cartesia", label: "Cartesia (Sonic)" },
+  { value: "azure", label: "Azure Speech" },
   { value: "self_hosted", label: "Self-Hosted (OpenAI-compatible)" },
+];
+
+// Cartesia ships with a small set of named "Sonic" voices. Users can also paste any
+// voice ID from the Cartesia dashboard (https://play.cartesia.ai/voices).
+const CARTESIA_VOICES = [
+  { value: "a0e99841-438c-4a64-b679-ae501e7d6091", label: "Barbershop Man (default)" },
+  { value: "729651dc-c6c3-4ee5-97fa-350da1f88600", label: "Storyteller (Female)" },
+  { value: "5345cf08-6f37-424d-a5d9-8ae1101b9377", label: "British Reading Lady" },
+  { value: "421b3369-f63f-4b03-8980-37a44df1d4e8", label: "Friendly Brit" },
+  { value: "00a77add-48d5-4ef6-8157-71e5437b282d", label: "Calm Lady" },
 ];
 
 const OPENAI_TTS_VOICES = [
@@ -426,7 +448,7 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     language: (obj.language as string) || "en",
     max_duration_seconds: durStr && !isPresetDur ? "__custom__" : (durStr || "1800"),
     max_duration_custom: durStr && !isPresetDur ? durStr : "",
-    status: (obj.status as "draft" | "active" | "paused") || "draft",
+    status: (obj.status as "draft" | "active" | "paused") || "active",
     participant_id_mode: (obj.participant_id_mode as "random" | "predefined" | "input") || "random",
     widget_title: (obj.widget_title as string) || "",
     widget_description: (obj.widget_description as string) || "",
@@ -505,7 +527,7 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   language: "en",
   max_duration_seconds: "1800",
   max_duration_custom: "",
-  status: "draft",
+  status: "active",
   participant_id_mode: "random",
   widget_title: "",
   widget_description: "",
@@ -574,6 +596,7 @@ export default function AgentFormPage() {
   // Participant identifiers (predefined mode)
   const [pidList, setPidList] = useState<ParticipantIdentifier[]>([]);
   const [newPid, setNewPid] = useState("");
+  const [newPidLabel, setNewPidLabel] = useState("");
   const [bulkPids, setBulkPids] = useState("");
 
   // File upload refs
@@ -644,7 +667,7 @@ export default function AgentFormPage() {
       ? DEEPGRAM_MODELS
       : form.stt_provider === "scaleway"
         ? SCALEWAY_STT_MODELS
-        : form.stt_provider === "self_hosted"
+        : form.stt_provider === "self_hosted" || form.stt_provider === "azure"
           ? []
           : OPENAI_STT_MODELS;
 
@@ -658,7 +681,9 @@ export default function AgentFormPage() {
       ? OPENAI_TTS_VOICES
       : form.tts_provider === "self_hosted"
         ? OPENAI_TTS_VOICES
-        : ELEVENLABS_VOICES;
+        : form.tts_provider === "cartesia"
+          ? CARTESIA_VOICES
+          : ELEVENLABS_VOICES;
 
   // Fetch API key status on mount for missing-key warnings
   useEffect(() => {
@@ -682,7 +707,30 @@ export default function AgentFormPage() {
     } else if (resolvedModel.startsWith("azure/")) {
       if (!isKeySet("azure_openai_api_key")) missingKeys.push({ label: "Azure OpenAI API Key", field: "azure_openai_api_key", envVar: "AZURE_OPENAI_API_KEY" });
     } else if (resolvedModel.startsWith("gcp/")) {
-      if (!isKeySet("gcp_api_key")) missingKeys.push({ label: "GCP API Key", field: "gcp_api_key", envVar: "GCP_API_KEY" });
+      if (!isKeySet("gcp_project_id")) {
+        missingKeys.push({ label: "GCP Project ID", field: "gcp_project_id", envVar: "GCP_PROJECT_ID" });
+      }
+      // gcp_api_key is one option; Application Default Credentials work too.
+      // Only warn if neither is configured AND we don't have ADC running locally.
+      if (!isKeySet("gcp_api_key")) {
+        missingKeys.push({
+          label: "GCP API Key (or use Application Default Credentials)",
+          field: "gcp_api_key",
+          envVar: "GCP_API_KEY",
+        });
+      }
+    } else if (resolvedModel.startsWith("anthropic/")) {
+      if (!isKeySet("anthropic_api_key")) {
+        missingKeys.push({ label: "Anthropic API Key", field: "anthropic_api_key", envVar: "ANTHROPIC_API_KEY" });
+      }
+    } else if (resolvedModel.startsWith("custom/")) {
+      if (!isKeySet("openai_compatible_llm_url")) {
+        missingKeys.push({
+          label: "OpenAI-Compatible LLM URL",
+          field: "openai_compatible_llm_url",
+          envVar: "OPENAI_COMPATIBLE_LLM_URL",
+        });
+      }
     }
 
     // STT provider (voice only, modular only)
@@ -710,6 +758,8 @@ export default function AgentFormPage() {
         if (!missingKeys.some((k) => k.field === "openai_api_key")) {
           missingKeys.push({ label: "OpenAI API Key", field: "openai_api_key", envVar: "OPENAI_API_KEY" });
         }
+      } else if (form.tts_provider === "cartesia" && !isKeySet("cartesia_api_key")) {
+        missingKeys.push({ label: "Cartesia API Key", field: "cartesia_api_key", envVar: "CARTESIA_API_KEY" });
       } else if (form.tts_provider === "self_hosted" && !isKeySet("self_hosted_tts_url")) {
         missingKeys.push({ label: "Self-Hosted TTS URL", field: "self_hosted_tts_url", envVar: "SELF_HOSTED_TTS_URL" });
       }
@@ -857,9 +907,11 @@ export default function AgentFormPage() {
     try {
       const created = await participants.create(studyId, agentId, {
         identifier: newPid.trim(),
+        label: newPidLabel.trim() || null,
       });
       setPidList((prev) => [...prev, created]);
       setNewPid("");
+      setNewPidLabel("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add identifier");
     }
@@ -885,6 +937,21 @@ export default function AgentFormPage() {
     if (!studyId || !agentId) return;
     await participants.delete(studyId, agentId, pid.id);
     setPidList((prev) => prev.filter((p) => p.id !== pid.id));
+  };
+
+  const handleReleasePid = async (pid: ParticipantIdentifier) => {
+    if (!studyId || !agentId) return;
+    if (!confirm(
+      `Re-issue "${pid.identifier}"? It will appear as available again so the same link can be re-used. The original session is preserved.`
+    )) return;
+    try {
+      const updated = await participants.release(studyId, agentId, pid.id);
+      setPidList((prev) => prev.map((p) => (p.id === pid.id ? updated : p)));
+      showToast("Identifier released — link can be re-used.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to release";
+      showToast(msg);
+    }
   };
 
   if (loading) {
@@ -1010,6 +1077,18 @@ export default function AgentFormPage() {
                   toastMessage="Interview link copied!"
                   size="md"
                 />
+                <a
+                  href={widgetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary !py-1.5 !px-3 !text-xs"
+                  title="Open the participant interview in a new tab"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                  </svg>
+                  Try it out
+                </a>
                 <button
                   type="button"
                   onClick={() => {
@@ -1640,32 +1719,47 @@ export default function AgentFormPage() {
                   value={form.llm_model_custom}
                   onChange={set("llm_model_custom")}
                   className="input-styled font-mono"
-                  placeholder="e.g. openai/gpt-4.1, anthropic/claude-3.5-sonnet, mistral/mistral-large-latest"
+                  placeholder="e.g. anthropic/claude-sonnet-4-5, google/gemini-2.5-flash, custom/llama-3.3-70b"
                 />
                 <p className="text-xs text-gray-400 mt-1.5">
-                  Enter any model identifier in{" "}
-                  <a href="https://docs.litellm.ai/docs/providers" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">LiteLLM format</a>.
-                  Use <code className="bg-gray-100 px-1 rounded text-xs">provider/model-name</code> syntax.
+                  Built-in prefixes: <code className="bg-gray-100 px-1 rounded text-xs">openai/</code>,{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">anthropic/</code>,{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">google/</code>,{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">scaleway/</code>,{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">azure/</code>,{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">gcp/</code>. Use{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">custom/&lt;model&gt;</code>{" "}
+                  to hit your own LiteLLM/vLLM/Ollama proxy (set the URL in Settings).
                 </p>
               </div>
             )}
 
             {/* V2V voice selection */}
-            {form.modality === "voice" && !isModular && form.llm_model !== "__custom__" && (
+            {form.modality === "voice" && !isModular && (
               <div className="animate-slide-up">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
                   Voice
                   <HelpTooltip text="The voice used by the V2V model for audio responses. Different providers have different voice options." />
                 </label>
-                <select
-                  value={form.tts_voice}
-                  onChange={(e) => setForm((f) => ({ ...f, tts_voice: e.target.value }))}
-                  className="select-styled"
-                >
-                  {v2vVoiceOptions.map((v) => (
-                    <option key={v.value} value={v.value}>{v.label}</option>
-                  ))}
-                </select>
+                {form.llm_model === "__custom__" ? (
+                  <input
+                    type="text"
+                    value={form.tts_voice}
+                    onChange={(e) => setForm((f) => ({ ...f, tts_voice: e.target.value }))}
+                    className="input-styled"
+                    placeholder="e.g. alloy, ash, coral, sage, shimmer, verse"
+                  />
+                ) : (
+                  <select
+                    value={form.tts_voice}
+                    onChange={(e) => setForm((f) => ({ ...f, tts_voice: e.target.value }))}
+                    className="select-styled"
+                  >
+                    {v2vVoiceOptions.map((v) => (
+                      <option key={v.value} value={v.value}>{v.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             )}
 
@@ -1732,7 +1826,9 @@ export default function AgentFormPage() {
                                 ? "whisper-large-v3"
                                 : p === "self_hosted"
                                   ? "whisper-1"
-                                  : "gpt-4o-transcribe",
+                                  : p === "azure"
+                                    ? ""
+                                    : "gpt-4o-transcribe",
                         }));
                       }}
                       className="select-styled"
@@ -1742,7 +1838,16 @@ export default function AgentFormPage() {
                       ))}
                     </select>
                   </div>
-                  {form.stt_provider !== "self_hosted" ? (
+                  {form.stt_provider === "azure" ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        STT Model
+                      </label>
+                      <div className="text-xs text-gray-500 italic px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200">
+                        Configured via <code>AZURE_SPEECH_KEY</code> / <code>AZURE_SPEECH_REGION</code> in <code>.env</code>.
+                      </div>
+                    </div>
+                  ) : form.stt_provider !== "self_hosted" ? (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">
                         STT Model
@@ -1787,7 +1892,14 @@ export default function AgentFormPage() {
                         setForm((f) => ({
                           ...f,
                           tts_provider: p,
-                          tts_voice: p === "elevenlabs" ? "rachel" : "alloy",
+                          tts_voice:
+                            p === "elevenlabs"
+                              ? "rachel"
+                              : p === "cartesia"
+                                ? "a0e99841-438c-4a64-b679-ae501e7d6091"
+                                : p === "azure"
+                                  ? ""
+                                  : "alloy",
                           tts_model: p === "openai" ? "gpt-4o-mini-tts" : p === "self_hosted" ? "tts-1" : "",
                         }));
                       }}
@@ -1828,6 +1940,16 @@ export default function AgentFormPage() {
                       />
                     </div>
                   )}
+                  {form.tts_provider === "azure" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        TTS Model
+                      </label>
+                      <div className="text-xs text-gray-500 italic px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200">
+                        Configured via <code>AZURE_SPEECH_KEY</code> / <code>AZURE_SPEECH_REGION</code> in <code>.env</code>.
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       Voice
@@ -1838,6 +1960,33 @@ export default function AgentFormPage() {
                         value={form.tts_voice}
                         onChange={set("tts_voice")}
                         placeholder="alloy"
+                        className="input-styled"
+                      />
+                    ) : form.tts_provider === "cartesia" ? (
+                      <div className="space-y-1.5">
+                        <select
+                          value={form.tts_voice}
+                          onChange={set("tts_voice")}
+                          className="select-styled"
+                        >
+                          {CARTESIA_VOICES.map((v) => (
+                            <option key={v.value} value={v.value}>{v.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={form.tts_voice}
+                          onChange={set("tts_voice")}
+                          placeholder="Or paste a Cartesia voice ID"
+                          className="input-styled !text-xs font-mono"
+                        />
+                      </div>
+                    ) : form.tts_provider === "azure" ? (
+                      <input
+                        type="text"
+                        value={form.tts_voice}
+                        onChange={set("tts_voice")}
+                        placeholder="e.g. en-US-AriaNeural (set in .env)"
                         className="input-styled"
                       />
                     ) : (
@@ -1857,6 +2006,16 @@ export default function AgentFormPage() {
                 {form.tts_provider === "elevenlabs" && (
                   <InfoBanner color="amber">
                     <strong>ElevenLabs note:</strong> The free tier does not allow library voices via the API. You need a paid plan, or use a voice ID from your own ElevenLabs account.
+                  </InfoBanner>
+                )}
+                {form.tts_provider === "cartesia" && (
+                  <InfoBanner color="emerald">
+                    <strong>Cartesia (Sonic):</strong> Requires <code>CARTESIA_API_KEY</code>. Browse voices at <a href="https://play.cartesia.ai/voices" target="_blank" rel="noopener noreferrer" className="underline">play.cartesia.ai/voices</a>.
+                  </InfoBanner>
+                )}
+                {(form.stt_provider === "azure" || form.tts_provider === "azure") && (
+                  <InfoBanner color="blue">
+                    <strong>Azure Speech:</strong> Set <code>AZURE_SPEECH_KEY</code> and <code>AZURE_SPEECH_REGION</code> in your <code>.env</code> file. The voice / model are read from those environment variables, not from per-agent config.
                   </InfoBanner>
                 )}
               </>
@@ -1960,7 +2119,7 @@ export default function AgentFormPage() {
         </div>
 
         {/* ── Silence Handling ── */}
-        {form.modality === "voice" && form.pipeline_type === "modular" && (
+        {form.modality === "voice" && (
           <div className="card p-6">
             <h3 className="text-md font-semibold text-gray-900 mb-5 flex items-center gap-2">
               Silence Handling
@@ -1998,7 +2157,9 @@ export default function AgentFormPage() {
                   placeholder="Take your time..."
                 />
                 <p className="mt-1 text-xs text-gray-400">
-                  The message spoken by the agent when extended silence is detected.
+                  {form.pipeline_type === "voice_to_voice"
+                    ? "On voice-to-voice models the prompt is delivered as a system note to the model, which then re-engages in its own voice."
+                    : "The message spoken by the agent when extended silence is detected."}
                 </p>
               </div>
             </div>
@@ -2056,8 +2217,21 @@ export default function AgentFormPage() {
                   type="text"
                   value={newPid}
                   onChange={(e) => setNewPid(e.target.value)}
-                  className="input-styled flex-1"
+                  className="input-styled flex-1 font-mono"
                   placeholder="Participant ID (e.g. P001)"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddPid();
+                    }
+                  }}
+                />
+                <input
+                  type="text"
+                  value={newPidLabel}
+                  onChange={(e) => setNewPidLabel(e.target.value)}
+                  className="input-styled flex-1"
+                  placeholder="Label (optional)"
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -2073,6 +2247,9 @@ export default function AgentFormPage() {
                   Add
                 </button>
               </div>
+              <p className="text-xs text-gray-400 -mt-2">
+                The optional label is shown only in this dashboard (e.g. "Cohort A — pilot"). It's never sent to the model or shown to participants.
+              </p>
 
               <details className="text-sm">
                 <summary className="cursor-pointer text-gray-500 hover:text-gray-700 transition-colors">
@@ -2103,14 +2280,17 @@ export default function AgentFormPage() {
                       key={p.id}
                       className="flex items-center justify-between px-3.5 py-2.5 text-sm hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex items-center gap-3">
-                        <code className="font-mono text-gray-800 text-xs">{p.identifier}</code>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <code className="font-mono text-gray-800 text-xs flex-shrink-0">{p.identifier}</code>
+                        {p.label && (
+                          <span className="text-xs text-gray-500 truncate" title={p.label}>{p.label}</span>
+                        )}
                         {p.used ? (
-                          <span className="rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold">
+                          <span className="rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold flex-shrink-0">
                             Used
                           </span>
                         ) : (
-                          <span className="rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-[10px] font-semibold">
+                          <span className="rounded-full bg-gray-100 text-gray-500 px-2 py-0.5 text-[10px] font-semibold flex-shrink-0">
                             Available
                           </span>
                         )}
@@ -2126,11 +2306,21 @@ export default function AgentFormPage() {
                           }}
                           toastMessage="Participant link copied!"
                         />
-                        {!p.used && (
+                        {p.used ? (
+                          <button
+                            type="button"
+                            onClick={() => handleReleasePid(p)}
+                            title="Re-issue this identifier so the link can be re-used"
+                            className="text-[10px] font-semibold uppercase tracking-wider rounded-lg px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-all"
+                          >
+                            Release
+                          </button>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => handleDeletePid(p)}
                             className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all"
+                            title="Delete identifier"
                           >
                             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -2254,6 +2444,9 @@ export default function AgentFormPage() {
                 className="input-styled font-mono"
                 placeholder="+1234567890"
               />
+              <p className="text-xs text-gray-400 mt-1.5">
+                If multiple agents share the same webhook URL, the agent whose number matches the inbound <code>To</code> field is selected.
+              </p>
             </div>
 
             {/* Webhook URL info (only shown for existing agents) */}

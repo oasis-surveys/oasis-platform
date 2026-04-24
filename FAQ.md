@@ -4,20 +4,36 @@ Things people ask. Updated when new ones come in.
 
 ## Contents
 
+- [Can I just start with OpenAI and add more providers later?](#can-i-just-start-with-openai-and-add-more-providers-later)
 - [Can I run OASIS entirely with open-source models?](#can-i-run-oasis-entirely-with-open-source-models)
 - [Can I run this on our institutional HPC / GPU cluster?](#can-i-run-this-on-our-institutional-hpc--gpu-cluster)
 - [What about European cloud providers instead of on-prem?](#what-about-european-cloud-providers-instead-of-on-prem)
+- [Can I keep my data in the EU when using OpenAI?](#can-i-keep-my-data-in-the-eu-when-using-openai)
+- [Do I need approval from OpenAI to use the EU endpoint?](#do-i-need-approval-from-openai-to-use-the-eu-endpoint)
 - [Why no Azure OpenAI Realtime voice-to-voice?](#why-no-azure-openai-realtime-voice-to-voice)
 - [What's the difference between "modular" and "voice-to-voice"?](#whats-the-difference-between-modular-and-voice-to-voice)
 - [Can I use NVIDIA PersonaPlex for self-hosted voice-to-voice?](#can-i-use-nvidia-personaplex-for-self-hosted-voice-to-voice)
 - [Do I need an OpenAI API key?](#do-i-need-an-openai-api-key)
+- [What templates ship with OASIS?](#what-templates-ship-with-oasis)
+- [Why are new agents active by default? Can I make them draft instead?](#why-are-new-agents-active-by-default-can-i-make-them-draft-instead)
 - [Where does my data go?](#where-does-my-data-go)
 - [Can I use this for phone interviews?](#can-i-use-this-for-phone-interviews)
 - [How many concurrent interviews can it handle?](#how-many-concurrent-interviews-can-it-handle)
+- [How do I update OASIS? Do I need to rebuild containers?](#how-do-i-update-oasis-do-i-need-to-rebuild-containers)
+- [Are database migrations applied automatically?](#are-database-migrations-applied-automatically)
 - [What's the deal with the license?](#whats-the-deal-with-the-license)
 - [Something is broken](#something-is-broken)
 
 ---
+
+<details>
+<summary><strong>Can I just start with OpenAI and add more providers later?</strong></summary>
+
+Yes, that's the recommended path. With only `OPENAI_API_KEY` set in `.env` you get text chat (gpt-4o-mini), voice interviews (Whisper STT + gpt-4o-mini-tts), and voice-to-voice (gpt-realtime). Run `docker compose up -d`, open `http://localhost`, create a study from one of the four templates, and you have a working interview link in under a minute.
+
+Add Deepgram, ElevenLabs, Cartesia, Google, Anthropic, Scaleway, Azure, GCP, or self-hosted endpoints whenever you want to swap in something different. You don't have to commit upfront.
+
+</details>
 
 <details>
 <summary><strong>Can I run OASIS entirely with open-source models?</strong></summary>
@@ -49,6 +65,36 @@ We don't try to abstract over HPC infrastructure on purpose. Every setup is diff
 Often the more practical path. Host open-source models on a European provider (Scaleway, Azure EU, GCP EU) and point OASIS at those endpoints. Data stays in European jurisdiction, no GPUs to manage yourself.
 
 OASIS has built-in support for Scaleway and Azure. For others, any OpenAI-compatible endpoint works via LiteLLM or the self-hosted STT/TTS options.
+
+</details>
+
+<details>
+<summary><strong>Can I keep my data in the EU when using OpenAI?</strong></summary>
+
+Yes. There's a toggle in **Settings > OpenAI Data Residency** that routes every OpenAI call (chat, Realtime voice-to-voice, Whisper STT, TTS, and embeddings) through `eu.api.openai.com` instead of the default `api.openai.com`. When the toggle is on, customer content (prompts, audio, transcripts) is stored at rest in the EEA region and inference for those endpoints runs in the EEA region too.
+
+You can also set it persistently via `.env`:
+
+```env
+OPENAI_USE_EU=true
+```
+
+Default is off because it requires extra approval on the OpenAI side (see the next question). Once on, no model code changes, you keep using the same model names like `openai/gpt-4o` and `openai/gpt-realtime`.
+
+OpenAI's full data residency guide: <https://developers.openai.com/api/docs/guides/your-data>
+
+</details>
+
+<details>
+<summary><strong>Do I need approval from OpenAI to use the EU endpoint?</strong></summary>
+
+Yes. The EU regional endpoint (`eu.api.openai.com`) requires that the OpenAI **project** your API key belongs to has data residency enabled, plus a Modified Abuse Monitoring or Zero Data Retention amendment in place. Both of those are gated behind a sales conversation with OpenAI, your university or organisation may already have it set up, or might need to request it.
+
+Confirm with whoever manages your OpenAI org before flipping the toggle. If your project isn't approved and you enable it anyway, requests will fail with an error from OpenAI. You won't lose data, but interviews won't work until you either turn it off or get the project approved.
+
+OpenAI also notes a 10% pricing uplift for some models when used through a data residency endpoint. Mention this to your billing person if budgets are tight.
+
+For Realtime voice-to-voice specifically, the EU endpoint supports `gpt-realtime`, `gpt-realtime-1.5`, `gpt-realtime-mini`, and `gpt-4o-realtime-preview-2025-06-03`. Older preview snapshots are US-only.
 
 </details>
 
@@ -89,11 +135,37 @@ The **knowledge base** (RAG) also supports self-hosted embeddings. By default it
 </details>
 
 <details>
+<summary><strong>What templates ship with OASIS?</strong></summary>
+
+Five research-oriented templates, available under **New Study > From Template**:
+
+- **Semi-Structured Qualitative Interview (Voice)**: open-ended interview that probes for concrete examples and stays neutral. Good default for lived-experience and attitude research. No fixed question order.
+- **Structured Topic-Guide Interview (Voice)**: same neutral stance, but with a fixed three-topic guide and probes asked in order. The agent paraphrases each topic naturally and auto-advances after the configured follow-ups. Use when every participant needs to cover the same topics in the same order (comparative qualitative work).
+- **Cognitive Interview / Survey Pretest (Voice)**: runs the standard cognitive interviewing protocol (comprehension, recall, judgment, response probes) to test how participants interpret survey items before you field them. Items are read verbatim.
+- **Open-Ended Survey Follow-Up (Text Chat)**: text agent designed to be embedded at the end of a Qualtrics, REDCap, or LimeSurvey questionnaire to collect open-ended reasoning behind quantitative answers.
+- **Conversational Phone Survey (Voice-to-Voice)**: low-latency phone survey via Twilio + OpenAI Realtime. Useful when you want to reach participants who don't use the web.
+
+All five use OpenAI defaults so they work with just `OPENAI_API_KEY`. Edit the prompt, swap the model, change the language, etc. after creating from the template.
+
+</details>
+
+<details>
+<summary><strong>Why are new agents active by default? Can I make them draft instead?</strong></summary>
+
+Active by default because the most common path is "create the agent, copy the share link, send to a participant". Forcing a manual flip from draft to active was a footgun for first-time users who'd send the link and wonder why nothing loaded.
+
+Existing agents keep their current status (the change only affects newly created ones). If you prefer to review the prompt and provider settings before the link goes live, set the status dropdown to **Draft** in the agent form. Draft and Paused agents return 404 on the widget config and reject all interview connections, the gate is still there, it's just not the default anymore.
+
+</details>
+
+<details>
 <summary><strong>Where does my data go?</strong></summary>
 
 OASIS stores everything in your own PostgreSQL database. Transcripts, session metadata, participant IDs, all local.
 
 The only data that leaves your infrastructure is what gets sent to external AI providers (audio/text going to the LLM, STT, or TTS API). If you use fully self-hosted models, nothing leaves your network. If you use cloud APIs, data goes to whichever provider you configured.
+
+For OpenAI specifically, you can route those calls through the EU regional endpoint so customer content stays in the EEA, see [Can I keep my data in the EU when using OpenAI?](#can-i-keep-my-data-in-the-eu-when-using-openai).
 
 </details>
 
@@ -112,6 +184,34 @@ Incoming calls only for now. No outbound calling yet.
 Depends on your setup. The OASIS backend is async (FastAPI + WebSockets) and handles many concurrent sessions fine. The bottleneck is usually the AI providers, each voice session holds a persistent connection to STT/LLM/TTS.
 
 Cloud providers: limited by their rate limits and your API tier. Self-hosted: limited by your GPU capacity.
+
+</details>
+
+<details>
+<summary><strong>How do I update OASIS? Do I need to rebuild containers?</strong></summary>
+
+Yes, both `backend` and `frontend` images bake the source code at build time, so any code change needs a rebuild:
+
+```bash
+git pull
+docker compose down
+docker compose up -d --build
+```
+
+The Postgres and Redis containers don't need rebuilding, your data persists in the named volumes (`pgdata`, `redisdata`). If you ever want a clean slate, `docker compose down -v` wipes the volumes too.
+
+You don't need to manually run database migrations, the backend container does that on startup (see the next question).
+
+API keys you set through the dashboard live in Redis and survive a backend restart. Keys in `.env` are read fresh on every container start.
+
+</details>
+
+<details>
+<summary><strong>Are database migrations applied automatically?</strong></summary>
+
+Yes. The backend container's startup command runs `alembic upgrade head` before starting Uvicorn, so any new migrations from a `git pull + docker compose up --build` are applied before the API serves traffic.
+
+If a migration fails, the backend container exits and `docker compose logs backend` will show the Alembic error. Most failures are because the DB has drifted from what Alembic expects (someone ran SQL by hand, or you switched between branches with conflicting migrations). In that case, fix the schema manually or restore from a backup, don't force-skip the migration.
 
 </details>
 

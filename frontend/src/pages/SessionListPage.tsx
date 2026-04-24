@@ -143,16 +143,8 @@ export default function SessionListPage() {
   const filterParams = buildParams();
 
   const selectedIds = [...selected].join(",");
-  const exportAllCsvUrl = sessions.exportCsvUrl(studyId!, agentId!, filterParams);
-  const exportAllJsonUrl = sessions.exportJsonUrl(studyId!, agentId!, filterParams);
-  const exportSelCsvUrl = sessions.exportCsvUrl(studyId!, agentId!, {
-    ...filterParams,
-    session_ids: selectedIds,
-  });
-  const exportSelJsonUrl = sessions.exportJsonUrl(studyId!, agentId!, {
-    ...filterParams,
-    session_ids: selectedIds,
-  });
+  const exportAllParams = filterParams;
+  const exportSelParams = { ...filterParams, session_ids: selectedIds };
 
   return (
     <div>
@@ -335,10 +327,10 @@ export default function SessionListPage() {
               </span>
             )}
             <ExportMenu
-              allCsvUrl={exportAllCsvUrl}
-              allJsonUrl={exportAllJsonUrl}
-              selCsvUrl={exportSelCsvUrl}
-              selJsonUrl={exportSelJsonUrl}
+              studyId={studyId!}
+              agentId={agentId!}
+              allParams={exportAllParams}
+              selParams={exportSelParams}
               hasSelection={someSelected}
               totalCount={sessionList.length}
             />
@@ -480,21 +472,44 @@ export default function SessionListPage() {
 // ── Export Menu ───────────────────────────────────────────────
 
 function ExportMenu({
-  allCsvUrl,
-  allJsonUrl,
-  selCsvUrl,
-  selJsonUrl,
+  studyId,
+  agentId,
+  allParams,
+  selParams,
   hasSelection,
   totalCount,
 }: {
-  allCsvUrl: string;
-  allJsonUrl: string;
-  selCsvUrl: string;
-  selJsonUrl: string;
+  studyId: string;
+  agentId: string;
+  allParams: SessionListParams;
+  selParams: SessionListParams;
   hasSelection: boolean;
   totalCount: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const handleDownload = async (
+    scope: "all" | "selected",
+    format: "csv" | "json",
+  ) => {
+    if (busy) return;
+    const params = scope === "all" ? allParams : selParams;
+    setBusy(true);
+    try {
+      if (format === "csv") {
+        await sessions.downloadCsv(studyId, agentId, params);
+      } else {
+        await sessions.downloadJson(studyId, agentId, params);
+      }
+      setOpen(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Export failed";
+      alert(msg);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="relative">
@@ -516,22 +531,22 @@ function ExportMenu({
             <div className="px-3.5 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
               Download All ({totalCount})
             </div>
-            <a
-              href={allCsvUrl}
-              download
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors"
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleDownload("all", "csv")}
+              className="w-full flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors disabled:opacity-50"
             >
               <DownloadIcon /> All sessions — CSV
-            </a>
-            <a
-              href={allJsonUrl}
-              download
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors"
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => handleDownload("all", "json")}
+              className="w-full flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors disabled:opacity-50"
             >
               <DownloadIcon /> All sessions — JSON
-            </a>
+            </button>
 
             {hasSelection && (
               <>
@@ -539,22 +554,22 @@ function ExportMenu({
                 <div className="px-3.5 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
                   Download Selected
                 </div>
-                <a
-                  href={selCsvUrl}
-                  download
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors"
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => handleDownload("selected", "csv")}
+                  className="w-full flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors disabled:opacity-50"
                 >
                   <DownloadIcon /> Selected — CSV
-                </a>
-                <a
-                  href={selJsonUrl}
-                  download
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors"
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => handleDownload("selected", "json")}
+                  className="w-full flex items-center gap-2 px-3.5 py-2 hover:bg-gray-50 text-gray-700 transition-colors disabled:opacity-50"
                 >
                   <DownloadIcon /> Selected — JSON
-                </a>
+                </button>
               </>
             )}
           </div>

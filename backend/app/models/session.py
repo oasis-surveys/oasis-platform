@@ -9,8 +9,9 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func, select
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.models.base import Base
@@ -109,3 +110,23 @@ class TranscriptEntry(Base):
 
     # ── Relationships ──
     session = relationship("Session", back_populates="entries")
+
+
+async def aggregate_session_tokens(db: AsyncSession, session_id: uuid.UUID) -> int:
+    """Return the sum of prompt + completion tokens across a session's entries.
+
+    Returns ``0`` when no transcript entries have token counts. This is used by
+    every interview-finalize path to populate ``Session.total_tokens`` so the
+    dashboard cost/usage column is accurate.
+    """
+    prompt_total = await db.scalar(
+        select(func.coalesce(func.sum(TranscriptEntry.prompt_tokens), 0)).where(
+            TranscriptEntry.session_id == session_id
+        )
+    )
+    completion_total = await db.scalar(
+        select(func.coalesce(func.sum(TranscriptEntry.completion_tokens), 0)).where(
+            TranscriptEntry.session_id == session_id
+        )
+    )
+    return int(prompt_total or 0) + int(completion_total or 0)

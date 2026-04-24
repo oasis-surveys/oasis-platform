@@ -70,3 +70,73 @@ class TestTwilioEndpoints:
         # Should indicate agent is unavailable
         assert resp.status_code == 200
         assert "unavailable" in resp.text or "Sorry" in resp.text
+
+    async def test_voice_webhook_routes_by_to_number(self, client: AsyncClient):
+        """When the To number matches another agent, that agent's id is used."""
+        resp = await client.post("/api/studies", json={"title": "Twilio To Routing"})
+        study_id = resp.json()["id"]
+
+        # Two active agents, distinct Twilio numbers
+        a_resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Agent A",
+                "status": "active",
+                "twilio_phone_number": "+15551110000",
+            },
+        )
+        a_id = a_resp.json()["id"]
+
+        b_resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Agent B",
+                "status": "active",
+                "twilio_phone_number": "+15552220000",
+            },
+        )
+        b_id = b_resp.json()["id"]
+
+        # Call agent A's URL but with To=Agent B's number → should resolve to B
+        resp = await client.post(
+            f"/api/twilio/voice/{a_id}",
+            data="From=%2B15559876543&To=%2B15552220000&CallSid=CA0001",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status_code == 200
+        assert b_id in resp.text
+        assert a_id not in resp.text or resp.text.count(a_id) == 0
+
+    async def test_voice_webhook_to_number_normalization(self, client: AsyncClient):
+        """Routing should ignore spaces / dashes in the To number."""
+        resp = await client.post("/api/studies", json={"title": "Twilio Normalize"})
+        study_id = resp.json()["id"]
+
+        a_resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Agent X",
+                "status": "active",
+                "twilio_phone_number": "+1 (555) 333-0000",
+            },
+        )
+        a_id = a_resp.json()["id"]
+
+        resp = await client.post(
+            f"/api/twilio/voice/{uuid.uuid4()}",
+            data="From=%2B15559876543&To=%2B15553330000",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert resp.status_code == 200
+        assert a_id in resp.text
+
+
+class TestNormalizeE164:
+    def test_basic(self):
+        from app.api.twilio import _normalize_e164
+
+        assert _normalize_e164("+15551234567") == "+15551234567"
+        assert _normalize_e164("15551234567") == "+15551234567"
+        assert _normalize_e164("+1 (555) 123-4567") == "+15551234567"
+        assert _normalize_e164("") == ""
+        assert _normalize_e164(None) == ""

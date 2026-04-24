@@ -100,37 +100,45 @@ Five Docker containers on one internal network:
 
 ## Quick Start
 
-You need Docker and at least one AI provider API key.
+You need Docker and an OpenAI API key. That's the minimum to run a complete text or voice interview end-to-end. Other providers are optional and can be added later.
+
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/oasis-surveys/oasis-platform.git
 cd oasis-platform
 cp .env.example .env
-# Edit .env with your API keys
-docker compose up -d
 ```
 
-Open `http://localhost`. That's it.
-
-### Minimal `.env`
+Open `.env` and set two values:
 
 ```env
 OPENAI_API_KEY=sk-...
 SECRET_KEY=some-random-secret
-
-# For voice interviews (pick your providers)
-DEEPGRAM_API_KEY=...
-ELEVENLABS_API_KEY=...
 ```
 
-See `.env.example` for all options (Google, Scaleway, Azure, GCP, self-hosted STT/TTS, Twilio, auth, etc).
+That's enough to start. With just an OpenAI key you get text chat, voice (Whisper STT + GPT-4o-mini-tts), and voice-to-voice (gpt-realtime). Add `DEEPGRAM_API_KEY`, `ELEVENLABS_API_KEY`, `GOOGLE_API_KEY`, etc. later if you want those providers.
 
-### First study
+### 2. Start it
 
-1. Click **New Study** in the dashboard
-2. Add an agent, write a system prompt, pick your models
-3. Set the agent to **Active**
-4. Copy the interview link, share it
+```bash
+docker compose up -d
+```
+
+Open `http://localhost`. The dashboard is there.
+
+### 3. Run your first study (under a minute)
+
+1. Click **New Study**, give it a name.
+2. Click **From Template** and pick one of the four research templates (semi-structured qualitative, cognitive interview pretest, open-ended survey follow-up, or telephone survey).
+3. The agent is **Active by default**. Copy the share link from the agent page.
+4. Open the link in a new tab to take the interview yourself, or send it to participants.
+
+Transcripts appear live under the session in the dashboard. Export to CSV/JSON when you're done.
+
+### Going further
+
+See `.env.example` for every option (Google, Scaleway, Azure, GCP Vertex, self-hosted STT/TTS, RAG embeddings, Twilio, dashboard auth) and the [FAQ](FAQ.md) for self-hosting on HPC and European cloud guidance.
 
 ## Project Structure
 

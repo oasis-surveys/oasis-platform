@@ -25,7 +25,13 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import async_session_factory
 from app.models.agent import Agent, AgentStatus, ParticipantIdMode, ParticipantIdentifier
-from app.models.session import Session, SessionStatus, TranscriptEntry, SpeakerRole
+from app.models.session import (
+    Session,
+    SessionStatus,
+    TranscriptEntry,
+    SpeakerRole,
+    aggregate_session_tokens,
+)
 from app.realtime import publish_transcript_event
 from app.session_manager import register_session, unregister_session
 
@@ -318,7 +324,15 @@ async def text_chat_ws(
                 return
             participant_id = pid
         elif agent_cfg["participant_id_mode"] == ParticipantIdMode.INPUT:
-            participant_id = pid
+            # Reject empty/blank IDs — INPUT mode requires the participant
+            # to actually type something, otherwise sessions become anonymous.
+            if not pid or not pid.strip():
+                await websocket.send_json(
+                    {"error": "Please provide a participant ID before starting the chat."}
+                )
+                await websocket.close(code=4003, reason="Missing participant ID")
+                return
+            participant_id = pid.strip()
 
         # ── 3. Create session ─────────────────────────────────────
         session = Session(
@@ -508,6 +522,7 @@ async def text_chat_ws(
                     sess.status = final_status
                     sess.ended_at = end_time
                     sess.duration_seconds = duration
+                    sess.total_tokens = await aggregate_session_tokens(db, session_id)
                     await db.commit()
 
             await publish_transcript_event(str(session_id), {

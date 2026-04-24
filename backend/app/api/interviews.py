@@ -23,7 +23,7 @@ from sqlalchemy import select
 
 from app.database import async_session_factory
 from app.models.agent import Agent, AgentModality, AgentStatus, ParticipantIdMode, ParticipantIdentifier
-from app.models.session import Session, SessionStatus
+from app.models.session import Session, SessionStatus, aggregate_session_tokens
 from app.realtime import publish_transcript_event
 from app.session_manager import register_session, unregister_session
 
@@ -85,7 +85,9 @@ async def interview_ws(
             ),
             "llm_model": agent.llm_model,
             "stt_provider": agent.stt_provider,
+            "stt_model": agent.stt_model,
             "tts_provider": agent.tts_provider,
+            "tts_model": agent.tts_model,
             "tts_voice": agent.tts_voice,
             "language": agent.language,
             "max_duration_seconds": agent.max_duration_seconds,
@@ -133,7 +135,15 @@ async def interview_ws(
             participant_id = pid
 
         elif agent_cfg["participant_id_mode"] == ParticipantIdMode.INPUT:
-            participant_id = pid  # May be None if they didn't enter one
+            # Reject empty/blank IDs — INPUT mode requires the participant
+            # to actually type something, otherwise sessions become anonymous.
+            if not pid or not pid.strip():
+                await websocket.send_json(
+                    {"error": "Please provide a participant ID before starting the interview."}
+                )
+                await websocket.close(code=4003, reason="Missing participant ID")
+                return
+            participant_id = pid.strip()
 
         # ── 3. Create a new session ────────────────────────────────
         session = Session(
@@ -194,7 +204,9 @@ async def interview_ws(
             pipeline_type=agent_cfg["pipeline_type"],
             llm_model=agent_cfg["llm_model"],
             stt_provider=agent_cfg["stt_provider"],
+            stt_model=agent_cfg["stt_model"],
             tts_provider=agent_cfg["tts_provider"],
+            tts_model=agent_cfg["tts_model"],
             tts_voice=agent_cfg["tts_voice"],
             language=agent_cfg["language"],
             max_duration_seconds=agent_cfg["max_duration_seconds"],
@@ -239,6 +251,7 @@ async def interview_ws(
                     sess.status = final_status
                     sess.ended_at = end_time
                     sess.duration_seconds = duration
+                    sess.total_tokens = await aggregate_session_tokens(db, session_id)
                     await db.commit()
 
             # Broadcast session_ended event so live monitors close cleanly

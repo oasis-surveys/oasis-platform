@@ -8,10 +8,12 @@ import {
   type AgentListItem,
   type StudyAnalytics,
   type KnowledgeDocument,
+  type KnowledgeSearchResult,
 } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import CopyButton from "../components/CopyButton";
 import { useToast } from "../components/Toast";
+import TemplatePicker from "../components/TemplatePicker";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-600",
@@ -37,6 +39,30 @@ export default function StudyDetailPage() {
   const [kbTextContent, setKbTextContent] = useState("");
   const [kbShowTextForm, setKbShowTextForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+
+  // ── Test Retrieval (RAG) state ──
+  const [retrievalQuery, setRetrievalQuery] = useState("");
+  const [retrievalResults, setRetrievalResults] = useState<KnowledgeSearchResult[] | null>(null);
+  const [retrievalLoading, setRetrievalLoading] = useState(false);
+  const [retrievalError, setRetrievalError] = useState<string | null>(null);
+
+  const handleTestRetrieval = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!studyId || !retrievalQuery.trim()) return;
+    setRetrievalLoading(true);
+    setRetrievalError(null);
+    try {
+      const results = await knowledge.search(studyId, retrievalQuery.trim(), 5);
+      setRetrievalResults(results);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Search failed";
+      setRetrievalError(msg);
+    } finally {
+      setRetrievalLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!studyId) return;
@@ -366,6 +392,68 @@ export default function StudyDetailPage() {
                 ))}
               </div>
             )}
+
+            {/* ── Test Retrieval (RAG) ── */}
+            {knowledgeDocs.length > 0 && (
+              <div className="mt-5 card p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                    Test retrieval
+                    <HelpTooltip text="Run a query against the embedded chunks the way an agent would, before relying on it in a real interview." />
+                  </h3>
+                  <span className="text-[10px] text-gray-400">top 5 matches</span>
+                </div>
+                <form onSubmit={handleTestRetrieval} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={retrievalQuery}
+                    onChange={(e) => setRetrievalQuery(e.target.value)}
+                    placeholder="What would the participant ask about?"
+                    className="input-styled !py-1.5 text-xs flex-1"
+                  />
+                  <button
+                    type="submit"
+                    disabled={retrievalLoading || !retrievalQuery.trim()}
+                    className="btn-primary !py-1.5 !px-3 !text-xs disabled:opacity-50"
+                  >
+                    {retrievalLoading ? "Searching…" : "Search"}
+                  </button>
+                </form>
+
+                {retrievalError && (
+                  <p className="mt-2 text-xs text-red-600">{retrievalError}</p>
+                )}
+
+                {retrievalResults && (
+                  <div className="mt-3 space-y-2">
+                    {retrievalResults.length === 0 ? (
+                      <p className="text-xs text-gray-400">
+                        No matches. Try a different phrasing or upload more documents.
+                      </p>
+                    ) : (
+                      retrievalResults.map((r, i) => (
+                        <div
+                          key={i}
+                          className="rounded-xl border border-gray-200 bg-white p-3"
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <p className="text-[11px] font-semibold text-gray-700 truncate">
+                              {r.title}
+                            </p>
+                            <span className="text-[10px] font-mono text-gray-400">
+                              sim {r.similarity.toFixed(3)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-600 whitespace-pre-wrap line-clamp-6">
+                            {r.content}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -376,16 +464,40 @@ export default function StudyDetailPage() {
           Agents
           <HelpTooltip text="Agents are AI interviewers. Each agent has its own prompt, model configuration, and shareable interview link." />
         </h2>
-        <Link
-          to={`/studies/${studyId}/agents/new`}
-          className="btn-primary !py-2 !px-4 !text-xs"
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          New Agent
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTemplatePickerOpen(true)}
+            className="btn-secondary !py-2 !px-4 !text-xs"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Use Template
+            <HelpTooltip text="Spin up a pre-configured agent with one click. You can edit it afterwards." className="ml-0.5" />
+          </button>
+          <Link
+            to={`/studies/${studyId}/agents/new`}
+            className="btn-primary !py-2 !px-4 !text-xs"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            New Agent
+          </Link>
+        </div>
       </div>
+
+      <TemplatePicker
+        studyId={studyId!}
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        onCreated={(agentId) => {
+          setTemplatePickerOpen(false);
+          showToast("Agent created from template and is active. Share the interview link to start.");
+          navigate(`/studies/${studyId}/agents/${agentId}`);
+        }}
+      />
 
       {agentList.length === 0 ? (
         <div className="card py-16 text-center">
@@ -396,8 +508,23 @@ export default function StudyDetailPage() {
               </svg>
             </div>
             <p className="text-gray-400 text-sm">
-              No agents yet. Create one to start conducting interviews.
+              No agents yet. Start from a template or build one from scratch.
             </p>
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setTemplatePickerOpen(true)}
+                className="btn-primary !py-2 !px-4 !text-xs"
+              >
+                Use a template
+              </button>
+              <Link
+                to={`/studies/${studyId}/agents/new`}
+                className="btn-secondary !py-2 !px-4 !text-xs"
+              >
+                Build from scratch
+              </Link>
+            </div>
           </div>
         </div>
       ) : (
@@ -469,6 +596,19 @@ export default function StudyDetailPage() {
                       onCopied={showToast}
                       toastMessage="Interview link copied!"
                     />
+                    <a
+                      href={widgetUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title="Open the participant interview in a new tab"
+                      className="inline-flex items-center justify-center gap-1.5 h-7 rounded-lg border border-gray-200 bg-white px-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all active:scale-95"
+                    >
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                      </svg>
+                      <span className="text-xs font-medium">Try</span>
+                    </a>
                     <CopyButton
                       text={embedCode}
                       onCopied={showToast}

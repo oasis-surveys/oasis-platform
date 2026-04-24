@@ -132,3 +132,32 @@ async def delete_participant(
         raise HTTPException(status_code=404, detail="Participant identifier not found")
     await db.delete(pid)
     await db.commit()
+
+
+@router.post(
+    "/{participant_id}/release",
+    response_model=ParticipantIdentifierRead,
+)
+async def release_participant(
+    study_id: UUID,
+    agent_id: UUID,
+    participant_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a predefined participant identifier as available again.
+
+    Useful when a participant clicked the link, the session crashed or the
+    researcher wants to re-issue the same ID for a retake. Clears the
+    ``used`` flag and detaches it from any previously linked session
+    (the historical Session row is preserved).
+    """
+    await _get_agent_or_404(study_id, agent_id, db)
+    pid = await db.get(ParticipantIdentifier, participant_id)
+    if not pid or pid.agent_id != agent_id:
+        raise HTTPException(status_code=404, detail="Participant identifier not found")
+
+    pid.used = False
+    pid.session_id = None
+    await db.commit()
+    await db.refresh(pid)
+    return pid

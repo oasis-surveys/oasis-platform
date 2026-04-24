@@ -62,7 +62,7 @@ class TestAgentSchemas:
         assert a.stt_provider == "deepgram"
         assert a.tts_provider == "elevenlabs"
         assert a.language == "en"
-        assert a.status == AgentStatus.DRAFT
+        assert a.status == AgentStatus.ACTIVE
 
     def test_agent_create_v2v(self):
         a = AgentCreate(

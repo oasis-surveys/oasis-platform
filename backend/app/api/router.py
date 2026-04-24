@@ -16,6 +16,7 @@ from app.api.analytics import router as analytics_router
 from app.api.participants import router as participants_router
 from app.api.knowledge import router as knowledge_router
 from app.api.settings import router as settings_router
+from app.api.templates import router as templates_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -30,3 +31,4 @@ api_router.include_router(analytics_router, dependencies=[Depends(require_auth)]
 api_router.include_router(participants_router, dependencies=[Depends(require_auth)])
 api_router.include_router(knowledge_router, dependencies=[Depends(require_auth)])
 api_router.include_router(settings_router, dependencies=[Depends(require_auth)])
+api_router.include_router(templates_router, dependencies=[Depends(require_auth)])

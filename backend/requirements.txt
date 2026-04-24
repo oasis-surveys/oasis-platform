@@ -17,12 +17,13 @@ redis[hiredis]==5.2.1
 pydantic-settings==2.7.1
 
 # ── AI / Pipeline ──
-pipecat-ai[silero,websocket,google]==0.0.105
+pipecat-ai[silero,websocket,google,anthropic]==0.0.105
 openai>=1.50.0
 litellm>=1.40.0,<1.82.7
 deepgram-sdk>=4.0.0
 elevenlabs>=1.0.0
 google-genai>=1.0.0
+anthropic>=0.40.0
 
 # ── Telephony ──
 twilio>=9.0.0
