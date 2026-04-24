@@ -27,6 +27,8 @@ For **voice interviews** (modular pipeline), mostly yes. The LLM can be any Open
 
 The gap is **voice-to-voice mode**, which currently needs OpenAI Realtime or Google Gemini Live. These are proprietary streaming audio protocols and there's no open-source equivalent yet.
 
+RAG embeddings (for the knowledge base) can also be self-hosted by pointing `EMBEDDING_API_URL` at any OpenAI-compatible embedding server.
+
 </details>
 
 <details>
@@ -81,7 +83,7 @@ Also: PersonaPlex v1 is English-only, needs ~24GB VRAM, and can drift during lon
 
 Only if you use OpenAI models. If you run everything through Scaleway, Azure, GCP, Google, or self-hosted endpoints, no OpenAI key needed.
 
-One exception: the **knowledge base** (RAG) currently uses OpenAI's `text-embedding-3-small` for embeddings. If you use that feature you need an OpenAI key, or you'd need to swap in a local embedding server.
+The **knowledge base** (RAG) also supports self-hosted embeddings. By default it uses OpenAI's `text-embedding-3-small`, but you can point it at any OpenAI-compatible embedding server by setting `EMBEDDING_API_URL`. One thing to watch out for: the database schema expects 1536-dimensional vectors (what OpenAI outputs). If your model outputs a different dimension, you'll need a DB migration.
 
 </details>
 

@@ -83,6 +83,13 @@ class Settings(BaseSettings):
     self_hosted_tts_api_key: str = ""
     self_hosted_tts_model: str = "tts-1"
 
+    # ── Embeddings (RAG knowledge base) ──
+    # Leave empty to use OpenAI (text-embedding-3-small). Set a URL to use
+    # any OpenAI-compatible embedding server instead (e.g. LocalAI, TEI, vLLM).
+    embedding_api_url: str = ""         # e.g. http://my-server:8200/v1
+    embedding_api_key: str = ""         # falls back to OPENAI_API_KEY if empty
+    embedding_model: str = ""           # falls back to text-embedding-3-small if empty
+
     # ── Telephony ──
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""

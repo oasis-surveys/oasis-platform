@@ -131,12 +131,15 @@ class TestEmbeddings:
         assert len(result) == 1536
 
     async def test_generate_embeddings_no_api_key(self):
-        """Without an API key, embedding generation should raise."""
+        """Without any embedding provider configured, should raise."""
         from app.knowledge.embeddings import generate_embeddings
 
         with patch("app.knowledge.embeddings.settings") as mock_settings:
             mock_settings.openai_api_key = ""
-            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+            mock_settings.embedding_api_url = ""
+            mock_settings.embedding_api_key = ""
+            mock_settings.embedding_model = ""
+            with pytest.raises(ValueError, match="No embedding provider configured"):
                 await generate_embeddings(["test"])
 
 

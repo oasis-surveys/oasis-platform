@@ -39,6 +39,9 @@ _API_KEY_FIELDS = {
     "self_hosted_tts_url": "SELF_HOSTED_TTS_URL",
     "self_hosted_tts_api_key": "SELF_HOSTED_TTS_API_KEY",
     "self_hosted_tts_model": "SELF_HOSTED_TTS_MODEL",
+    "embedding_api_url": "EMBEDDING_API_URL",
+    "embedding_api_key": "EMBEDDING_API_KEY",
+    "embedding_model": "EMBEDDING_MODEL",
     "twilio_account_sid": "TWILIO_ACCOUNT_SID",
     "twilio_auth_token": "TWILIO_AUTH_TOKEN",
     "twilio_phone_number": "TWILIO_PHONE_NUMBER",
@@ -82,6 +85,9 @@ class ApiKeyUpdate(BaseModel):
     self_hosted_tts_url: Optional[str] = None
     self_hosted_tts_api_key: Optional[str] = None
     self_hosted_tts_model: Optional[str] = None
+    embedding_api_url: Optional[str] = None
+    embedding_api_key: Optional[str] = None
+    embedding_model: Optional[str] = None
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
     twilio_phone_number: Optional[str] = None

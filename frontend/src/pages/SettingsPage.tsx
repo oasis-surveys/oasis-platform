@@ -93,6 +93,21 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
     description: "Model name to pass to the TTS server (default: tts-1).",
     category: "Self-Hosted",
   },
+  embedding_api_url: {
+    label: "Embedding API URL",
+    description: "Base URL for an OpenAI-compatible embedding server. Leave empty to use OpenAI.",
+    category: "Self-Hosted",
+  },
+  embedding_api_key: {
+    label: "Embedding API Key",
+    description: "API key for the embedding server. Falls back to OpenAI API key if empty.",
+    category: "Self-Hosted",
+  },
+  embedding_model: {
+    label: "Embedding Model",
+    description: "Model name for embeddings (default: text-embedding-3-small). Must output 1536 dimensions to match the DB schema.",
+    category: "Self-Hosted",
+  },
   twilio_account_sid: {
     label: "Twilio Account SID",
     description: "Required for telephony (phone call) interviews.",

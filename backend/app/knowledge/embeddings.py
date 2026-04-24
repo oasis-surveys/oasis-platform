@@ -3,7 +3,7 @@ OASIS — Embedding and chunking utilities for RAG.
 
 Handles:
 - Splitting text into manageable chunks with overlap
-- Generating vector embeddings via OpenAI's text-embedding-3-small
+- Generating vector embeddings (OpenAI or any OpenAI-compatible server)
 - Searching for similar chunks via pgvector cosine distance
 """
 
@@ -26,7 +26,7 @@ from app.models.knowledge import (
 
 CHUNK_SIZE = 800       # Target chunk size in characters
 CHUNK_OVERLAP = 200    # Overlap between consecutive chunks
-EMBEDDING_MODEL = "text-embedding-3-small"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 def chunk_text(text_content: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
@@ -81,42 +81,62 @@ def chunk_text(text_content: str, chunk_size: int = CHUNK_SIZE, overlap: int = C
 
 # ── Embedding generation ─────────────────────────────────────
 
-async def _get_openai_key() -> str:
-    """Get effective OpenAI key: dashboard override (Redis) > .env value."""
+async def _get_key(field: str) -> str:
+    """Get effective config value: dashboard override (Redis) > .env value."""
     try:
         from app.api.settings import get_effective_key
-        return await get_effective_key("openai_api_key")
+        return await get_effective_key(field)
     except Exception:
-        return getattr(settings, "openai_api_key", "")
+        return getattr(settings, field, "")
+
+
+async def _build_embedding_client() -> tuple[AsyncOpenAI, str]:
+    """
+    Build the embedding client and resolve the model name.
+
+    If EMBEDDING_API_URL is configured, uses that as the base_url
+    (self-hosted / any OpenAI-compatible server). Otherwise falls
+    back to OpenAI directly.
+
+    Returns (client, model_name).
+    """
+    base_url = await _get_key("embedding_api_url")
+    model = (await _get_key("embedding_model")) or DEFAULT_EMBEDDING_MODEL
+
+    if base_url:
+        api_key = (await _get_key("embedding_api_key")) or "not-needed"
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        logger.debug(f"Using self-hosted embedding server at {base_url}")
+    else:
+        api_key = await _get_key("openai_api_key")
+        if not api_key:
+            raise ValueError(
+                "No embedding provider configured. Either set EMBEDDING_API_URL "
+                "for a self-hosted server, or set OPENAI_API_KEY for OpenAI."
+            )
+        client = AsyncOpenAI(api_key=api_key)
+
+    return client, model
 
 
 async def generate_embeddings(texts: list[str]) -> list[list[float]]:
     """
-    Generate embedding vectors for a list of texts using OpenAI.
+    Generate embedding vectors for a list of texts.
 
-    Returns a list of float vectors (1536 dimensions each).
+    Uses self-hosted server if EMBEDDING_API_URL is set, otherwise OpenAI.
     """
-    api_key = await _get_openai_key()
-    if not api_key:
-        raise ValueError(
-            "OPENAI_API_KEY is required for generating embeddings. "
-            "Add it to your .env file or set it in the dashboard Settings."
-        )
+    client, model = await _build_embedding_client()
 
-    client = AsyncOpenAI(api_key=api_key)
-
-    # OpenAI supports batching up to 2048 texts
     response = await client.embeddings.create(
-        model=EMBEDDING_MODEL,
+        model=model,
         input=texts,
     )
 
-    # Return embeddings in the same order as inputs
     embeddings = [item.embedding for item in response.data]
 
     logger.debug(
         f"Generated {len(embeddings)} embeddings "
-        f"({EMBEDDING_DIMENSIONS}d, model={EMBEDDING_MODEL})"
+        f"({len(embeddings[0])}d, model={model})"
     )
 
     return embeddings

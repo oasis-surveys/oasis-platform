@@ -6,9 +6,9 @@
 <h3 align="center">Open Agentic Survey Interview System</h3>
 
 <p align="center">
-  A self-hosted platform for conducting AI-powered conversational interviews at scale.
+  Self-hosted platform for AI-powered conversational interviews.
   <br/>
-  Built for survey researchers, qualitative methodologists, and anyone who needs structured or open-ended data collection through voice or text.
+  Voice and text. Any model provider. Your infrastructure, your data.
 </p>
 
 <p align="center">
@@ -32,13 +32,11 @@
 
 ## What is OASIS?
 
-OASIS is an open-source research platform that lets you run conversational AI interviews from your own infrastructure. You define the study, configure an agent with a system prompt and model of your choice, and share a link (or phone number) with participants. Transcripts are diarized and stored in your database. You stay in control of the data, the models, and the entire pipeline.
+OASIS lets you run conversational AI interviews from your own infrastructure. Define a study, configure an agent with a system prompt and model, share a link with participants. Transcripts are stored in your database. You control the data, the models, and the pipeline.
 
-It was built out of a simple frustration: existing commercial tools for conversational AI are powerful, but they are not designed with research methodology in mind. Things like follow-up probing, semi-structured interview guides, participant identifiers, and study-level organization tend to be afterthoughts. OASIS puts those features front and center.
+Built because existing tools for conversational AI aren't designed for research. Things like follow-up probing, semi-structured interview guides, participant tracking, and study-level organization are afterthoughts in commercial platforms. OASIS puts them front and center.
 
-## Early-stage notice
-
-OASIS launched publicly in March 2026. While we have tested the platform extensively across different virtual machines, operating systems, and deployment setups, it is still a young project. You may encounter rough edges, especially in less common configurations. If something breaks, please [open an issue](https://github.com/oasis-surveys/oasis-platform/issues/new?template=bug_report.yml) and we will do our best to help.
+> OASIS launched in March 2026. It works, but it's a young project. If something breaks, [open an issue](https://github.com/oasis-surveys/oasis-platform/issues/new?template=bug_report.yml).
 
 ## Demo
 
@@ -62,61 +60,29 @@ https://github.com/user-attachments/assets/bbf5a613-a28a-4dd0-a962-9250ac1f05a1
 
 ## Features
 
-**Two interview modalities**
-- Voice interviews (real-time speech with STT, LLM, and TTS)
-- Text chat interviews (clean chat UI with customizable avatars)
+- **Voice + text interviews.** Real-time speech (STT > LLM > TTS) or clean text chat with customizable avatars.
+- **Voice-to-voice.** Stream audio directly to multimodal models (OpenAI Realtime, Gemini Live) for lower latency.
+- **Semi-structured mode.** Define question guides with follow-up probes and transition logic. The agent follows a structured backbone while keeping conversation natural.
+- **Multi-provider.** OpenAI, Google Gemini, Scaleway, Azure, GCP Vertex, or any LiteLLM-compatible provider. Custom model IDs supported.
+- **Self-hosted STT/TTS.** OpenAI Whisper, Deepgram, ElevenLabs, Cartesia, Scaleway, or bring your own OpenAI-compatible server.
+- **Knowledge base (RAG).** Upload documents, OASIS chunks and embeds them with pgvector. Agents can retrieve relevant context during interviews. Embeddings work with OpenAI or any self-hosted server.
+- **Research-first.** Study-level organization, participant identifiers (random/predefined/self-reported), diarized transcripts, session analytics, data export.
+- **Phone interviews (beta).** Twilio Media Streams for incoming calls.
+- **Self-hosted.** Everything in Docker. No data leaves your infra unless you point at external APIs. Optional dashboard auth.
 
-**Flexible pipeline architecture**
-- Modular pipeline: chain any STT, LLM, and TTS provider independently
-- Voice-to-voice pipeline: stream audio directly to multimodal models (OpenAI Realtime, Gemini Live)
-
-**Semi-structured interview mode**
-- Define a question guide with preset questions, follow-up probes, and transition logic
-- The agent follows a structured backbone while still allowing natural conversation
-- Upload interview guides via CSV or JSON, or configure them in the dashboard
-
-**Multi-provider model support**
-- OpenAI (GPT-4o, GPT-4.1, GPT-5, Realtime models)
-- Google Gemini (including native audio preview)
-- Scaleway (European-hosted, OpenAI-compatible)
-- Azure OpenAI and GCP Vertex AI (self-hosted endpoints)
-- Any LiteLLM-compatible provider, plus a custom model identifier option
-
-**STT and TTS providers**
-- OpenAI Whisper, Deepgram, Scaleway Whisper, self-hosted OpenAI-compatible (STT)
-- OpenAI TTS, ElevenLabs, Cartesia, self-hosted OpenAI-compatible (TTS)
-
-**Research-first design**
-- Study-level organization with multiple agents per study
-- Participant identifiers: random, predefined lists, or self-reported
-- Diarized transcripts with timestamps
-- Session analytics and data export
-- Knowledge base (RAG) with pgvector for document-grounded conversations
-
-**Telephony support (beta)**
-- Twilio Media Streams integration for phone-based interviews
-- Currently supports incoming calls
-
-**Self-hosted and private**
-- Everything runs in Docker on your own machine or server
-- No data leaves your infrastructure unless you explicitly configure external API calls
-- Optional basic authentication for the admin dashboard
-- API keys configurable via `.env` or the dashboard settings page
-
-**A note on GPUs and HPCs**
-- OASIS does not currently include built-in support for GPU scheduling or HPC cluster integration. This is intentional. HPC environments vary significantly between institutions, and teams that manage GPU clusters typically have the technical expertise to integrate OASIS into their own infrastructure. If you are running OASIS on an HPC and want to connect it to local GPU-hosted models, the LiteLLM layer makes this straightforward via custom endpoints.
+See the [FAQ](FAQ.md) for questions about self-hosting, HPC clusters, European cloud providers, and running with fully open-source models.
 
 ## Architecture
 
-OASIS runs as five Docker containers on a single internal network:
+Five Docker containers on one internal network:
 
 | Container | Stack | Role |
 |-----------|-------|------|
-| **Caddy** | Caddy 2 | Reverse proxy, automatic HTTPS |
-| **Frontend** | React, Tailwind CSS, Nginx | Admin dashboard and participant interview widget |
-| **Backend** | FastAPI, Pipecat, LiteLLM | WebSocket audio/text transport, AI pipeline orchestration, REST API |
-| **PostgreSQL** | pgvector/pg16 | Agent configs, transcripts, participant data, vector embeddings |
-| **Redis** | Redis 7 | Session tracking, real-time transcript pub/sub, API key overrides |
+| **Caddy** | Caddy 2 | Reverse proxy, auto HTTPS |
+| **Frontend** | React, Tailwind, Nginx | Dashboard + interview widget |
+| **Backend** | FastAPI, Pipecat, LiteLLM | WebSocket transport, AI pipeline, REST API |
+| **PostgreSQL** | pgvector/pg16 | Configs, transcripts, participant data, embeddings |
+| **Redis** | Redis 7 | Sessions, real-time pub/sub, API key overrides |
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -134,67 +100,37 @@ OASIS runs as five Docker containers on a single internal network:
 
 ## Quick Start
 
-### Prerequisites
-
-- Docker and Docker Compose
-- At least one AI provider API key (OpenAI, Google, Scaleway, etc.)
-
-### 1. Clone the repository
+You need Docker and at least one AI provider API key.
 
 ```bash
 git clone https://github.com/oasis-surveys/oasis-platform.git
 cd oasis-platform
-```
-
-### 2. Configure environment variables
-
-Copy the example `.env` file and fill in your API keys:
-
-```bash
 cp .env.example .env
-```
-
-At a minimum, you will need:
-
-```env
-# Required
-OPENAI_API_KEY=sk-...
-SECRET_KEY=some-random-secret-string
-
-# Recommended for voice interviews
-DEEPGRAM_API_KEY=...
-ELEVENLABS_API_KEY=...
-
-# Optional providers
-GOOGLE_API_KEY=...
-SCALEWAY_SECRET_KEY=...
-SCALEWAY_PROJECT_ID=...
-
-# Optional: enable login page
-AUTH_ENABLED=false
-AUTH_USERNAME=admin
-AUTH_PASSWORD=your-password
-
-# Optional: Twilio for phone interviews
-TWILIO_ACCOUNT_SID=...
-TWILIO_AUTH_TOKEN=...
-TWILIO_PHONE_NUMBER=...
-```
-
-### 3. Start the platform
-
-```bash
+# Edit .env with your API keys
 docker compose up -d
 ```
 
-That is it. Open your browser and go to `http://localhost` (or your server's address). The admin dashboard will be ready.
+Open `http://localhost`. That's it.
 
-### 4. Create your first study
+### Minimal `.env`
 
-1. Click **"New Study"** in the dashboard
-2. Add an agent, write a system prompt, select your models
+```env
+OPENAI_API_KEY=sk-...
+SECRET_KEY=some-random-secret
+
+# For voice interviews (pick your providers)
+DEEPGRAM_API_KEY=...
+ELEVENLABS_API_KEY=...
+```
+
+See `.env.example` for all options (Google, Scaleway, Azure, GCP, self-hosted STT/TTS, Twilio, auth, etc).
+
+### First study
+
+1. Click **New Study** in the dashboard
+2. Add an agent, write a system prompt, pick your models
 3. Set the agent to **Active**
-4. Copy the interview link and share it with participants
+4. Copy the interview link, share it
 
 ## Project Structure
 
@@ -205,91 +141,66 @@ oasis/
 │   │   ├── api/          # REST + WebSocket endpoints
 │   │   ├── models/       # SQLAlchemy ORM models
 │   │   ├── schemas/      # Pydantic request/response schemas
-│   │   ├── pipeline/     # Pipecat pipeline runner and processors
+│   │   ├── pipeline/     # Pipecat pipeline runner
 │   │   ├── knowledge/    # RAG: chunking, embedding, retrieval
-│   │   ├── config.py     # Environment-based settings
-│   │   └── main.py       # FastAPI app entry point
-│   ├── alembic/          # Database migrations
-│   ├── tests/            # Pytest test suite
+│   │   ├── config.py     # Environment settings
+│   │   └── main.py       # FastAPI entry point
+│   ├── alembic/          # DB migrations
+│   ├── tests/
 │   └── Dockerfile
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/        # Dashboard and interview widget pages
-│   │   ├── components/   # Shared UI components
-│   │   ├── contexts/     # React contexts (auth)
-│   │   └── lib/          # API client, constants, utilities
+│   │   ├── pages/        # Dashboard + interview widget
+│   │   ├── components/   # Shared UI
+│   │   ├── contexts/     # React contexts
+│   │   └── lib/          # API client, utils
 │   └── Dockerfile
 ├── docker/
-│   └── Caddyfile         # Reverse proxy config
+│   └── Caddyfile
 ├── docker-compose.yml
 └── .env.example
 ```
 
 ## Testing
 
-OASIS has a comprehensive test suite that runs without any real API keys. All external calls are mocked.
+All external calls are mocked. No API keys needed to run tests.
 
 ```bash
-# Backend tests (from the backend/ directory)
-pip install -r requirements.txt
-pytest tests/ -v --cov=app
+# Backend
+cd backend && pip install -r requirements.txt && pytest tests/ -v --cov=app
 
-# Frontend tests (from the frontend/ directory)
-npm install
-npx vitest run
+# Frontend
+cd frontend && npm install && npx vitest run
 ```
 
-Tests also run automatically on every push via GitHub Actions. A weekly scheduled run makes sure nothing has drifted.
+CI runs on every push + weekly scheduled run.
 
-## Configuration Reference
+## Why
 
-All settings are managed through environment variables. See `backend/app/config.py` for the full list, or check the [documentation](https://oasis-surveys.github.io/docs) for a detailed walkthrough.
+Commercial conversational AI platforms are built for support and sales. Research needs different things:
 
-Key options:
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key | (required for OpenAI models) |
-| `DEEPGRAM_API_KEY` | Deepgram STT key | (required for modular voice pipeline) |
-| `ELEVENLABS_API_KEY` | ElevenLabs TTS key | (required for modular voice pipeline) |
-| `GOOGLE_API_KEY` | Google AI Studio key | (optional, for Gemini models) |
-| `SCALEWAY_SECRET_KEY` | Scaleway API key | (optional, European-hosted models) |
-| `AUTH_ENABLED` | Enable dashboard login | `false` |
-| `AUTH_USERNAME` | Login username | `admin` |
-| `AUTH_PASSWORD` | Login password | (must be set if auth enabled) |
-
-## Goals
-
-OASIS exists to fill a gap. Commercial conversational AI platforms are built for customer support, sales, and marketing. They are good at what they do, but research has different requirements:
-
-- **Methodological control.** Researchers need semi-structured guides, probing logic, and participant tracking built into the tool, not bolted on.
-- **Transparency.** When you publish a study, reviewers and readers should be able to understand exactly what system was used, what models were called, and where data was stored.
-- **Affordability.** Academic budgets are not enterprise budgets. Self-hosting with pay-as-you-go API keys is often the only realistic option.
-- **Data sovereignty.** Especially in Europe, running your own infrastructure is not a nice-to-have. It is a compliance requirement.
-
-The long-term goal is for OASIS to become a standard open-source tool that survey and qualitative researchers can rely on, the same way they rely on tools like Qualtrics for traditional surveys but with conversational AI as the medium.
+- **Methodological control.** Semi-structured guides, probing logic, participant tracking built in, not bolted on.
+- **Transparency.** Reviewers should know what system, models, and data storage you used.
+- **Affordability.** Academic budgets aren't enterprise budgets. Self-hosting with pay-as-you-go API keys is often the only option.
+- **Data sovereignty.** Especially in Europe, running your own infrastructure is often a compliance requirement.
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Contributions welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
-- **Bug reports:** [Open a bug report](https://github.com/oasis-surveys/oasis-platform/issues/new?template=bug_report.yml)
-- **Feature requests:** [Suggest a feature](https://github.com/oasis-surveys/oasis-platform/issues/new?template=feature_request.yml)
-- **General questions:** [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk)
+- [Bug reports](https://github.com/oasis-surveys/oasis-platform/issues/new?template=bug_report.yml)
+- [Feature requests](https://github.com/oasis-surveys/oasis-platform/issues/new?template=feature_request.yml)
+- Questions: [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk)
 
 ## License
 
-OASIS is released under the **Open Non-Commercial Research License (ONCRL) v1.0**.
+**Open Non-Commercial Research License (ONCRL) v1.0.**
 
-You are free to use, modify, and share OASIS for non-commercial research and educational purposes. Use as a core component of a funded research project or grant application requires prior written approval from the copyright holder — this is not meant to be a barrier, it just helps us understand how the project is being used and ensure proper attribution.
+Free to use, modify, and share for non-commercial research and education. Using OASIS as a core component of a funded research project or grant application requires prior written approval from the copyright holder (not meant as a barrier, just helps us track usage and attribution).
 
-For universities and research institutions that prefer not to self-host, the OASIS Project may offer the platform as a hosted or managed service. Contributed code may be included in such offerings (see section 3 and 5 of the license). If you have questions about this, please [get in touch](mailto:max.lang@stx.ox.ac.uk).
-
-See the full [LICENSE](LICENSE) file for details.
+For hosted/managed service inquiries, [get in touch](mailto:max.lang@stx.ox.ac.uk). See the full [LICENSE](LICENSE) file.
 
 ## Citation
-
-If you use OASIS in your research, please cite it:
 
 ```bibtex
 @software{lang2026oasis,
