@@ -270,12 +270,6 @@ Not automatically in the current version. Here's how session endings work:
 - **Structured interview guide:** When the agent finishes all topics, it delivers the configured closing message (e.g. "Thank you for your time"). But this is a *conversational* close — the WebSocket stays open and the participant can keep talking until they click **End Interview** or the max duration expires.
 - **Participant clicks End Interview:** The button in the widget closes the session immediately.
 
-**What's missing:**
-
-- There's no mechanism for the LLM to programmatically signal "I'm done, close the connection." The agent can *say* the interview is over, but the session stays open.
-- There's no redirect to an external URL (e.g. back to Qualtrics) when the session ends. The participant sees a static "interview complete" screen.
-
-**Workaround for Qualtrics flow:** Instruct the agent in the system prompt to clearly tell the participant when the interview is complete, e.g. *"Thank you, we've covered everything. Please click the End Interview button and then continue with the rest of the survey."* Combine this with a reasonable max duration as a safety net. On the Qualtrics side, you can add a "Click Next to continue" instruction below the iframe — participants will see it after they're done with the OASIS interview.
 
 Programmatic end-of-interview signaling and redirect URLs are on the roadmap.
 
@@ -343,6 +337,8 @@ For text-only interviews, the language setting has no effect — the LLM's respo
 - **OpenAI Realtime / Gemini Live (voice-to-voice)**: language is part of the system prompt context; the code is stored but may not map to a provider-level setting in all V2V pipelines.
 
 The custom code field accepts up to 10 characters. If you're unsure which code your provider needs, check their documentation.
+
+**One code for both STT and TTS:** OASIS uses a single language setting for the whole pipeline. In practice this is fine — the code is mainly used by STT (to know what language to expect in the audio), and most TTS providers auto-detect language from the text content without needing a code at all. If you mix providers that want different code formats (e.g. OpenAI STT expects `fi`, Deepgram expects `fi-FI`), use whatever your STT provider needs since that's where it actually matters.
 
 You don't need to modify any UI labels or source code to use a new language. The language setting is a backend/pipeline parameter — the participant-facing interview widget has no language-specific UI text.
 
