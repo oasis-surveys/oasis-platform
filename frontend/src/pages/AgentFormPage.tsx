@@ -385,7 +385,7 @@ function buildAgentConfigJSON(form: FormData): string {
     tts_provider: form.tts_provider,
     tts_model: form.tts_model || null,
     tts_voice: form.tts_voice || null,
-    language: form.language,
+    language: form.language === "__custom__" ? form.language_custom : form.language,
     max_duration_seconds: maxDur,
     status: form.status,
     participant_id_mode: form.participant_id_mode,
@@ -445,7 +445,14 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     tts_provider: (obj.tts_provider as string) || "openai",
     tts_model: (obj.tts_model as string) || "gpt-4o-mini-tts",
     tts_voice: (obj.tts_voice as string) || "alloy",
-    language: (obj.language as string) || "en",
+    language: (() => {
+      const lang = (obj.language as string) || "en";
+      return LANGUAGES.some((l) => l.value === lang) ? lang : "__custom__";
+    })(),
+    language_custom: (() => {
+      const lang = (obj.language as string) || "en";
+      return LANGUAGES.some((l) => l.value === lang) ? "" : lang;
+    })(),
     max_duration_seconds: durStr && !isPresetDur ? "__custom__" : (durStr || "1800"),
     max_duration_custom: durStr && !isPresetDur ? durStr : "",
     status: (obj.status as "draft" | "active" | "paused") || "active",
@@ -482,6 +489,7 @@ interface FormData {
   tts_model: string;
   tts_voice: string;
   language: string;
+  language_custom: string;
   max_duration_seconds: string;
   max_duration_custom: string;
   status: "draft" | "active" | "paused";
@@ -525,6 +533,7 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   tts_model: "gpt-4o-mini-tts",
   tts_voice: "alloy",
   language: "en",
+  language_custom: "",
   max_duration_seconds: "1800",
   max_duration_custom: "",
   status: "active",
@@ -792,7 +801,14 @@ export default function AgentFormPage() {
           tts_provider: a.tts_provider,
           tts_model: a.tts_model || "gpt-4o-mini-tts",
           tts_voice: a.tts_voice || "alloy",
-          language: a.language,
+          language: (() => {
+            const known = LANGUAGES.some((l) => l.value === a.language);
+            return known ? a.language : "__custom__";
+          })(),
+          language_custom: (() => {
+            const known = LANGUAGES.some((l) => l.value === a.language);
+            return known ? "" : a.language;
+          })(),
           max_duration_seconds: (() => {
             const val = a.max_duration_seconds?.toString() || "";
             const presets = ["300", "600", "900", "1200", "1800", "2700", "3600", "5400", "7200"];
@@ -855,7 +871,7 @@ export default function AgentFormPage() {
       tts_provider: form.tts_provider,
       tts_model: form.tts_model || null,
       tts_voice: form.tts_voice || null,
-      language: form.language,
+      language: form.language === "__custom__" ? form.language_custom : form.language,
       max_duration_seconds: (() => {
         const raw = form.max_duration_seconds === "__custom__"
           ? form.max_duration_custom
@@ -2062,7 +2078,18 @@ export default function AgentFormPage() {
                 {LANGUAGES.map((l) => (
                   <option key={l.value} value={l.value}>{l.label}</option>
                 ))}
+                <option value="__custom__">Custom (provider code)</option>
               </select>
+              {form.language === "__custom__" && (
+                <input
+                  type="text"
+                  value={form.language_custom}
+                  onChange={set("language_custom")}
+                  className="input-styled mt-2 w-full font-mono"
+                  placeholder="e.g. pt-BR, yue, cmn-Hans-CN"
+                  maxLength={10}
+                />
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
