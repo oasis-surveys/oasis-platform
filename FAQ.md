@@ -19,9 +19,14 @@ Things people ask. Updated when new ones come in.
 - [Where does my data go?](#where-does-my-data-go)
 - [Can I use this for phone interviews?](#can-i-use-this-for-phone-interviews)
 - [How many concurrent interviews can it handle?](#how-many-concurrent-interviews-can-it-handle)
+- [What server specs do I need for cloud deployment?](#what-server-specs-do-i-need-for-cloud-deployment)
+- [Are API keys hidden from participants?](#are-api-keys-hidden-from-participants)
+- [Can I pipe data from Qualtrics into the interview?](#can-i-pipe-data-from-qualtrics-into-the-interview)
+- [Can the agent end the interview on its own?](#can-the-agent-end-the-interview-on-its-own)
 - [How do I update OASIS? Do I need to rebuild containers?](#how-do-i-update-oasis-do-i-need-to-rebuild-containers)
 - [Are database migrations applied automatically?](#are-database-migrations-applied-automatically)
 - [What's the deal with the license?](#whats-the-deal-with-the-license)
+- [What languages are supported?](#what-languages-are-supported)
 - [Something is broken](#something-is-broken)
 
 ---
@@ -181,9 +186,98 @@ Incoming calls only for now. No outbound calling yet.
 <details>
 <summary><strong>How many concurrent interviews can it handle?</strong></summary>
 
-Depends on your setup. The OASIS backend is async (FastAPI + WebSockets) and handles many concurrent sessions fine. The bottleneck is usually the AI providers, each voice session holds a persistent connection to STT/LLM/TTS.
+OASIS itself is lightweight, the backend is async Python (FastAPI + WebSockets) and acts as an orchestration layer, not a compute layer. It forwards audio/text to your self-hosted infrastructure or external AI providers and writes results to Postgres. 
 
-Cloud providers: limited by their rate limits and your API tier. Self-hosted: limited by your GPU capacity.
+**Text chat:** Straightforward. Each session is one WebSocket plus LLM API calls. OpenAI's Tier 2 rate limits (around 500 RPM for GPT-4o) can handle 300 concurrent text sessions comfortably since each turn is one request and users don't all type at the exact same moment. If you're on Tier 1, request a limit increase before launch.
+
+**Voice interviews:** Harder. Each voice session holds persistent connections to STT, LLM, and TTS services simultaneously. With OpenAI (Whisper + GPT-4o + TTS), you need Tier 3+ rate limits. OpenAI's Realtime voice-to-voice endpoint has its own concurrency limits that vary by account, check your [usage dashboard](https://platform.openai.com/usage). If you hit rate limits, the session fails mid-interview, so budget headroom.
+
+**The OASIS backend itself** is rarely the bottleneck. A single `backend` container on 2 vCPUs / 4 GB RAM can handle several hundred concurrent WebSocket sessions. If you need more, run multiple backend replicas behind a load balancer (you'll need sticky sessions or Redis-backed session state, which OASIS already uses).
+</details>
+
+<details>
+<summary><strong>What server specs do I need for cloud deployment?</strong></summary>
+
+For hundreds of concurrent users using cloud AI providers (OpenAI, Deepgram, etc.), OASIS is just the orchestrator no GPUs needed. Here's a practical starting point:
+
+| Component | Spec | Notes |
+|-----------|------|-------|
+| **OASIS (backend + frontend + Caddy)** | 4 vCPU, 8 GB RAM | Single VM is fine. `t3.large` on AWS, `e2-standard-4` on GCP, `Standard_D4s_v3` on Azure, or a Hetzner CPX31 (~€15/mo). |
+| **PostgreSQL** | 2 vCPU, 4 GB RAM, 50 GB SSD | Managed DB recommended (RDS, Cloud SQL, Azure Database). Saves you backup and failover headaches. |
+| **Redis** | 1 vCPU, 1 GB RAM | Tiny footprint — stores API keys and active session state only. Managed Redis (ElastiCache, Memorystore) or run it on the same VM. |
+
+**Cloud hosting options (all work fine):**
+
+- **AWS:** EC2 instance or ECS Fargate. Use RDS for Postgres, ElastiCache for Redis. Put an ALB in front if you want SSL termination instead of Caddy.
+- **GCP:** Compute Engine or Cloud Run (for the stateless frontend). Cloud SQL for Postgres, Memorystore for Redis.
+- **Azure:** Container Apps or a VM. Azure Database for PostgreSQL, Azure Cache for Redis.
+- **Hetzner / DigitalOcean / OVH:** A single VPS with Docker Compose works. Cheapest option. You manage your own backups.
+
+For any cloud, make sure ports 80/443 are open and you have a domain pointed at the server (Caddy handles TLS automatically with Let's Encrypt). The `docker-compose.yml` ships production-ready — just `docker compose up -d` on your server.
+
+**Cost estimate (cloud AI, 300 users, text chat):** The OASIS infrastructure itself runs for $50–150/month depending on provider (wihtout GPU cost). The dominant cost is the AI API usage. 
+If you self-host models (vLLM, faster-whisper, Kokoro), infrastructure cost goes up (GPU VMs) but API cost drops to zero.
+
+</details>
+
+<details>
+<summary><strong>Are API keys hidden from participants?</strong></summary>
+
+Yes. API keys never leave the server.
+
+- Keys from `.env` are read by the backend container at startup. Keys set through the **Settings** dashboard are stored in Redis. Both are server-side only.
+- The participant-facing interview widget (`/interview/{widget_key}`) loads a public config endpoint that returns the agent's display settings (title, avatar, colors, modality) — no secrets. The interview itself runs over a WebSocket where audio/text flows through the backend to the AI provider. The browser never sees an API key.
+- The dashboard shows keys as masked values (e.g. `sk-...7x2f`). Full keys are only sent *to* the server when an admin updates them via PUT.
+- If you enable dashboard authentication (set `AUTH_USERNAME` and `AUTH_PASSWORD` in `.env`), only authenticated users can view or change keys. The interview widget routes are always public — that's by design, since participants need to access them without logging in.
+
+Short version: participants interact with OASIS through a WebSocket. The backend makes the AI provider calls. Keys stay on the server.
+
+</details>
+
+<details>
+<summary><strong>Can I pipe data from Qualtrics into the interview?</strong></summary>
+
+Partially, with workarounds. OASIS doesn't have a native Qualtrics API integration, but the interview widget is a standard iframe that Qualtrics can embed, and you can pass a participant identifier via URL parameter. Qualtrics intentionally restricts access to in-progress response data from embedded content (for security and data integrity reasons), so piping live answers into an iframe is not straightforward. LimeSurvey is generally more flexible about exposing survey data to external embeds, but the specifics are still use-case dependent and require custom configuration.
+
+**What works today:**
+
+1. **Embed as iframe.** In Qualtrics, add a "Text/Graphic" question with custom HTML:
+   ```html
+   <iframe src="https://your-oasis-server.com/interview/WIDGET_KEY?pid=${e://Field/ResponseID}" width="100%" height="700" allow="microphone"></iframe>
+   ```
+   The `pid` parameter links the OASIS session to the Qualtrics response. Use Qualtrics piped text (`${e://Field/...}`) to pass the response ID or any embedded data field as the participant ID.
+
+2. **One agent per condition.** If you have 3 experimental conditions, create 3 agents with different system prompts (each describing the condition context). In Qualtrics, use branch logic to show the iframe with the matching `WIDGET_KEY` for each condition. This is the cleanest approach when conditions are discrete.
+
+3. **Encode condition in the participant ID.** Set participant ID mode to **Predefined** or **Input**, and use a structured ID like `P042_conditionA`. Mention in the system prompt that the participant ID encodes their condition and the agent should parse it. LLMs handle this reliably.
+
+**What doesn't work (yet):**
+
+- There's no `?condition=X&prior_answer=Y` URL parameter that gets injected into the system prompt automatically. The only first-class URL parameter is `pid`.
+- OASIS can't call the Qualtrics API mid-interview to pull in earlier survey responses.
+- There's no automatic redirect back to Qualtrics when the interview ends (see [Can the agent end the interview on its own?](#can-the-agent-end-the-interview-on-its-own)).
+
+For most experimental designs, the "one agent per condition" approach is simplest and avoids fragile URL parameter parsing. If you need the LLM to reference specific prior answers, put that context in the system prompt or use the knowledge base to upload condition-specific documents.
+
+</details>
+
+<details>
+<summary><strong>Can the agent end the interview on its own?</strong></summary>
+
+Not automatically in the current version. Here's how session endings work:
+
+- **Max duration:** If you set a max duration (e.g. 30 minutes), OASIS terminates the session when time runs out. The participant sees "Interview complete. Thank you for your participation. You may close this page now."
+- **Structured interview guide:** When the agent finishes all topics, it delivers the configured closing message (e.g. "Thank you for your time"). But this is a *conversational* close — the WebSocket stays open and the participant can keep talking until they click **End Interview** or the max duration expires.
+- **Participant clicks End Interview:** The button in the widget closes the session immediately.
+
+**What's missing:**
+
+- There's no mechanism for the LLM to programmatically signal "I'm done, close the connection." The agent can *say* the interview is over, but the session stays open.
+- There's no redirect to an external URL (e.g. back to Qualtrics) when the session ends. The participant sees a static "interview complete" screen.
+
+**Workaround for Qualtrics flow:** Instruct the agent in the system prompt to clearly tell the participant when the interview is complete, e.g. *"Thank you, we've covered everything. Please click the End Interview button and then continue with the rest of the survey."* Combine this with a reasonable max duration as a safety net. On the Qualtrics side, you can add a "Click Next to continue" instruction below the iframe — participants will see it after they're done with the OASIS interview.
+
+Programmatic end-of-interview signaling and redirect URLs are on the roadmap.
 
 </details>
 
@@ -229,6 +323,28 @@ We previously used a custom non-commercial license (ONCRL) but it created ambigu
 If you use OASIS in published research, we'd appreciate a citation. There's a BibTeX entry and Zenodo DOI in the [README](README.md#citation). It's not a legal requirement, just a nice thing to do that helps the project.
 
 Questions? [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk)
+
+</details>
+
+<details>
+<summary><strong>What languages are supported?</strong></summary>
+
+The language dropdown in the agent form includes twelve common languages (English, Spanish, French, German, Portuguese, Dutch, Italian, Chinese, Japanese, Korean, Arabic, Hindi). If you need a language that isn't in the list — like Finnish (`fi`) — select **Custom (provider code)** and type the provider-specific code directly.
+
+**What the language setting does:** It tells the STT (speech-to-text) provider what language to expect in the audio stream. This improves transcription accuracy. For example, setting `fi` tells Whisper to expect Finnish speech rather than trying to auto-detect. The setting is also passed to some TTS providers. It does **not** control what language the LLM responds in — that's determined by your **system prompt**. If you want the agent to conduct interviews in Finnish, you need to do both: set the language to `fi` *and* write the system prompt in Finnish (or instruct the LLM to respond in Finnish).
+
+For text-only interviews, the language setting has no effect — the LLM's response language is entirely controlled by the system prompt.
+
+**Provider-specific codes:**
+
+- **OpenAI Whisper / GPT-4o Transcribe**: ISO 639-1 codes (`en`, `fi`, `fr`, `de`, …). Finnish is `fi`. See [OpenAI language support](https://platform.openai.com/docs/guides/speech-to-text#supported-languages).
+- **Deepgram**: BCP-47 style codes (`en-US`, `pt-BR`, `nl`). See [Deepgram language docs](https://developers.deepgram.com/docs/models-languages-overview).
+- **Azure STT/TTS**: full locale codes (`en-US`, `fi-FI`, `zh-CN`). See [Azure language support](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support).
+- **OpenAI Realtime / Gemini Live (voice-to-voice)**: language is part of the system prompt context; the code is stored but may not map to a provider-level setting in all V2V pipelines.
+
+The custom code field accepts up to 10 characters. If you're unsure which code your provider needs, check their documentation.
+
+You don't need to modify any UI labels or source code to use a new language. The language setting is a backend/pipeline parameter — the participant-facing interview widget has no language-specific UI text.
 
 </details>
 
