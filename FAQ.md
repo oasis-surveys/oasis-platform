@@ -316,6 +316,8 @@ We previously used a custom non-commercial license (ONCRL) but it created ambigu
 
 If you use OASIS in published research, we'd appreciate a citation. There's a BibTeX entry and Zenodo DOI in the [README](README.md#citation). It's not a legal requirement, just a nice thing to do that helps the project.
 
+One ask: if you cite OASIS, please link to the [main repository](https://github.com/oasis-surveys/oasis-platform) rather than a fork or modified copy. And if you've built something useful on top of it — a new provider integration, a pipeline improvement, a UI feature — consider contributing it back rather than maintaining a separate fork. The project is better when improvements land upstream where everyone benefits. We're happy to review PRs and help get things merged.
+
 Questions? [max.lang@stx.ox.ac.uk](mailto:max.lang@stx.ox.ac.uk)
 
 </details>
