@@ -9,7 +9,7 @@ authors:
     affiliation: University of Oxford
 repository-code: https://github.com/oasis-surveys/oasis-platform
 url: https://oasis-surveys.github.io
-license: LicenseRef-ONCRL-1.0
+license: AGPL-3.0-only
 version: 1.0.0
 date-released: "2026-03-14"
 doi: 10.5281/zenodo.19041570
