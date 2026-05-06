@@ -6,22 +6,20 @@
 # Elestio's host-level nginx (with auto-SSL) already binds 80/443
 # and cannot be disabled — so we drop the in-stack Caddy proxy.
 #
-# Frontend and backend are bound to the Docker bridge IP
-# (172.17.0.1) so Elestio's nginx can reverse-proxy to them.
+# The frontend's nginx (see frontend/nginx.conf on this branch)
+# proxies /api/ and /ws/ to the backend container, so Elestio's
+# reverse proxy only needs ONE rule:
 #
-# In the Elestio dashboard → "Reverse proxy configuration":
-#   1. HTTPS 443 → HTTP 8000  on path /api/   (backend)
-#   2. HTTPS 443 → HTTP 8000  on path /ws/    (backend)
-#   3. HTTPS 443 → HTTP 3000  on path /       (frontend)
+#   HTTPS 443 → HTTP 3000 on path /   (target IP 172.17.0.1)
 #
 # Do NOT merge this branch into main. Pull updates from main into
 # this branch when the application code changes:
 #   git checkout elestio-deployment
-#   git merge main          # then resolve docker-compose.yml in favor of this file
+#   git merge main          # resolve conflicts in favor of this branch
 # ============================================================
 
 services:
-  # ── Frontend (served by Elestio nginx on /) ───────────────
+  # ── Frontend (also reverse-proxies /api/ and /ws/ to backend) ──
   frontend:
     build:
       context: ./frontend
@@ -29,17 +27,19 @@ services:
     restart: unless-stopped
     ports:
       - "172.17.0.1:3000:80"
+    depends_on:
+      - backend
     networks:
       - oasis_net
 
-  # ── Backend API (served by Elestio nginx on /api, /ws) ────
+  # ── Backend API (internal only — reached via frontend nginx) ──
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "172.17.0.1:8000:8000"
+    expose:
+      - "8000"
     env_file:
       - .env
     depends_on:
