@@ -5,6 +5,8 @@ Things people ask. Updated when new ones come in.
 ## Contents
 
 - [Can I just start with OpenAI and add more providers later?](#can-i-just-start-with-openai-and-add-more-providers-later)
+- [Which AI providers does OASIS support? Can I use OpenRouter?](#which-ai-providers-does-oasis-support-can-i-use-openrouter)
+- [Which model IDs work today?](#which-model-ids-work-today)
 - [Can I run OASIS entirely with open-source models?](#can-i-run-oasis-entirely-with-open-source-models)
 - [Can I run this on our institutional HPC / GPU cluster?](#can-i-run-this-on-our-institutional-hpc--gpu-cluster)
 - [What about European cloud providers instead of on-prem?](#what-about-european-cloud-providers-instead-of-on-prem)
@@ -23,6 +25,7 @@ Things people ask. Updated when new ones come in.
 - [Are API keys hidden from participants?](#are-api-keys-hidden-from-participants)
 - [Can I pipe data from Qualtrics into the interview?](#can-i-pipe-data-from-qualtrics-into-the-interview)
 - [Can the agent end the interview on its own?](#can-the-agent-end-the-interview-on-its-own)
+- [How do I deploy OASIS to a server in one command?](#how-do-i-deploy-oasis-to-a-server-in-one-command)
 - [How do I update OASIS? Do I need to rebuild containers?](#how-do-i-update-oasis-do-i-need-to-rebuild-containers)
 - [Are database migrations applied automatically?](#are-database-migrations-applied-automatically)
 - [What's the deal with the license?](#whats-the-deal-with-the-license)
@@ -37,6 +40,75 @@ Things people ask. Updated when new ones come in.
 Yes, that's the recommended path. With only `OPENAI_API_KEY` set in `.env` you get text chat (gpt-4o-mini), voice interviews (Whisper STT + gpt-4o-mini-tts), and voice-to-voice (gpt-realtime). Run `docker compose up -d`, open `http://localhost`, create a study from one of the four templates, and you have a working interview link in under a minute.
 
 Add Deepgram, ElevenLabs, Cartesia, Google, Anthropic, Scaleway, Azure, GCP, or self-hosted endpoints whenever you want to swap in something different. You don't have to commit upfront.
+
+</details>
+
+<details>
+<summary><strong>Which AI providers does OASIS support? Can I use OpenRouter?</strong></summary>
+
+OASIS has first-class integrations for the providers below. Each one has a dedicated env var (and a matching field in **Settings** in the dashboard, which overrides `.env` at runtime).
+
+**LLM (text generation):**
+
+| Provider | Env var | Model ID format | Notes |
+|---|---|---|---|
+| OpenAI | `OPENAI_API_KEY` | `openai/gpt-5.5`, `openai/gpt-4o`, `openai/o3`, ... | Set `OPENAI_USE_EU=true` to route through `eu.api.openai.com`. |
+| Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-opus-4-7`, `anthropic/claude-sonnet-4-6`, `anthropic/claude-haiku-4-5` | Text only. No native voice-to-voice. |
+| Google AI | `GOOGLE_API_KEY` | `google/gemini-2.5-pro`, `google/gemini-2.5-flash`, `google/gemini-3.1-pro-preview` | Same key works for Gemini Live voice-to-voice. |
+| Scaleway | `SCALEWAY_SECRET_KEY` | `scaleway/qwen3-235b-...`, `scaleway/llama-3.3-70b-instruct`, ... | EU-hosted Generative APIs (Paris). |
+| Azure OpenAI | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_API_VERSION` | `azure/<your-deployment-name>` | Use your Azure deployment name, not the OpenAI model name. |
+| GCP Vertex AI | `GCP_API_KEY` + `GCP_PROJECT_ID` + `GCP_LOCATION` | `gcp/gemini-2.5-pro`, `gcp/gemini-2.5-flash`, ... | Vertex AI's OpenAI-compatible shim. |
+| **Anything OpenAI-compatible (incl. OpenRouter)** | `OPENAI_COMPATIBLE_LLM_URL` + `OPENAI_COMPATIBLE_LLM_API_KEY` | `custom/<model>` | See below. |
+
+**STT (speech-to-text):** OpenAI Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), Scaleway Whisper, Azure Speech, plus any self-hosted endpoint that implements `/v1/audio/transcriptions` (Speaches, faster-whisper, etc. via `STT_API_URL`).
+
+**TTS (text-to-speech):** OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), Cartesia (`CARTESIA_API_KEY`), Azure Speech, plus any self-hosted endpoint that implements `/v1/audio/speech` (Kokoro, Piper, etc. via `TTS_API_URL`).
+
+**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`) and Google Gemini Live.
+
+**Yes, OpenRouter works.** And so does Groq, Mistral La Plateforme, DeepInfra, Together AI, Fireworks, your own LiteLLM proxy, vLLM, Ollama, anything that speaks the OpenAI Chat Completions protocol. Use the `custom/` prefix:
+
+```env
+# in .env
+OPENAI_COMPATIBLE_LLM_URL=https://openrouter.ai/api/v1
+OPENAI_COMPATIBLE_LLM_API_KEY=sk-or-v1-...
+```
+
+Then in the dashboard, pick **Custom (OpenAI-compatible)** as the LLM and enter the model with the `custom/` prefix:
+
+```
+custom/anthropic/claude-sonnet-4.6
+custom/openai/gpt-5.5
+custom/meta-llama/llama-3.3-70b-instruct
+```
+
+(For OpenRouter, the model ID after `custom/` is whatever OpenRouter calls it, see [openrouter.ai/models](https://openrouter.ai/models). Same idea for Groq, Mistral, etc.)
+
+The `custom/` route only covers the **LLM** step. STT and TTS are configured separately, but the self-hosted STT/TTS env vars (`STT_API_URL`, `TTS_API_URL`) accept any OpenAI-compatible audio endpoint too.
+
+</details>
+
+<details>
+<summary><strong>Which model IDs work today?</strong></summary>
+
+The dashboard ships with curated dropdowns of model IDs that we've verified against each provider's docs. For "I want to type a model ID directly" workflows, here are the currently supported families (May 2026):
+
+**OpenAI** ([source](https://developers.openai.com/api/docs/models/all)):
+- Frontier text: `openai/gpt-5.5`, `openai/gpt-5.5-pro`, `openai/gpt-5.4`, `openai/gpt-5.4-pro`, `openai/gpt-5.4-mini`, `openai/gpt-5.4-nano`, `openai/gpt-5`, `openai/gpt-5-mini`, `openai/gpt-5-nano`, `openai/gpt-4.1`, `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/o3`
+- Realtime (voice-to-voice): `openai/gpt-realtime-1.5`, `openai/gpt-realtime`, `openai/gpt-realtime-mini`
+- STT: `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`
+- TTS: `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`
+
+**Anthropic** ([source](https://platform.claude.com/docs/en/about-claude/models/overview)):
+- Current: `anthropic/claude-opus-4-7`, `anthropic/claude-sonnet-4-6`, `anthropic/claude-haiku-4-5`
+- Legacy (still works): `anthropic/claude-opus-4-6`, `anthropic/claude-sonnet-4-5`, `anthropic/claude-opus-4-5`
+
+**Google Gemini** ([source](https://ai.google.dev/gemini-api/docs/models)):
+- Stable text: `google/gemini-2.5-pro`, `google/gemini-2.5-flash`, `google/gemini-2.5-flash-lite`
+- Preview text (Gemini 3 family): `google/gemini-3.1-pro-preview`, `google/gemini-3-flash-preview`, `google/gemini-3.1-flash-lite-preview`
+- Voice-to-voice (Live API): `google/gemini-3.1-flash-live-preview`, `google/gemini-2.5-flash-native-audio-latest`
+
+If a provider releases a new model after this list was written, you can usually just type its ID into the **Custom model** field of the agent form. The prefix routing (`openai/`, `anthropic/`, `google/`, etc.) passes the model name straight through to the provider's SDK.
 
 </details>
 
@@ -276,9 +348,44 @@ Programmatic end-of-interview signaling and redirect URLs are on the roadmap.
 </details>
 
 <details>
+<summary><strong>How do I deploy OASIS to a server in one command?</strong></summary>
+
+OASIS ships an installer that takes a fresh Ubuntu 24.04 VM (Hetzner Cloud, DigitalOcean, anywhere) and turns it into a working OASIS install in about 8 minutes. Total infra cost on Hetzner: around €5/mo.
+
+```bash
+ssh root@your-server-ip
+curl -fsSL https://raw.githubusercontent.com/oasis-surveys/oasis-platform/main/scripts/install.sh | bash
+```
+
+The script installs Docker, configures UFW + fail2ban + unattended security updates, clones the repo to `/opt/oasis`, prompts for your domain and OpenAI key, generates random secrets, and brings the stack up behind Caddy with auto-Let's Encrypt SSL.
+
+Full step-by-step guide (with the 3 Hetzner Console clicks before the SSH part): [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+Updates are a single command too:
+
+```bash
+bash /opt/oasis/scripts/update.sh           # pulls latest, rebuilds, restarts
+bash /opt/oasis/scripts/update.sh --backup  # same, but dumps Postgres first
+```
+
+Postgres and Redis data live in Docker volumes and survive updates.
+
+</details>
+
+<details>
 <summary><strong>How do I update OASIS? Do I need to rebuild containers?</strong></summary>
 
-Yes, both `backend` and `frontend` images bake the source code at build time, so any code change needs a rebuild:
+Yes, both `backend` and `frontend` images bake the source code at build time, so any code change needs a rebuild.
+
+**If you used the installer** ([`scripts/install.sh`](scripts/install.sh)) to deploy on a server, just run the companion updater:
+
+```bash
+bash /opt/oasis/scripts/update.sh
+```
+
+That pulls the latest code, rebuilds the backend and frontend images, restarts the stack, and prunes old build cache. Add `--backup` to dump the Postgres database to `/opt/oasis/backups/` before updating, and `--no-build` if you only changed config and want to skip the rebuild.
+
+**If you cloned manually** (local dev or a custom server), do it by hand:
 
 ```bash
 git pull
@@ -286,9 +393,7 @@ docker compose down
 docker compose up -d --build
 ```
 
-The Postgres and Redis containers don't need rebuilding, your data persists in the named volumes (`pgdata`, `redisdata`). If you ever want a clean slate, `docker compose down -v` wipes the volumes too.
-
-You don't need to manually run database migrations, the backend container does that on startup (see the next question).
+Either way, the Postgres and Redis containers don't need rebuilding, your data persists in the named volumes (`pgdata`, `redisdata`). If you ever want a clean slate, `docker compose down -v` wipes the volumes too. You don't need to manually run database migrations, the backend container does that on startup (see the next question).
 
 API keys you set through the dashboard live in Redis and survive a backend restart. Keys in `.env` are read fresh on every container start.
 

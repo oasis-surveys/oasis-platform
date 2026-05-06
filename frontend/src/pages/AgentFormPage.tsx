@@ -15,20 +15,21 @@ import { useToast } from "../components/Toast";
 // ── Model options ─────────────────────────────────────────────
 
 const LLM_MODELS_MODULAR = [
-  // OpenAI — latest models (as of March 2026)
-  { value: "openai/gpt-5.4", label: "GPT-5.4 (latest flagship)", group: "OpenAI" },
-  { value: "openai/gpt-5.2", label: "GPT-5.2", group: "OpenAI" },
+  // OpenAI — frontier text models (verified against developers.openai.com/api/docs/models/all, May 2026)
+  { value: "openai/gpt-5.5", label: "GPT-5.5 (newest)", group: "OpenAI" },
+  { value: "openai/gpt-5.5-pro", label: "GPT-5.5 Pro", group: "OpenAI" },
+  { value: "openai/gpt-5.4", label: "GPT-5.4", group: "OpenAI" },
+  { value: "openai/gpt-5.4-pro", label: "GPT-5.4 Pro", group: "OpenAI" },
+  { value: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini", group: "OpenAI" },
+  { value: "openai/gpt-5.4-nano", label: "GPT-5.4 Nano (cheapest)", group: "OpenAI" },
   { value: "openai/gpt-5", label: "GPT-5", group: "OpenAI" },
-  { value: "openai/gpt-5-mini", label: "GPT-5 Mini (fast)", group: "OpenAI" },
-  { value: "openai/gpt-5-nano", label: "GPT-5 Nano (fastest)", group: "OpenAI" },
+  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", group: "OpenAI" },
+  { value: "openai/gpt-5-nano", label: "GPT-5 Nano", group: "OpenAI" },
   { value: "openai/gpt-4.1", label: "GPT-4.1", group: "OpenAI" },
   { value: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini", group: "OpenAI" },
-  { value: "openai/gpt-4.1-nano", label: "GPT-4.1 Nano", group: "OpenAI" },
   { value: "openai/gpt-4o", label: "GPT-4o", group: "OpenAI" },
   { value: "openai/gpt-4o-mini", label: "GPT-4o Mini", group: "OpenAI" },
-  { value: "openai/o4-mini", label: "o4-mini (reasoning)", group: "OpenAI" },
   { value: "openai/o3", label: "o3 (reasoning)", group: "OpenAI" },
-  { value: "openai/o3-mini", label: "o3-mini (reasoning)", group: "OpenAI" },
   // Scaleway — Generative APIs (OpenAI-compatible)
   { value: "scaleway/qwen3-235b-a22b-instruct-2507", label: "Qwen 3 235B A22B Instruct", group: "Scaleway" },
   { value: "scaleway/mistral-small-3.2-24b-instruct-2506", label: "Mistral Small 3.2 24B", group: "Scaleway" },
@@ -48,27 +49,32 @@ const LLM_MODELS_MODULAR = [
   { value: "gcp/gemini-2.5-flash", label: "GCP Gemini 2.5 Flash", group: "GCP (Vertex AI)" },
   { value: "gcp/gemini-2.5-pro", label: "GCP Gemini 2.5 Pro", group: "GCP (Vertex AI)" },
   { value: "gcp/gemini-2.0-flash", label: "GCP Gemini 2.0 Flash", group: "GCP (Vertex AI)" },
-  // Anthropic — Claude (text only)
-  { value: "anthropic/claude-sonnet-4-5", label: "Claude Sonnet 4.5", group: "Anthropic" },
-  { value: "anthropic/claude-opus-4-5", label: "Claude Opus 4.5", group: "Anthropic" },
+  // Anthropic — Claude (text only). Verified against platform.claude.com/docs/en/about-claude/models/overview, May 2026.
+  { value: "anthropic/claude-opus-4-7", label: "Claude Opus 4.7 (most capable)", group: "Anthropic" },
+  { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (balanced)", group: "Anthropic" },
   { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5 (fast)", group: "Anthropic" },
-  { value: "anthropic/claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet (legacy)", group: "Anthropic" },
-  // Google Gemini — text models (uses GOOGLE_API_KEY directly, no GCP project)
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", group: "Google AI" },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro", group: "Google AI" },
-  { value: "google/gemini-2.0-flash", label: "Gemini 2.0 Flash", group: "Google AI" },
+  { value: "anthropic/claude-opus-4-6", label: "Claude Opus 4.6 (legacy)", group: "Anthropic" },
+  { value: "anthropic/claude-sonnet-4-5", label: "Claude Sonnet 4.5 (legacy)", group: "Anthropic" },
+  { value: "anthropic/claude-opus-4-5", label: "Claude Opus 4.5 (legacy)", group: "Anthropic" },
+  // Google Gemini — text models (uses GOOGLE_API_KEY directly, no GCP project).
+  // Verified against ai.google.dev/gemini-api/docs/models, May 2026.
+  { value: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", group: "Google AI" },
+  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (preview)", group: "Google AI" },
+  { value: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash-Lite (preview)", group: "Google AI" },
+  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (stable)", group: "Google AI" },
+  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (stable)", group: "Google AI" },
+  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite (stable)", group: "Google AI" },
 ];
 
 const LLM_MODELS_V2V = [
-  // OpenAI Realtime — latest speech-to-speech models
-  { value: "openai/gpt-realtime-1.5", label: "GPT Realtime 1.5 (latest)", group: "OpenAI" },
+  // OpenAI Realtime — speech-to-speech. Verified May 2026.
+  { value: "openai/gpt-realtime-1.5", label: "GPT Realtime 1.5 (newest)", group: "OpenAI" },
   { value: "openai/gpt-realtime", label: "GPT Realtime", group: "OpenAI" },
-  { value: "openai/gpt-realtime-mini", label: "GPT Realtime Mini (fast)", group: "OpenAI" },
-  { value: "openai/gpt-4o-realtime-preview", label: "GPT-4o Realtime Preview", group: "OpenAI" },
-  { value: "openai/gpt-4o-mini-realtime-preview", label: "GPT-4o Mini Realtime Preview", group: "OpenAI" },
-  // Google Gemini — native audio (bidiGenerateContent)
+  { value: "openai/gpt-realtime-mini", label: "GPT Realtime Mini (cost-efficient)", group: "OpenAI" },
+  { value: "openai/gpt-4o-realtime-preview", label: "GPT-4o Realtime (legacy)", group: "OpenAI" },
+  // Google Gemini — native audio (Live API, bidiGenerateContent). Verified May 2026.
+  { value: "google/gemini-3.1-flash-live-preview", label: "Gemini 3.1 Flash Live (newest preview)", group: "Google" },
   { value: "google/gemini-2.5-flash-native-audio-latest", label: "Gemini 2.5 Flash Native Audio (latest)", group: "Google" },
-  { value: "google/gemini-2.5-flash-native-audio-preview-12-2025", label: "Gemini 2.5 Flash Native Audio (Dec 2025)", group: "Google" },
 ];
 
 // ── V2V voice options ──────────────────────────────────────────
@@ -119,6 +125,7 @@ const OPENAI_STT_MODELS = [
   { value: "whisper-1", label: "Whisper 1 (default)" },
   { value: "gpt-4o-transcribe", label: "GPT-4o Transcribe" },
   { value: "gpt-4o-mini-transcribe", label: "GPT-4o Mini Transcribe" },
+  { value: "gpt-4o-transcribe-diarize", label: "GPT-4o Transcribe Diarize (multi-speaker)" },
 ];
 
 const SCALEWAY_STT_MODELS = [
@@ -424,7 +431,7 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
   const v2vModels = LLM_MODELS_V2V.map((m) => m.value);
   const modularModels = LLM_MODELS_MODULAR.map((m) => m.value);
   const allKnown = [...v2vModels, ...modularModels];
-  const storedModel = (obj.llm_model as string) || "openai/gpt-5.4";
+  const storedModel = (obj.llm_model as string) || "openai/gpt-5.5";
   const isKnown = allKnown.includes(storedModel);
 
   const presets = ["300", "600", "900", "1200", "1800", "2700", "3600", "5400", "7200"];
@@ -1690,7 +1697,7 @@ export default function AgentFormPage() {
                       llm_model:
                         pt === "voice_to_voice"
                           ? "openai/gpt-realtime-1.5"
-                          : "openai/gpt-5.4",
+                          : "openai/gpt-5.5",
                       tts_voice:
                         pt === "voice_to_voice" ? "coral" : f.tts_voice,
                     }));
@@ -1735,7 +1742,7 @@ export default function AgentFormPage() {
                   value={form.llm_model_custom}
                   onChange={set("llm_model_custom")}
                   className="input-styled font-mono"
-                  placeholder="e.g. anthropic/claude-sonnet-4-5, google/gemini-2.5-flash, custom/llama-3.3-70b"
+                  placeholder="e.g. anthropic/claude-sonnet-4-6, google/gemini-2.5-flash, custom/openrouter/anthropic/claude-sonnet-4-6"
                 />
                 <p className="text-xs text-gray-400 mt-1.5">
                   Built-in prefixes: <code className="bg-gray-100 px-1 rounded text-xs">openai/</code>,{" "}
