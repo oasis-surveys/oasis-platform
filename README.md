@@ -136,6 +136,21 @@ Open `http://localhost`. The dashboard is there.
 
 Transcripts appear live under the session in the dashboard. Export to CSV/JSON when you're done.
 
+---
+
+## Deploy to a real server
+
+Local testing works? Put OASIS on the internet so participants can actually take interviews. The repo ships a one-command installer that takes a fresh Ubuntu 24.04 VM and turns it into a working OASIS install with HTTPS, a firewall, and auto-security-updates in about 8 minutes. Hetzner Cloud in the EU costs around €5/mo.
+
+```bash
+ssh root@your-server-ip
+curl -fsSL https://raw.githubusercontent.com/oasis-surveys/oasis-platform/main/scripts/install.sh | bash
+```
+
+Step-by-step guide (Hetzner signup, DNS, the SSH part): [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). It is genuinely step-by-step. Follow it in order and you will not get stuck.
+
+If you are a research group and you want help with deployment, OASIS runs a [pilot program](mailto:max.lang@stx.ox.ac.uk?subject=OASIS%20pilot%20program). Email me and I will help you get set up.
+
 ### Going further
 
 See `.env.example` for every option (Google, Scaleway, Azure, GCP Vertex, self-hosted STT/TTS, RAG embeddings, Twilio, dashboard auth) and the [FAQ](FAQ.md) for self-hosting on HPC and European cloud guidance.
