@@ -1,0 +1,35 @@
+# Python virtualenvs (HUGE — was 730MB and breaks the build)
+.venv
+venv
+env
+ENV
+
+# Python bytecode / caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Tests (not needed in production image)
+tests
+
+# OS / editor
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# Git
+.git
+.gitignore
+
+# Local env files (Elestio injects env vars at runtime)
+.env
+.env.*
+!.env.example

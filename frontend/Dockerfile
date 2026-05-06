@@ -4,7 +4,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run build

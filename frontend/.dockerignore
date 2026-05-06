@@ -1,0 +1,36 @@
+# Node modules (HUGE — installed inside the container by `npm install`)
+node_modules
+
+# Build output (rebuilt inside the container)
+dist
+build
+
+# TS incremental build info
+*.tsbuildinfo
+
+# Tests
+__tests__
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+
+# OS / editor
+.DS_Store
+.idea
+.vscode
+*.swp
+
+# Git
+.git
+.gitignore
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
