@@ -207,6 +207,18 @@ async def _call_llm(
         litellm_model = f"gemini/{google_model}"
         kwargs["model"] = litellm_model
         kwargs["api_key"] = await _get_key("google_api_key")
+    elif model.startswith("custom/"):
+        custom_model = model.split("/", 1)[1]
+        base_url = await _get_key("openai_compatible_llm_url") or settings.openai_compatible_llm_url
+        if not base_url:
+            raise ValueError(
+                "OPENAI_COMPATIBLE_LLM_URL is not set. Provide a base URL "
+                "(e.g. http://my-litellm:4000/v1) for your custom OpenAI-"
+                "compatible endpoint, or pick a built-in provider."
+            )
+        kwargs["model"] = f"openai/{custom_model}"
+        kwargs["api_base"] = base_url
+        kwargs["api_key"] = await _get_key("openai_compatible_llm_api_key") or "not-needed"
     else:
         kwargs["api_key"] = api_key
 
