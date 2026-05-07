@@ -54,6 +54,7 @@ _REALTIME_TO_CHAT: dict[str, str] = {
     "openai-realtime/gpt-4o-realtime-preview": "gpt-4o",
     "openai-realtime/gpt-4o-mini-realtime-preview": "gpt-4o-mini",
     "openai-realtime/gpt-realtime-1.5": "gpt-4.1",
+    "openai-realtime/gpt-realtime-2": "gpt-4.1",
     # Gemini Live → chat equivalents
     "google/gemini-2.5-flash-native-audio": "google/gemini-2.5-flash",
     "google/gemini-2.0-flash-live": "google/gemini-2.0-flash",

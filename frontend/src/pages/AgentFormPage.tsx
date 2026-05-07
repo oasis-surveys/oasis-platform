@@ -68,7 +68,11 @@ const LLM_MODELS_MODULAR = [
 
 const LLM_MODELS_V2V = [
   // OpenAI Realtime — speech-to-speech. Verified May 2026.
-  { value: "openai/gpt-realtime-1.5", label: "GPT Realtime 1.5 (newest)", group: "OpenAI" },
+  // gpt-realtime-2 supports a `reasoning_effort` param that we don't expose
+  // yet. Pipecat's SessionProperties doesn't have the field, so we use
+  // OpenAI's default until upstream adds it.
+  { value: "openai/gpt-realtime-2", label: "GPT Realtime 2 (newest)", group: "OpenAI" },
+  { value: "openai/gpt-realtime-1.5", label: "GPT Realtime 1.5", group: "OpenAI" },
   { value: "openai/gpt-realtime", label: "GPT Realtime", group: "OpenAI" },
   { value: "openai/gpt-realtime-mini", label: "GPT Realtime Mini (cost-efficient)", group: "OpenAI" },
   { value: "openai/gpt-4o-realtime-preview", label: "GPT-4o Realtime (legacy)", group: "OpenAI" },

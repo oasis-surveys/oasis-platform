@@ -64,7 +64,7 @@ OASIS has first-class integrations for the providers below. Each one has a dedic
 
 **TTS (text-to-speech):** OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), Cartesia (`CARTESIA_API_KEY`), Azure Speech, plus any self-hosted endpoint that implements `/v1/audio/speech` (Kokoro, Piper, etc. via `TTS_API_URL`).
 
-**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`) and Google Gemini Live.
+**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2`, `gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`) and Google Gemini Live.
 
 **Yes, OpenRouter works.** And so does Groq, Mistral La Plateforme, DeepInfra, Together AI, Fireworks, your own LiteLLM proxy, vLLM, Ollama, anything that speaks the OpenAI Chat Completions protocol. Use the `custom/` prefix:
 
@@ -95,7 +95,7 @@ The dashboard ships with curated dropdowns of model IDs that we've verified agai
 
 **OpenAI** ([source](https://developers.openai.com/api/docs/models/all)):
 - Frontier text: `openai/gpt-5.5`, `openai/gpt-5.5-pro`, `openai/gpt-5.4`, `openai/gpt-5.4-pro`, `openai/gpt-5.4-mini`, `openai/gpt-5.4-nano`, `openai/gpt-5`, `openai/gpt-5-mini`, `openai/gpt-5-nano`, `openai/gpt-4.1`, `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/o3`
-- Realtime (voice-to-voice): `openai/gpt-realtime-1.5`, `openai/gpt-realtime`, `openai/gpt-realtime-mini`
+- Realtime (voice-to-voice): `openai/gpt-realtime-2`, `openai/gpt-realtime-1.5`, `openai/gpt-realtime`, `openai/gpt-realtime-mini`. Note: `gpt-realtime-2` supports a `reasoning_effort` knob that OASIS doesn't expose yet (pipecat upstream has to add it first), so it runs at the default effort.
 - STT: `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`
 - TTS: `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`
 

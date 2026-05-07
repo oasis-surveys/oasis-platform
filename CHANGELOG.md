@@ -4,6 +4,18 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-05-07
+
+### Added
+
+- `gpt-realtime-2` in the voice-to-voice model dropdown ([OpenAI announcement](https://developers.openai.com/api/docs/models/gpt-realtime-2)).
+  Picks up the new model with no backend changes since the V2V path passes
+  the model name straight through to OpenAI's Realtime WebSocket. The new
+  `reasoning_effort` parameter that gpt-realtime-2 supports is not exposed
+  yet because pipecat's `SessionProperties` doesn't have the field; the
+  model runs at OpenAI's default effort until pipecat adds it. Tracked
+  with a TODO in `runner.py`.
+
 ## 2026-05-06
 
 ### Fixed
