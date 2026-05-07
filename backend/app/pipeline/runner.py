@@ -885,6 +885,12 @@ async def _build_openai_realtime_pipeline(
     # The OpenAI Realtime API (2025+) requires output_modalities to be
     # EITHER ["text"] or ["audio"], NOT ["text", "audio"] combined.
     # Voice is configured under audio.output.voice.
+    #
+    # TODO: gpt-realtime-2 supports a `reasoning_effort` parameter
+    # (low/medium/high). We don't pass it through yet because pipecat's
+    # SessionProperties doesn't expose the field and we'd need a brittle
+    # subclass to inject it. The model still works without it (uses OpenAI's
+    # default). Revisit once pipecat ships official support.
     api_key = await _get_key("openai_api_key")
     realtime_base_url = await _openai_realtime_base_url()
     realtime_llm = OpenAIRealtimeLLMService(
