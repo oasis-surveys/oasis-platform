@@ -56,15 +56,19 @@ If you notice something in the docs that is wrong, unclear, or missing, a PR to 
 
 ## By contributing
 
-When you submit a pull request or other contribution to OASIS, you agree to the following:
+When you submit a pull request, patch, or any other contribution to OASIS, you agree to the following:
 
-1. **Your contribution is licensed under the same terms as the project** — the [GNU Affero General Public License v3 (AGPL-3.0)](LICENSE). This means anyone can use, modify, and distribute it for any purpose, including commercial use, as long as derivative works (including modified versions deployed as network services) are released under the same license.
+1. **You assign copyright in your contribution to the OASIS project maintainer (Max M. Lang).** This keeps the project under single-owner copyright so the AGPL can be enforced cleanly and so OASIS keeps the option to relicense or dual-license in the future without having to chase down every past contributor for permission. This is the same pattern used by Apache Software Foundation projects, Django (CLA), and many other long-lived open source projects.
 
-2. **You retain full copyright over your own work.** You can reuse, republish, or build on your contributions however you wish — just as you would retain copyright over a journal article after granting a publisher a license to distribute it.
+2. **Your contribution is published under AGPL-3.0** (the [LICENSE](LICENSE) file), the same as the rest of OASIS. You can keep using your own contribution under AGPL-3.0 just like everyone else, including in your own forks or projects.
 
-3. **You have the right to make the contribution.** The work is your own (or you have permission from your employer or institution), and it does not violate anyone else's intellectual property.
+3. **You have the right to make the contribution.** The work is your own (or you have explicit permission from your employer / institution to contribute under these terms), and it does not violate anyone else's intellectual property.
 
-There is no separate CLA to sign. Submitting a pull request constitutes acceptance of these terms (this is the standard "inbound = outbound" model used by most AGPL/GPL projects). See the [LICENSE](LICENSE) file for the formal terms and the [FAQ](FAQ.md#whats-the-deal-with-the-license) for a plain-English explanation.
+There is no separate CLA document to sign. Submitting a pull request constitutes acceptance of these terms. If your employer or institution has an IP policy that prevents you from assigning copyright on contributions, open an issue first so we can discuss alternatives (a license grant rather than assignment, an institutional CLA, etc.).
+
+> **Note for past contributors:** Until 2026-05-07, OASIS used an "inbound = outbound" model where contributors retained copyright over their own work. Past contributions made under that model continue to be governed by it. The terms above apply to contributions made from now on.
+
+See the [FAQ](FAQ.md#whats-the-deal-with-the-license) for a plain-English explanation of what AGPL-3.0 means in practice.
 
 ## A note on scope
 
