@@ -1,0 +1,44 @@
+OASIS - Open Agentic Survey Interview System
+Copyright (C) 2025-2026 Max M. Lang
+
+This product is licensed under the GNU Affero General Public License v3.0
+(AGPL-3.0). The full legal text is in the LICENSE file at the root of this
+repository, or at https://www.gnu.org/licenses/agpl-3.0.txt.
+
+What that means in practice
+---------------------------
+
+You can use, study, modify, and distribute OASIS for any purpose, including
+academic research (self-funded, grant-funded, institutional, whatever), as
+long as you keep this notice and the LICENSE file with the code.
+
+If you modify OASIS and run the modified version as a network service that
+other people can interact with (a hosted SaaS deployment, a public demo, a
+shared lab instance that participants from other institutions use, etc.),
+the AGPL requires you to publish the complete source code of your
+modifications under the same AGPL-3.0 license to all users of that service.
+This is what stops a commercial vendor from forking OASIS, slapping a
+paywall on it, and never giving anything back. Self-hosting OASIS for your
+own organisation's internal use does not trigger this requirement.
+
+If you build something useful on top of OASIS (a new provider integration,
+a pipeline improvement, a research-specific feature), please consider
+contributing it back upstream rather than maintaining a private fork. The
+project is much better off when improvements land in the main repo where
+everyone benefits. Pull requests are welcome.
+
+Citation
+--------
+
+Citation is appreciated but not legally required. If you use OASIS in
+published research, please cite the project (BibTeX entry and DOI are in
+the README). And please link to the canonical repository
+(https://github.com/oasis-surveys/oasis-platform), not a fork.
+
+More
+----
+
+- Plain-English license explanation: see FAQ.md ("What's the deal with the
+  license?")
+- Project overview and pilot program for research groups: README.md
+- Issues, contributions, contact: https://github.com/oasis-surveys/oasis-platform
