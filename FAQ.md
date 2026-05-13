@@ -105,7 +105,8 @@ The dashboard ships with curated dropdowns of model IDs that we've verified agai
 
 **Google Gemini** ([source](https://ai.google.dev/gemini-api/docs/models)):
 - Stable text: `google/gemini-2.5-pro`, `google/gemini-2.5-flash`, `google/gemini-2.5-flash-lite`
-- Preview text (Gemini 3 family): `google/gemini-3.1-pro-preview`, `google/gemini-3-flash-preview`, `google/gemini-3.1-flash-lite-preview`
+- Preview text (Gemini 3 family): `google/gemini-3.1-pro-preview`, `google/gemini-3-flash-preview`
+- GA (Gemini 3 family): `google/gemini-3.1-flash-lite`
 - Voice-to-voice (Live API): `google/gemini-3.1-flash-live-preview`, `google/gemini-2.5-flash-native-audio-latest`
 
 If a provider releases a new model after this list was written, you can usually just type its ID into the **Custom model** field of the agent form. The prefix routing (`openai/`, `anthropic/`, `google/`, etc.) passes the model name straight through to the provider's SDK.
