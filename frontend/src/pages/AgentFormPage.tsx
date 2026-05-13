@@ -60,7 +60,7 @@ const LLM_MODELS_MODULAR = [
   // Verified against ai.google.dev/gemini-api/docs/models, May 2026.
   { value: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", group: "Google AI" },
   { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (preview)", group: "Google AI" },
-  { value: "google/gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash-Lite (preview)", group: "Google AI" },
+  { value: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", group: "Google AI" },
   { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (stable)", group: "Google AI" },
   { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (stable)", group: "Google AI" },
   { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite (stable)", group: "Google AI" },
