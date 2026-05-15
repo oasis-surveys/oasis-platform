@@ -4,6 +4,31 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-05-15
+
+### Fixed
+
+- Text chat sessions no longer die when iOS Safari backgrounds the tab
+  ([#13](https://github.com/oasis-surveys/oasis-platform/issues/13)).
+  The WebSocket had zero traffic between messages, so iOS killed it as idle
+  after ~60s. Fix adds a lightweight keepalive ping every 20s from the backend
+  plus a Caddy-level keepalive on the proxy. The ping stops when the session
+  ends. Voice sessions were never affected because continuous audio frames
+  already act as a natural heartbeat. Tested via USB to macOS using Safari
+  Web Inspector to confirm pings flow and the socket survives app switches.
+  This is not a reconnect/resume implementation, just a keepalive to prevent
+  the disconnect from happening in the first place. A full reconnect flow
+  could be added later but has privacy implications for research contexts
+  since resuming a session likely requires tying it to an IP or persistent
+  connection identifier, which may conflict with anonymous/pseudonymous
+  participant setups.
+
+### Changed
+
+- Gemini 3.1 Flash Lite model ID updated from preview to GA
+  (`gemini-3.1-flash-lite-preview` to `gemini-3.1-flash-lite`). Google is
+  discontinuing the preview endpoint on May 25, 2026.
+
 ## 2026-05-07
 
 ### Added

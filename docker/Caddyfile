@@ -8,9 +8,13 @@
 		reverse_proxy backend:8000
 	}
 
-	# ── WebSocket upgrade for audio streams ──
+	# ── WebSocket upgrade for audio/chat streams ──
 	handle /ws/* {
-		reverse_proxy backend:8000
+		reverse_proxy backend:8000 {
+			transport http {
+				keepalive 30s
+			}
+		}
 	}
 
 	# ── Everything else → Frontend ──
