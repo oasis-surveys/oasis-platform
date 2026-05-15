@@ -401,6 +401,8 @@ export default function InterviewPage() {
             case "typing":
               setAgentTyping(true);
               break;
+            case "ping":
+              break;
             case "ended":
               setStatus("ended");
               setAgentTyping(false);

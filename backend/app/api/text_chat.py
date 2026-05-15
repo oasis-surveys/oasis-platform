@@ -38,6 +38,7 @@ from app.session_manager import register_session, unregister_session
 router = APIRouter()
 
 _MAX_CHAT_DURATION = 7200  # 2 hours absolute ceiling
+_KEEPALIVE_INTERVAL = 20  # seconds between keepalive pings
 
 
 async def _get_key(field: str) -> str:
@@ -234,6 +235,18 @@ async def _call_llm(
     }
 
 
+async def _keepalive_loop(ws: WebSocket, stop: asyncio.Event) -> None:
+    """Send periodic pings to prevent idle-timeout disconnections (e.g. iOS Safari)."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=_KEEPALIVE_INTERVAL)
+        except asyncio.TimeoutError:
+            try:
+                await ws.send_json({"type": "ping"})
+            except Exception:
+                break
+
+
 async def _log_turn(
     session_id: uuid.UUID,
     role: SpeakerRole,
@@ -422,6 +435,8 @@ async def text_chat_ws(
         })
 
     # ── 6. Chat loop ──────────────────────────────────────────────
+    keepalive_stop = asyncio.Event()
+    keepalive_task = asyncio.create_task(_keepalive_loop(websocket, keepalive_stop))
     final_status = SessionStatus.COMPLETED
     try:
         timeout = agent_cfg["max_duration_seconds"] or _MAX_CHAT_DURATION
@@ -524,6 +539,8 @@ async def text_chat_ws(
         logger.exception(f"Chat {session_id}: error — {exc}")
         final_status = SessionStatus.ERROR
     finally:
+        keepalive_stop.set()
+        keepalive_task.cancel()
         # ── 7. Finalise session ───────────────────────────────────
         try:
             end_time = datetime.now(timezone.utc)
