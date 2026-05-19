@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { sessions, getAuthToken, type SessionDetail } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
+import { useToast } from "../components/Toast";
 
 const ROLE_STYLES: Record<string, string> = {
   user: "bg-gray-900 text-white rounded-br-md",
@@ -89,6 +90,8 @@ export default function SessionDetailPage() {
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [liveEntries, setLiveEntries] = useState<LiveEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [toast, showToast] = useToast();
   const [isLive, setIsLive] = useState(false);
   const [liveStatus, setLiveStatus] = useState<string>("connecting");
   const [terminating, setTerminating] = useState(false);
@@ -101,13 +104,18 @@ export default function SessionDetailPage() {
 
   useEffect(() => {
     if (!studyId || !agentId || !sessionId) return;
+    setLoadError(null);
     sessions
       .get(studyId, agentId, sessionId)
       .then((s) => {
         setSession(s);
         if (s.status === "active") setIsLive(true);
       })
-      .catch(console.error)
+      .catch((err) => {
+        setLoadError(
+          err instanceof Error ? err.message : "Could not load session. Check your connection and try again."
+        );
+      })
       .finally(() => setLoading(false));
   }, [studyId, agentId, sessionId]);
 
@@ -154,8 +162,14 @@ export default function SessionDetailPage() {
       }
     };
 
-    socket.onclose = () => setLiveStatus((s) => s === "ended" ? s : "disconnected");
-    socket.onerror = () => setLiveStatus("error");
+    socket.onclose = () => {
+      setLiveStatus((s) => (s === "ended" ? s : "disconnected"));
+      setIsLive(false);
+    };
+    socket.onerror = () => {
+      setLiveStatus("error");
+      setIsLive(false);
+    };
 
     return () => {
       socket.close();
@@ -165,7 +179,13 @@ export default function SessionDetailPage() {
 
   const handleTerminate = async () => {
     if (!studyId || !agentId || !sessionId) return;
-    if (!confirm("Terminate this session? The participant will be disconnected.")) return;
+    if (
+      !confirm(
+        "Mark this session as ended in the dashboard? The participant may stay connected until they leave or close the page."
+      )
+    ) {
+      return;
+    }
     setTerminating(true);
     try {
       await sessions.terminate(studyId, agentId, sessionId);
@@ -176,11 +196,17 @@ export default function SessionDetailPage() {
         });
       }, 1500);
     } catch (err) {
-      console.error("Terminate failed:", err);
+      showToast(
+        err instanceof Error ? err.message : "Failed to terminate session",
+        "warning"
+      );
     } finally {
       setTerminating(false);
     }
   };
+
+  const showLiveBadge =
+    isLive && (liveStatus === "connected" || liveStatus === "connecting");
 
   if (loading) {
     return (
@@ -191,8 +217,8 @@ export default function SessionDetailPage() {
     );
   }
 
-  if (!session) {
-    return <p className="text-sm text-red-500">Session not found.</p>;
+  if (loadError || !session) {
+    return <p className="text-sm text-red-500">{loadError || "Session not found."}</p>;
   }
 
   const existingSequences = new Set(session.entries.map((e) => e.sequence));
@@ -215,14 +241,15 @@ export default function SessionDetailPage() {
       } else {
         await sessions.downloadJson(studyId!, agentId!, { session_ids: sessionId! });
       }
+      showToast(`Exported ${format.toUpperCase()} successfully`, "success");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Export failed";
-      alert(msg);
+      showToast(err instanceof Error ? err.message : "Export failed", "warning");
     }
   };
 
   return (
     <div>
+      {toast}
       {/* Breadcrumb */}
       <nav className="mb-6 text-sm text-gray-400 flex items-center gap-2">
         <Link to="/" className="hover:text-gray-600 transition-colors">Studies</Link>
@@ -250,7 +277,7 @@ export default function SessionDetailPage() {
             <p className="text-xs font-mono text-gray-400 mt-1">{session.id}</p>
           </div>
           <div className="flex items-center gap-2">
-            {isLive && (
+            {showLiveBadge && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -259,7 +286,7 @@ export default function SessionDetailPage() {
                 LIVE
               </span>
             )}
-            {isLive && (
+            {session.status === "active" && (
               <button
                 onClick={handleTerminate}
                 disabled={terminating}
@@ -341,7 +368,8 @@ export default function SessionDetailPage() {
               )}
               {liveStatus === "connecting" && "Connecting…"}
               {liveStatus === "ended" && "Session ended"}
-              {liveStatus === "disconnected" && "Disconnected"}
+              {liveStatus === "disconnected" && "Disconnected — refresh the page to reconnect"}
+              {liveStatus === "error" && "Monitor connection error — refresh to retry"}
             </span>
           )}
         </div>

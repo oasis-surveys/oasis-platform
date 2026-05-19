@@ -4,6 +4,10 @@
  * Thin wrapper around fetch for communicating with the FastAPI backend.
  */
 
+import { formatApiError } from "./apiErrors";
+
+export { formatApiError, localDateEndIso, localDateStartIso, isValidWidgetHexColor, parseWidgetHexColor } from "./apiErrors";
+
 const BASE = "/api";
 
 // ── Auth token management ─────────────────────────────────────
@@ -53,7 +57,7 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `API error: ${res.status}`);
+    throw new Error(formatApiError(body.detail, `API error: ${res.status}`));
   }
 
   return res.json();
@@ -431,7 +435,7 @@ export const knowledge = {
     }).then(async (res) => {
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `API error: ${res.status}`);
+        throw new Error(formatApiError(body.detail, `API error: ${res.status}`));
       }
       return res.json() as Promise<KnowledgeDocument>;
     });
@@ -539,7 +543,9 @@ export async function downloadAuthed(url: string, fallbackName: string): Promise
     let detail = `Download failed: ${res.status}`;
     try {
       const body = await res.json();
-      if (body?.detail) detail = body.detail;
+      if (body?.detail != null) {
+        detail = formatApiError(body.detail, detail);
+      }
     } catch {
       // not JSON, ignore
     }

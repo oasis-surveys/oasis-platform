@@ -163,11 +163,13 @@ export default function SettingsPage() {
   const [keys, setKeys] = useState<ApiKeyStatus[]>([]);
   const [flags, setFlags] = useState<FlagStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [flagSaving, setFlagSaving] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
+    setLoadError(null);
     try {
       const [k, f] = await Promise.all([
         settingsApi.getKeys(),
@@ -176,7 +178,9 @@ export default function SettingsPage() {
       setKeys(k.keys);
       setFlags(f.flags);
     } catch (err) {
-      console.error("Failed to load settings:", err);
+      setLoadError(
+        err instanceof Error ? err.message : "Failed to load settings. Check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -258,6 +262,14 @@ export default function SettingsPage() {
   return (
     <div className="space-y-8">
       {toastNode}
+      {loadError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-4">
+          <span>{loadError}</span>
+          <button type="button" onClick={() => loadKeys()} className="btn-secondary !py-1 !px-2 !text-xs shrink-0">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Header */}
       <div>

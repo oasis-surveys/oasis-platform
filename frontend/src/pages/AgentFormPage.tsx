@@ -4,6 +4,7 @@ import {
   agents,
   participants,
   settingsApi,
+  isValidWidgetHexColor,
   type Agent,
   type ParticipantIdentifier,
   type ApiKeyStatus,
@@ -605,6 +606,7 @@ export default function AgentFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, showToast] = useToast();
   const [loading, setLoading] = useState(!isNew);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // API key status (for missing key warnings)
   const [apiKeys, setApiKeys] = useState<ApiKeyStatus[]>([]);
@@ -846,8 +848,9 @@ export default function AgentFormPage() {
           twilio_phone_number: a.twilio_phone_number || "",
         });
         participants.list(studyId, agentId).then(setPidList).catch(console.error);
+        setLoadFailed(false);
       })
-      .catch(console.error)
+      .catch(() => setLoadFailed(true))
       .finally(() => setLoading(false));
   }, [studyId, agentId, isNew]);
 
@@ -863,11 +866,59 @@ export default function AgentFormPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!studyId) return;
-    setSaving(true);
-    setError(null);
+    if (!isNew && !existing) {
+      setError("Agent could not be loaded. Refresh the page and try again.");
+      return;
+    }
 
     const resolvedModel =
-      form.llm_model === "__custom__" ? form.llm_model_custom : form.llm_model;
+      form.llm_model === "__custom__" ? form.llm_model_custom.trim() : form.llm_model;
+    if (!resolvedModel || form.llm_model === "__custom__") {
+      setError("Please enter a custom model ID or choose a model from the list.");
+      return;
+    }
+    if (
+      form.interview_mode === "structured" &&
+      form.interview_guide.questions.length === 0
+    ) {
+      setError(
+        "Structured mode requires at least one interview question, or switch to free-form mode."
+      );
+      return;
+    }
+    if (
+      form.widget_primary_color.trim() &&
+      !isValidWidgetHexColor(form.widget_primary_color)
+    ) {
+      setError("Widget primary colour must be a valid hex code (e.g. #0D7377).");
+      return;
+    }
+
+    const parseOptionalPositiveInt = (raw: string): number | null | "invalid" => {
+      if (!raw.trim()) return null;
+      const n = parseInt(raw, 10);
+      if (!Number.isFinite(n) || n <= 0) return "invalid";
+      return n;
+    };
+
+    const maxDurationRaw =
+      form.max_duration_seconds === "__custom__"
+        ? form.max_duration_custom
+        : form.max_duration_seconds;
+    const maxDurationParsed = parseOptionalPositiveInt(maxDurationRaw);
+    if (maxDurationParsed === "invalid") {
+      setError("Max duration must be a positive number of seconds.");
+      return;
+    }
+
+    const silenceParsed = parseOptionalPositiveInt(form.silence_timeout_seconds);
+    if (silenceParsed === "invalid") {
+      setError("Silence timeout must be a positive number of seconds.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
 
     const payload = {
       name: form.name,
@@ -883,12 +934,7 @@ export default function AgentFormPage() {
       tts_model: form.tts_model || null,
       tts_voice: form.tts_voice || null,
       language: form.language === "__custom__" ? form.language_custom : form.language,
-      max_duration_seconds: (() => {
-        const raw = form.max_duration_seconds === "__custom__"
-          ? form.max_duration_custom
-          : form.max_duration_seconds;
-        return raw ? parseInt(raw) : null;
-      })(),
+      max_duration_seconds: maxDurationParsed,
       status: form.status,
       participant_id_mode: form.participant_id_mode,
       widget_title: form.widget_title || null,
@@ -900,7 +946,7 @@ export default function AgentFormPage() {
         form.interview_mode === "structured" && form.interview_guide.questions.length > 0
           ? form.interview_guide
           : null,
-      silence_timeout_seconds: form.silence_timeout_seconds ? parseInt(form.silence_timeout_seconds, 10) : null,
+      silence_timeout_seconds: silenceParsed,
       silence_prompt: form.silence_prompt || null,
       twilio_phone_number: form.twilio_phone_number || null,
     };
@@ -924,8 +970,15 @@ export default function AgentFormPage() {
 
   const handleDelete = async () => {
     if (!studyId || !agentId || !confirm("Delete this agent?")) return;
-    await agents.delete(studyId, agentId);
-    navigate(`/studies/${studyId}`);
+    try {
+      await agents.delete(studyId, agentId);
+      navigate(`/studies/${studyId}`);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to delete agent",
+        "warning"
+      );
+    }
   };
 
   // ── Participant identifier management ──
@@ -962,8 +1015,15 @@ export default function AgentFormPage() {
 
   const handleDeletePid = async (pid: ParticipantIdentifier) => {
     if (!studyId || !agentId) return;
-    await participants.delete(studyId, agentId, pid.id);
-    setPidList((prev) => prev.filter((p) => p.id !== pid.id));
+    try {
+      await participants.delete(studyId, agentId, pid.id);
+      setPidList((prev) => prev.filter((p) => p.id !== pid.id));
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to delete identifier",
+        "warning"
+      );
+    }
   };
 
   const handleReleasePid = async (pid: ParticipantIdentifier) => {
@@ -986,6 +1046,19 @@ export default function AgentFormPage() {
       <div className="flex items-center gap-2 text-sm text-gray-400">
         <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-700 animate-spin" />
         Loading…
+      </div>
+    );
+  }
+
+  if (!isNew && loadFailed) {
+    return (
+      <div className="max-w-3xl">
+        <p className="text-sm text-red-600 mb-4">
+          Could not load this agent. Check your connection, then refresh the page.
+        </p>
+        <Link to={`/studies/${studyId}`} className="btn-secondary">
+          Back to study
+        </Link>
       </div>
     );
   }
@@ -1144,9 +1217,15 @@ export default function AgentFormPage() {
                 Interview Type
                 <HelpTooltip text="Choose whether this agent conducts voice-based interviews (with audio) or text-based chat interviews (no microphone needed)." />
               </label>
-              <div className="grid grid-cols-2 gap-3">
+              <div
+                className="grid grid-cols-2 gap-3"
+                role="radiogroup"
+                aria-label="Interview type"
+              >
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={form.modality === "voice"}
                   onClick={() => setForm((f) => ({ ...f, modality: "voice" }))}
                   className={`relative rounded-xl border-2 px-4 py-4 text-left transition-all ${
                     form.modality === "voice"
@@ -1173,6 +1252,8 @@ export default function AgentFormPage() {
                 </button>
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={form.modality === "text"}
                   onClick={() => setForm((f) => {
                     const v2vModels = LLM_MODELS_V2V.map((m) => m.value);
                     const needsModelReset = v2vModels.includes(f.llm_model);
@@ -2241,6 +2322,12 @@ export default function AgentFormPage() {
             </p>
           )}
 
+          {form.participant_id_mode === "predefined" && isNew && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              Save the agent first, then you can add predefined participant links on this page.
+            </p>
+          )}
+
           {form.participant_id_mode === "predefined" && !isNew && (
             <div className="mt-4 space-y-4 animate-slide-up">
               <p className="text-xs text-gray-500">
@@ -2535,7 +2622,11 @@ export default function AgentFormPage() {
             <Link to={`/studies/${studyId}`} className="btn-secondary">
               Cancel
             </Link>
-            <button type="submit" disabled={saving} className="btn-primary">
+            <button
+              type="submit"
+              disabled={saving || loadFailed || (!isNew && !existing)}
+              className="btn-primary"
+            >
               {saving ? (
                 <>
                   <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />

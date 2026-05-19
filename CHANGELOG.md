@@ -4,6 +4,30 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-05-19
+
+### Fixed
+
+- Dashboard and participant UI polish: clearer API validation messages, load
+  failure states on agent/session/settings pages (no silent empty forms or
+  overwrite-on-save), export success and error toasts instead of `alert`,
+  session list refresh errors and local-timezone date filters, and honest
+  copy on admin session terminate.
+- Voice interviews show a clear error when the microphone is blocked or
+  unavailable instead of staying on an active call with no audio.
+- Live session monitor drops the LIVE badge when the WebSocket disconnects;
+  terminate stays available while the session is still active in the database.
+- Agent form validation for empty custom models, structured mode with no
+  questions, invalid widget hex colours, and non-numeric duration fields;
+  predefined participant links prompt you to save the agent first.
+
+### Changed
+
+- Logout with authentication disabled returns to the home page instead of
+  the login screen. Ending an interview early shows different copy from a
+  normal completion. Chat send has an accessible label; interview type
+  toggles expose radio semantics.
+
 ## 2026-05-15
 
 ### Fixed
