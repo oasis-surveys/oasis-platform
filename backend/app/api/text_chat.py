@@ -40,6 +40,9 @@ router = APIRouter()
 _MAX_CHAT_DURATION = 7200  # 2 hours absolute ceiling
 _KEEPALIVE_INTERVAL = 20  # seconds between keepalive pings
 
+# OpenAI EU regional API (mirrors app.pipeline.runner)
+_OPENAI_EU_BASE_URL = "https://eu.api.openai.com/v1"
+
 
 async def _get_key(field: str) -> str:
     """Get effective API key: dashboard override > .env value."""
@@ -48,6 +51,21 @@ async def _get_key(field: str) -> str:
         return await get_effective_key(field)
     except Exception:
         return getattr(settings, field, "")
+
+
+async def _openai_use_eu() -> bool:
+    """Whether OpenAI HTTP calls should use the EU regional endpoint."""
+    try:
+        from app.api.settings import get_effective_flag
+
+        return await get_effective_flag("openai_use_eu")
+    except Exception:
+        return bool(getattr(settings, "openai_use_eu", False))
+
+
+async def _openai_api_base() -> str | None:
+    """LiteLLM api_base for OpenAI chat models, or None for the default region."""
+    return _OPENAI_EU_BASE_URL if await _openai_use_eu() else None
 
 
 _REALTIME_TO_CHAT: dict[str, str] = {
@@ -221,8 +239,20 @@ async def _call_llm(
         kwargs["model"] = f"openai/{custom_model}"
         kwargs["api_base"] = base_url
         kwargs["api_key"] = await _get_key("openai_compatible_llm_api_key") or "not-needed"
+    elif model.startswith("anthropic/"):
+        anthropic_key = await _get_key("anthropic_api_key")
+        if not anthropic_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is not set. Add it to your .env file or dashboard."
+            )
+        kwargs["api_key"] = anthropic_key
+        kwargs["model"] = model
     else:
+        # OpenAI chat models (openai/ prefix, bare gpt-* ids, etc.)
         kwargs["api_key"] = api_key
+        eu_base = await _openai_api_base()
+        if eu_base:
+            kwargs["api_base"] = eu_base
 
     response = await litellm.acompletion(**kwargs)
 
@@ -353,9 +383,10 @@ async def text_chat_ws(
             # Reject empty/blank IDs — INPUT mode requires the participant
             # to actually type something, otherwise sessions become anonymous.
             if not pid or not pid.strip():
-                await websocket.send_json(
-                    {"error": "Please provide a participant ID before starting the chat."}
-                )
+                await websocket.send_json({
+                    "type": "error",
+                    "text": "Please provide a participant ID before starting the chat.",
+                })
                 await websocket.close(code=4003, reason="Missing participant ID")
                 return
             participant_id = pid.strip()
