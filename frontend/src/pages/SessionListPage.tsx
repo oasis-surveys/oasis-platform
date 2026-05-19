@@ -7,6 +7,8 @@ import { useParams, Link } from "react-router-dom";
 import {
   agents,
   sessions,
+  localDateEndIso,
+  localDateStartIso,
   type Agent,
   type SessionItem,
   type SessionStats,
@@ -41,6 +43,8 @@ export default function SessionListPage() {
   const [sessionList, setSessionList] = useState<SessionItem[]>([]);
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, showToast] = useToast();
 
@@ -54,8 +58,8 @@ export default function SessionListPage() {
   const buildParams = useCallback((): SessionListParams => {
     const params: SessionListParams = {};
     if (statusFilter) params.status = statusFilter;
-    if (dateFrom) params.date_from = new Date(dateFrom).toISOString();
-    if (dateTo) params.date_to = new Date(dateTo).toISOString();
+    if (dateFrom) params.date_from = localDateStartIso(dateFrom);
+    if (dateTo) params.date_to = localDateEndIso(dateTo);
     if (sortBy) params.sort_by = sortBy;
     if (sortOrder) params.sort_order = sortOrder;
     return params;
@@ -66,14 +70,17 @@ export default function SessionListPage() {
     try {
       const list = await sessions.list(studyId, agentId, buildParams());
       setSessionList(list);
+      setRefreshError(null);
     } catch (err) {
-      console.error(err);
+      const msg = err instanceof Error ? err.message : "Failed to refresh sessions";
+      setRefreshError(msg);
     }
   }, [studyId, agentId, buildParams]);
 
   useEffect(() => {
     if (!studyId || !agentId) return;
     setLoading(true);
+    setLoadError(null);
     Promise.all([
       agents.get(studyId, agentId),
       sessions.stats(studyId, agentId),
@@ -84,7 +91,11 @@ export default function SessionListPage() {
         setStats(st);
         setSessionList(list);
       })
-      .catch(console.error)
+      .catch((err) => {
+        setLoadError(
+          err instanceof Error ? err.message : "Could not load sessions. Check your connection and try again."
+        );
+      })
       .finally(() => setLoading(false));
   }, [studyId, agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -134,8 +145,12 @@ export default function SessionListPage() {
     );
   }
 
-  if (!agent) {
-    return <p className="text-sm text-red-500">Agent not found.</p>;
+  if (loadError || !agent) {
+    return (
+      <p className="text-sm text-red-500">
+        {loadError || "Agent not found."}
+      </p>
+    );
   }
 
   const widgetUrl = `${window.location.origin}/interview/${agent.widget_key}`;
@@ -149,6 +164,11 @@ export default function SessionListPage() {
   return (
     <div>
       {toast}
+      {refreshError && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Could not refresh sessions: {refreshError}
+        </div>
+      )}
 
       {/* Breadcrumb */}
       <nav className="mb-6 text-sm text-gray-400 flex items-center gap-2">
@@ -170,7 +190,7 @@ export default function SessionListPage() {
                 <svg className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-1.125a4.5 4.5 0 00-7.244-1.242l-4.5 4.5a4.5 4.5 0 006.364 6.364l1.757-1.757" />
                 </svg>
-                <code className="text-[11px] font-mono text-gray-600 select-all max-w-[260px] truncate">
+                <code className="text-[11px] font-mono text-gray-600 select-all break-all min-w-0 flex-1 sm:max-w-md">
                   {widgetUrl}
                 </code>
                 <CopyButton
@@ -333,6 +353,7 @@ export default function SessionListPage() {
               selParams={exportSelParams}
               hasSelection={someSelected}
               totalCount={sessionList.length}
+              showToast={showToast}
             />
           </div>
         </div>
@@ -478,6 +499,7 @@ function ExportMenu({
   selParams,
   hasSelection,
   totalCount,
+  showToast,
 }: {
   studyId: string;
   agentId: string;
@@ -485,6 +507,7 @@ function ExportMenu({
   selParams: SessionListParams;
   hasSelection: boolean;
   totalCount: number;
+  showToast: (msg: string, variant?: "success" | "warning") => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -502,10 +525,11 @@ function ExportMenu({
       } else {
         await sessions.downloadJson(studyId, agentId, params);
       }
+      showToast(`Exported ${format.toUpperCase()} successfully`, "success");
       setOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Export failed";
-      alert(msg);
+      showToast(msg, "warning");
     } finally {
       setBusy(false);
     }

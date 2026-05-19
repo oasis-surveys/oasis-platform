@@ -16,10 +16,12 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { widget, type WidgetConfig } from "../lib/api";
+import { hexToRgba, hexToRgb } from "../lib/colors";
 import { MicCapture, AudioPlayer } from "../lib/audio";
 import { encodeAudioFrame, decodeFrame } from "../lib/pipecat-proto";
 
 type Status = "loading" | "idle" | "input" | "connecting" | "active" | "ended" | "error";
+type EndedReason = "natural" | "user_stopped";
 
 interface ChatMessage {
   id: string;
@@ -35,21 +37,6 @@ const AVATAR_EMOJI: Record<string, string> = {
   male: "👨‍💼",
   none: "",
 };
-
-/** Convert hex colour (#RRGGBB) to rgba with given alpha */
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-/** Extract RGB components as comma-separated string */
-function hexToRgb(hex: string): string {
-  const h = hex.replace("#", "");
-  return `${parseInt(h.substring(0, 2), 16)}, ${parseInt(h.substring(2, 4), 16)}, ${parseInt(h.substring(4, 6), 16)}`;
-}
 
 /**
  * Lightweight markdown-to-HTML renderer for chat messages.
@@ -135,6 +122,7 @@ export default function InterviewPage() {
   const pidFromUrl = searchParams.get("pid");
 
   const [status, setStatus] = useState<Status>("loading");
+  const [endedReason, setEndedReason] = useState<EndedReason>("natural");
   const [errorMsg, setErrorMsg] = useState("");
   const [config, setConfig] = useState<WidgetConfig | null>(null);
   const [participantId, setParticipantId] = useState(pidFromUrl || "");
@@ -197,17 +185,33 @@ export default function InterviewPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, agentTyping]);
 
+  const cleanupConnection = useCallback(() => {
+    wsRef.current?.close();
+    wsRef.current = null;
+    micRef.current?.stop();
+    micRef.current = null;
+    playerRef.current?.stop();
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (speakingTimeoutRef.current) {
+      clearTimeout(speakingTimeoutRef.current);
+      speakingTimeoutRef.current = null;
+    }
+    if (userSpeakingTimeoutRef.current) {
+      clearTimeout(userSpeakingTimeoutRef.current);
+      userSpeakingTimeoutRef.current = null;
+    }
+  }, []);
+
   // ── Cleanup on unmount ──────────────────────────────────────
   useEffect(() => {
     return () => {
-      wsRef.current?.close();
-      micRef.current?.stop();
+      cleanupConnection();
       playerRef.current?.destroy();
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
-      if (userSpeakingTimeoutRef.current) clearTimeout(userSpeakingTimeoutRef.current);
     };
-  }, []);
+  }, [cleanupConnection]);
 
   // ── Audio level handler (for voice wave) ────────────────────
   const handleAudioLevel = useCallback((level: number) => {
@@ -223,9 +227,11 @@ export default function InterviewPage() {
   // ── 2. Start interview ──────────────────────────────────────
   const handleStart = useCallback(async () => {
     if (!widgetKey) return;
+    cleanupConnection();
     setStatus("connecting");
     setErrorMsg("");
     setElapsed(0);
+    setEndedReason("natural");
 
     try {
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -246,9 +252,11 @@ export default function InterviewPage() {
       const player = new AudioPlayer();
       playerRef.current = player;
 
-      ws.onopen = async () => {
-        setStatus("active");
+      // Track whether we received a server-side error so ws.onclose
+      // doesn't overwrite the error state with "ended" (race condition).
+      let receivedError = false;
 
+      ws.onopen = async () => {
         const start = Date.now();
         timerRef.current = setInterval(() => {
           setElapsed(Math.floor((Date.now() - start) / 1000));
@@ -257,20 +265,35 @@ export default function InterviewPage() {
         const mic = new MicCapture();
         micRef.current = mic;
 
-        await mic.start(
-          (pcm16) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              const frame = encodeAudioFrame(pcm16);
-              ws.send(frame);
-            }
-          },
-          handleAudioLevel
-        );
+        try {
+          await mic.start(
+            (pcm16) => {
+              if (ws.readyState === WebSocket.OPEN) {
+                const frame = encodeAudioFrame(pcm16);
+                ws.send(frame);
+              }
+            },
+            handleAudioLevel
+          );
+          setStatus("active");
+        } catch (micErr) {
+          receivedError = true;
+          ws.close();
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          micRef.current?.stop();
+          micRef.current = null;
+          const name = micErr instanceof DOMException ? micErr.name : "";
+          setStatus("error");
+          setErrorMsg(
+            name === "NotAllowedError" || name === "PermissionDeniedError"
+              ? "Microphone access is required for this interview. Please allow the microphone in your browser settings and try again."
+              : "Could not access your microphone. Please check your device and try again."
+          );
+        }
       };
-
-      // Track whether we received a server-side error so ws.onclose
-      // doesn't overwrite the error state with "ended" (race condition).
-      let receivedError = false;
 
       ws.onmessage = (event) => {
         const data =
@@ -325,6 +348,7 @@ export default function InterviewPage() {
           return;
         }
 
+        setEndedReason("natural");
         setStatus("ended");
       };
 
@@ -339,14 +363,16 @@ export default function InterviewPage() {
         err instanceof Error ? err.message : "Failed to start interview"
       );
     }
-  }, [widgetKey, config, participantId, handleAudioLevel]);
+  }, [widgetKey, config, participantId, handleAudioLevel, cleanupConnection]);
 
   // ── 2b. Start text chat ─────────────────────────────────────
   const handleStartChat = useCallback(async () => {
     if (!widgetKey) return;
+    cleanupConnection();
     setStatus("connecting");
     setErrorMsg("");
     setElapsed(0);
+    setEndedReason("natural");
     setChatMessages([]);
     setAgentTyping(false);
 
@@ -404,6 +430,7 @@ export default function InterviewPage() {
             case "ping":
               break;
             case "ended":
+              setEndedReason("natural");
               setStatus("ended");
               setAgentTyping(false);
               break;
@@ -427,6 +454,7 @@ export default function InterviewPage() {
           setErrorMsg(event.reason || "The interview could not be started.");
           return;
         }
+        setEndedReason("natural");
         setStatus("ended");
       };
 
@@ -439,7 +467,7 @@ export default function InterviewPage() {
       setStatus("error");
       setErrorMsg(err instanceof Error ? err.message : "Failed to start");
     }
-  }, [widgetKey, config, participantId]);
+  }, [widgetKey, config, participantId, cleanupConnection]);
 
   // ── Send text message ──────────────────────────────────────
   const handleSendMessage = useCallback(() => {
@@ -458,12 +486,10 @@ export default function InterviewPage() {
   }, [chatInput]);
 
   const handleStop = useCallback(() => {
-    wsRef.current?.close();
-    micRef.current?.stop();
-    playerRef.current?.stop();
-    if (timerRef.current) clearInterval(timerRef.current);
+    cleanupConnection();
+    setEndedReason("user_stopped");
     setStatus("ended");
-  }, []);
+  }, [cleanupConnection]);
 
   const handleSubmitParticipantId = (e: React.FormEvent) => {
     e.preventDefault();
@@ -525,14 +551,20 @@ export default function InterviewPage() {
           )}
           {status === "ended" && (
             <div className="animate-fade-in">
-              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 text-emerald-700 px-4 py-2 text-sm font-medium">
+              <div className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium ${
+                  endedReason === "user_stopped"
+                    ? "bg-gray-100 text-gray-700"
+                    : "bg-emerald-50 text-emerald-700"
+                }`}>
                 <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                Interview complete
+                {endedReason === "user_stopped" ? "You ended the interview" : "Interview complete"}
               </div>
               <p className="text-sm text-gray-400 mt-3">
-                Thank you for your participation!
+                {endedReason === "user_stopped"
+                  ? "Your responses so far have been saved. You may close this page."
+                  : "Thank you for your participation!"}
               </p>
             </div>
           )}
@@ -627,6 +659,7 @@ export default function InterviewPage() {
                   />
                   <button
                     type="submit"
+                    aria-label="Send message"
                     disabled={!chatInput.trim() || status !== "active"}
                     className="flex-shrink-0 rounded-xl p-2.5 text-white transition-all hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ backgroundColor: primaryColor }}
@@ -924,6 +957,7 @@ export default function InterviewPage() {
           {status === "error" && (
             <button
               onClick={() => {
+                cleanupConnection();
                 setStatus(
                   config?.participant_id_mode === "input" ? "input" : "idle"
                 );
