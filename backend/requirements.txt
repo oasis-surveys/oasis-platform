@@ -31,6 +31,9 @@ twilio>=9.0.0
 # ── Authentication ──
 PyJWT>=2.8.0
 
+# ── Audio recording storage (optional S3 backend) ──
+boto3>=1.35.0
+
 # ── Utilities ──
 httpx==0.28.1
 python-dotenv==1.0.1

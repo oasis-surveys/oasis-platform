@@ -119,3 +119,58 @@ class TestFlagsAPI:
         # Enable via API
         await client.put("/api/settings/flags", json={"openai_use_eu": True})
         assert await get_effective_flag("openai_use_eu") is True
+
+
+class TestAudioStorageSettingsAPI:
+    async def test_list_audio_storage_settings(self, client: AsyncClient):
+        resp = await client.get("/api/settings/audio-storage")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "settings" in data
+        fields = [s["field"] for s in data["settings"]]
+        assert "audio_storage_backend" in fields
+        assert "audio_s3_bucket" in fields
+        assert "audio_s3_secret_access_key" in fields
+
+    async def test_update_audio_storage_backend(self, client: AsyncClient):
+        resp = await client.put(
+            "/api/settings/audio-storage",
+            json={"audio_storage_backend": "s3"},
+        )
+        assert resp.status_code == 200
+        row = next(
+            s for s in resp.json()["settings"] if s["field"] == "audio_storage_backend"
+        )
+        assert row["display_value"] == "s3"
+        assert row["source"] == "dashboard"
+
+    async def test_invalid_audio_storage_backend(self, client: AsyncClient):
+        resp = await client.put(
+            "/api/settings/audio-storage",
+            json={"audio_storage_backend": "azure"},
+        )
+        assert resp.status_code == 400
+
+    async def test_get_effective_audio_setting_helper(self, client: AsyncClient):
+        from app.api.settings import get_effective_audio_setting
+
+        await client.put(
+            "/api/settings/audio-storage",
+            json={"audio_s3_bucket": "my-test-bucket"},
+        )
+        assert await get_effective_audio_setting("audio_s3_bucket") == "my-test-bucket"
+
+    async def test_sensitive_field_masked(self, client: AsyncClient):
+        await client.put(
+            "/api/settings/audio-storage",
+            json={"audio_s3_secret_access_key": "supersecretkey123456"},
+        )
+        resp = await client.get("/api/settings/audio-storage")
+        row = next(
+            s
+            for s in resp.json()["settings"]
+            if s["field"] == "audio_s3_secret_access_key"
+        )
+        assert row["sensitive"] is True
+        assert "••••" in row["display_value"]
+        assert "supersecret" not in row["display_value"]

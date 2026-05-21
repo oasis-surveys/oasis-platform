@@ -283,3 +283,132 @@ async def update_flags(data: FlagsUpdate):
         logger.info(f"Set flag override: {field}={value}")
 
     return await list_flags()
+
+
+# ── Interview audio storage (local / S3) ─────────────────────────────────
+
+
+_AUDIO_STORAGE_REDIS_KEY = "oasis:settings:audio_storage"
+
+_AUDIO_STORAGE_FIELDS: dict[str, tuple[str, bool]] = {
+    "audio_storage_backend": ("AUDIO_STORAGE_BACKEND", False),
+    "audio_storage_local_path": ("AUDIO_STORAGE_LOCAL_PATH", False),
+    "audio_s3_bucket": ("AUDIO_S3_BUCKET", False),
+    "audio_s3_prefix": ("AUDIO_S3_PREFIX", False),
+    "audio_s3_region": ("AUDIO_S3_REGION", False),
+    "audio_s3_endpoint_url": ("AUDIO_S3_ENDPOINT_URL", False),
+    "audio_s3_access_key_id": ("AUDIO_S3_ACCESS_KEY_ID", True),
+    "audio_s3_secret_access_key": ("AUDIO_S3_SECRET_ACCESS_KEY", True),
+}
+
+
+class AudioStorageSettingStatus(BaseModel):
+    field: str
+    env_var: str
+    is_set: bool
+    source: str  # "env", "dashboard", or "none"
+    display_value: str
+    sensitive: bool
+
+
+class AudioStorageResponse(BaseModel):
+    settings: list[AudioStorageSettingStatus]
+
+
+class AudioStorageUpdate(BaseModel):
+    audio_storage_backend: Optional[str] = None
+    audio_storage_local_path: Optional[str] = None
+    audio_s3_bucket: Optional[str] = None
+    audio_s3_prefix: Optional[str] = None
+    audio_s3_region: Optional[str] = None
+    audio_s3_endpoint_url: Optional[str] = None
+    audio_s3_access_key_id: Optional[str] = None
+    audio_s3_secret_access_key: Optional[str] = None
+
+
+async def get_effective_audio_setting(field: str) -> str:
+    """Dashboard override (Redis) > .env value for audio storage fields."""
+    if field not in _AUDIO_STORAGE_FIELDS:
+        return ""
+    redis = await get_redis()
+    override = await redis.hget(_AUDIO_STORAGE_REDIS_KEY, field)
+    if override is not None and override != "":
+        return override
+    return str(getattr(settings, field, "") or "")
+
+
+async def get_effective_audio_settings() -> dict[str, str]:
+    """All audio storage fields with effective values."""
+    return {field: await get_effective_audio_setting(field) for field in _AUDIO_STORAGE_FIELDS}
+
+
+def _display_value(value: str, *, sensitive: bool) -> str:
+    if not value:
+        return ""
+    if sensitive:
+        return _mask_key(value)
+    return value
+
+
+@router.get("/audio-storage", response_model=AudioStorageResponse)
+async def list_audio_storage_settings():
+    """List interview audio storage settings (local path or S3)."""
+    redis = await get_redis()
+    overrides = await redis.hgetall(_AUDIO_STORAGE_REDIS_KEY)
+    out: list[AudioStorageSettingStatus] = []
+
+    for field, (env_var, sensitive) in _AUDIO_STORAGE_FIELDS.items():
+        env_value = str(getattr(settings, field, "") or "")
+        override_value = overrides.get(field, "")
+
+        if override_value:
+            source = "dashboard"
+            effective = override_value
+        elif env_value:
+            source = "env"
+            effective = env_value
+        else:
+            source = "none"
+            effective = ""
+
+        out.append(
+            AudioStorageSettingStatus(
+                field=field,
+                env_var=env_var,
+                is_set=bool(effective),
+                source=source,
+                display_value=_display_value(effective, sensitive=sensitive),
+                sensitive=sensitive,
+            )
+        )
+
+    return AudioStorageResponse(settings=out)
+
+
+@router.put("/audio-storage", response_model=AudioStorageResponse)
+async def update_audio_storage_settings(data: AudioStorageUpdate):
+    """Update audio storage overrides. Empty string clears an override."""
+    redis = await get_redis()
+    updates = data.model_dump(exclude_none=True)
+
+    for field, value in updates.items():
+        if field not in _AUDIO_STORAGE_FIELDS:
+            continue
+
+        if field == "audio_storage_backend" and value:
+            normalized = value.strip().lower()
+            if normalized not in ("local", "s3"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="audio_storage_backend must be 'local' or 's3'",
+                )
+            value = normalized
+
+        if value == "":
+            await redis.hdel(_AUDIO_STORAGE_REDIS_KEY, field)
+            logger.info(f"Cleared audio storage override: {field}")
+        else:
+            await redis.hset(_AUDIO_STORAGE_REDIS_KEY, field, value)
+            logger.info(f"Set audio storage override: {field}")
+
+    return await list_audio_storage_settings()

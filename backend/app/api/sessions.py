@@ -22,7 +22,13 @@ from app.database import get_db
 from app.models.agent import Agent
 from app.models.session import Session, SessionStatus, TranscriptEntry
 from app.realtime import publish_transcript_event
-from app.schemas.session import SessionDetailRead, SessionRead
+from app.audio.storage import build_session_prefix, get_audio_storage
+from app.schemas.session import (
+    SessionAudioManifestRead,
+    SessionDetailRead,
+    SessionRead,
+    AudioTurnRead,
+)
 
 router = APIRouter(
     prefix="/studies/{study_id}/agents/{agent_id}/sessions",
@@ -291,6 +297,102 @@ async def export_sessions_json(
         headers={
             "Content-Disposition": f"attachment; filename=sessions_{agent_id}.json",
         },
+    )
+
+
+def _session_audio_prefix(session: Session, agent: Agent) -> str:
+    return build_session_prefix(
+        study_id=agent.study_id,
+        agent_id=agent.id,
+        participant_id=session.participant_id,
+        session_id=session.id,
+    )
+
+
+async def _get_session_with_agent(
+    study_id: UUID, agent_id: UUID, session_id: UUID, db: AsyncSession
+) -> tuple[Session, Agent]:
+    agent = await _get_agent_or_404(study_id, agent_id, db)
+    session = await db.get(Session, session_id)
+    if not session or session.agent_id != agent_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session, agent
+
+
+# ── Session audio (voice web recordings) ───────────────────────────────────────
+
+@router.get("/{session_id}/audio", response_model=SessionAudioManifestRead)
+async def get_session_audio_manifest(
+    study_id: UUID,
+    agent_id: UUID,
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return manifest of session audio files for a recorded session."""
+    session, agent = await _get_session_with_agent(study_id, agent_id, session_id, db)
+    if not session.audio_recording_enabled:
+        raise HTTPException(status_code=404, detail="Audio recording was not enabled for this session")
+
+    storage = await get_audio_storage()
+    if not storage:
+        raise HTTPException(status_code=503, detail="Audio storage is not configured on this server")
+
+    prefix = _session_audio_prefix(session, agent)
+    try:
+        raw = await storage.read_bytes(f"{prefix}/manifest.json")
+        manifest = json.loads(raw.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=404, detail="Audio manifest not found")
+
+    turns = [
+        AudioTurnRead(
+            sequence=t["sequence"],
+            role=t["role"],
+            filename=t["filename"],
+            duration_ms=t.get("duration_ms"),
+            content_preview=t.get("content_preview"),
+        )
+        for t in manifest.get("turns", [])
+    ]
+    return SessionAudioManifestRead(
+        session_id=session.id,
+        storage_uri=session.audio_storage_uri,
+        recording_status=session.audio_recording_status,
+        turns=turns,
+    )
+
+
+@router.get("/{session_id}/audio/{filename}")
+async def download_session_audio_turn(
+    study_id: UUID,
+    agent_id: UUID,
+    session_id: UUID,
+    filename: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a session WAV (e.g. session_user.wav)."""
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    session, agent = await _get_session_with_agent(study_id, agent_id, session_id, db)
+    if not session.audio_recording_enabled:
+        raise HTTPException(status_code=404, detail="Audio recording was not enabled for this session")
+
+    storage = await get_audio_storage()
+    if not storage:
+        raise HTTPException(status_code=503, detail="Audio storage is not configured on this server")
+
+    prefix = _session_audio_prefix(session, agent)
+    key = f"{prefix}/{filename}"
+    try:
+        data = await storage.read_bytes(key)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    return Response(
+        content=data,
+        media_type="audio/wav",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

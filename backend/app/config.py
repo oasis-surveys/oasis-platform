@@ -120,5 +120,16 @@ class Settings(BaseSettings):
     auth_username: str = "admin"
     auth_password: str = ""  # Must be set when auth_enabled=true
 
+    # ── Voice interview audio recording (web widget only) ──
+    # Enabled per agent via store_audio. These settings configure where files go.
+    audio_storage_backend: str = "local"  # "local" | "s3"
+    audio_storage_local_path: str = "/data/oasis-recordings"
+    audio_s3_bucket: str = ""
+    audio_s3_prefix: str = "oasis-recordings"
+    audio_s3_region: str = "us-east-1"
+    audio_s3_access_key_id: str = ""
+    audio_s3_secret_access_key: str = ""
+    audio_s3_endpoint_url: str = ""  # optional, for MinIO
+
 
 settings = Settings()

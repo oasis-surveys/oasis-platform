@@ -4,6 +4,17 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-05-21
+
+### Added
+
+- Session audio recording for web voice interviews (modular and voice-to-voice).
+  Off by default; enable per agent with **Store interview audio**. Each session
+  writes `session_user.wav`, `session_agent.wav`, and `manifest.json` under a
+  study/agent/participant/session path. Storage is local (`AUDIO_STORAGE_*`) or
+  S3-compatible (`AUDIO_S3_*`), configurable in Settings or `.env`. See
+  [docs/AUDIO_RECORDING.md](docs/AUDIO_RECORDING.md).
+
 ## 2026-05-19
 
 ### Fixed

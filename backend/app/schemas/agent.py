@@ -91,6 +91,9 @@ class AgentCreate(BaseModel):
     # Telephony
     twilio_phone_number: str | None = None
 
+    # Audio recording (voice web interviews; per-agent opt-in)
+    store_audio: bool = False
+
 
 class AgentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
@@ -130,6 +133,8 @@ class AgentUpdate(BaseModel):
     silence_prompt: str | None = None
 
     twilio_phone_number: str | None = None
+
+    store_audio: bool | None = None
 
 
 # ── Response Schemas ─────────────────────────────────────────
@@ -176,6 +181,8 @@ class AgentRead(BaseModel):
     silence_prompt: str | None
 
     twilio_phone_number: str | None
+
+    store_audio: bool
 
     created_at: datetime
     updated_at: datetime

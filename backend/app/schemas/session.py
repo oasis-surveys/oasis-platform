@@ -35,10 +35,28 @@ class SessionRead(BaseModel):
     total_tokens: Optional[int] = None
     participant_id: Optional[str] = None
     ended_at: Optional[datetime] = None
+    audio_recording_enabled: bool = False
+    audio_storage_uri: Optional[str] = None
+    audio_recording_status: str = "none"
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AudioTurnRead(BaseModel):
+    sequence: int
+    role: str
+    filename: str
+    duration_ms: Optional[int] = None
+    content_preview: Optional[str] = None
+
+
+class SessionAudioManifestRead(BaseModel):
+    session_id: UUID
+    storage_uri: Optional[str] = None
+    recording_status: str
+    turns: list[AudioTurnRead] = []
 
 
 class SessionDetailRead(SessionRead):

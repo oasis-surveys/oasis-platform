@@ -4,7 +4,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { sessions, getAuthToken, type SessionDetail } from "../lib/api";
+import {
+  sessions,
+  getAuthToken,
+  type SessionDetail,
+  type SessionAudioManifest,
+} from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import { useToast } from "../components/Toast";
 
@@ -95,6 +100,7 @@ export default function SessionDetailPage() {
   const [isLive, setIsLive] = useState(false);
   const [liveStatus, setLiveStatus] = useState<string>("connecting");
   const [terminating, setTerminating] = useState(false);
+  const [audioManifest, setAudioManifest] = useState<SessionAudioManifest | null>(null);
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -118,6 +124,18 @@ export default function SessionDetailPage() {
       })
       .finally(() => setLoading(false));
   }, [studyId, agentId, sessionId]);
+
+  useEffect(() => {
+    if (!studyId || !agentId || !sessionId || !session?.audio_recording_enabled) {
+      setAudioManifest(null);
+      return;
+    }
+    if (session.status === "active") return;
+    sessions
+      .getAudioManifest(studyId, agentId, sessionId)
+      .then(setAudioManifest)
+      .catch(() => setAudioManifest(null));
+  }, [studyId, agentId, sessionId, session?.audio_recording_enabled, session?.status]);
 
   useEffect(() => {
     if (!isLive || !sessionId) return;
@@ -347,6 +365,62 @@ export default function SessionDetailPage() {
             <span className="font-medium text-gray-900">{allEntries.length}</span>
           </div>
         </div>
+
+        {session.audio_recording_enabled && (
+          <div className="mt-5 pt-5 border-t border-gray-100">
+            <h2 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+              Interview audio
+              <HelpTooltip text="Full-session WAV files: session_user.wav (participant) and session_agent.wav (agent). Written when the interview ends." />
+            </h2>
+            {session.status === "active" ? (
+              <p className="text-xs text-gray-500">Audio files are written when the session ends.</p>
+            ) : session.audio_recording_status === "none" ? (
+              <p className="text-xs text-gray-500">No recording status yet.</p>
+            ) : audioManifest && audioManifest.turns.length > 0 ? (
+              <ul className="space-y-2">
+                {audioManifest.turns.map((turn) => (
+                  <li
+                    key={`${turn.sequence}-${turn.role}`}
+                    className="flex items-center justify-between gap-3 text-sm"
+                  >
+                    <span className="text-gray-700">
+                      {turn.role === "user" ? "Participant" : "Agent"}
+                      {turn.duration_ms != null && (
+                        <span className="text-gray-400 ml-2">
+                          {(turn.duration_ms / 1000).toFixed(1)}s
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-secondary !py-1 !px-2 !text-xs"
+                      onClick={() =>
+                        studyId &&
+                        agentId &&
+                        sessionId &&
+                        sessions
+                          .downloadAudioTurn(studyId, agentId, sessionId, turn.filename)
+                          .then(() => showToast(`Downloaded ${turn.filename}`, "success"))
+                          .catch((err) =>
+                            showToast(
+                              err instanceof Error ? err.message : "Download failed",
+                              "warning"
+                            )
+                          )
+                      }
+                    >
+                      <DownloadIcon /> {turn.filename}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-amber-700">
+                Recording status: {session.audio_recording_status}. No turn files found.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Transcript ── */}

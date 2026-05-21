@@ -173,6 +173,11 @@ class Agent(Base):
         Text, nullable=True, default=None
     )
 
+    # ── Audio recording (voice web interviews) ──
+    store_audio: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+
     # ── Telephony (Twilio) ──
     twilio_phone_number: Mapped[str | None] = mapped_column(
         String(30), nullable=True
