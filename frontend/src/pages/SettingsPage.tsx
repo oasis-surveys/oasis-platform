@@ -6,10 +6,16 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { settingsApi, type ApiKeyStatus, type FlagStatus } from "../lib/api";
+import {
+  settingsApi,
+  type ApiKeyStatus,
+  type AudioStorageSettingStatus,
+  type FlagStatus,
+} from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import HelpTooltip from "../components/HelpTooltip";
 import { useToast } from "../components/Toast";
+import SettingsCollapsibleSection from "../components/SettingsCollapsibleSection";
 
 // Labels and descriptions for each API key field
 const KEY_INFO: Record<string, { label: string; description: string; category: string }> = {
@@ -155,28 +161,88 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
   },
 };
 
+const AUDIO_STORAGE_INFO: Record<
+  string,
+  { label: string; description: string; inputType?: "password" | "text" }
+> = {
+  audio_storage_backend: {
+    label: "Storage backend",
+    description: "Where interview session WAV files are written (local disk or S3-compatible object storage).",
+  },
+  audio_storage_local_path: {
+    label: "Local storage path",
+    description: "Directory on the server (or Docker volume mount) for WAV files when backend is local.",
+    inputType: "text",
+  },
+  audio_s3_bucket: {
+    label: "S3 bucket",
+    description: "Bucket name for interview audio when backend is S3.",
+    inputType: "text",
+  },
+  audio_s3_prefix: {
+    label: "S3 key prefix",
+    description: "Folder prefix inside the bucket (default: oasis-recordings).",
+    inputType: "text",
+  },
+  audio_s3_region: {
+    label: "S3 region",
+    description: "AWS region (e.g. us-east-1) or region for your S3-compatible provider.",
+    inputType: "text",
+  },
+  audio_s3_endpoint_url: {
+    label: "S3 endpoint URL",
+    description: "Optional custom endpoint for MinIO, Scaleway, etc. Leave empty for AWS.",
+    inputType: "text",
+  },
+  audio_s3_access_key_id: {
+    label: "S3 access key ID",
+    description: "Access key with write permissions to the bucket.",
+    inputType: "password",
+  },
+  audio_s3_secret_access_key: {
+    label: "S3 secret access key",
+    description: "Secret key paired with the access key ID.",
+    inputType: "password",
+  },
+};
+
 const CATEGORIES = ["AI Providers", "Self-Hosted", "Telephony"];
+
+function audioSettingValue(
+  settings: AudioStorageSettingStatus[],
+  field: string,
+  fallback: string
+): string {
+  const row = settings.find((s) => s.field === field);
+  if (!row?.is_set) return fallback;
+  if (row.sensitive) return row.display_value;
+  return row.display_value || fallback;
+}
 
 export default function SettingsPage() {
   const { authEnabled, username } = useAuth();
   const [toastNode, showToast] = useToast();
   const [keys, setKeys] = useState<ApiKeyStatus[]>([]);
   const [flags, setFlags] = useState<FlagStatus[]>([]);
+  const [audioStorage, setAudioStorage] = useState<AudioStorageSettingStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
+  const [editingAudioFields, setEditingAudioFields] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [flagSaving, setFlagSaving] = useState<string | null>(null);
 
   const loadKeys = useCallback(async () => {
     setLoadError(null);
     try {
-      const [k, f] = await Promise.all([
+      const [k, f, a] = await Promise.all([
         settingsApi.getKeys(),
         settingsApi.getFlags(),
+        settingsApi.getAudioStorage(),
       ]);
       setKeys(k.keys);
       setFlags(f.flags);
+      setAudioStorage(a.settings);
     } catch (err) {
       setLoadError(
         err instanceof Error ? err.message : "Failed to load settings. Check your connection and try again."
@@ -249,6 +315,171 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAudioBackendChange = async (value: "local" | "s3") => {
+    setSaving(true);
+    try {
+      const res = await settingsApi.updateAudioStorage({
+        audio_storage_backend: value,
+      });
+      setAudioStorage(res.settings);
+      showToast(`Audio storage: ${value}`, "success");
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, "warning");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAudioEdit = (field: string) => {
+    setEditingAudioFields((prev) => ({ ...prev, [field]: "" }));
+  };
+
+  const handleAudioCancelEdit = (field: string) => {
+    setEditingAudioFields((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const handleAudioClearOverride = async (field: string) => {
+    setSaving(true);
+    try {
+      const res = await settingsApi.updateAudioStorage({ [field]: "" });
+      setAudioStorage(res.settings);
+      showToast("Override cleared — using .env value", "success");
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, "warning");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAudioSave = async (field: string) => {
+    const value = editingAudioFields[field];
+    if (value === undefined || value === "") return;
+
+    setSaving(true);
+    try {
+      const res = await settingsApi.updateAudioStorage({ [field]: value });
+      setAudioStorage(res.settings);
+      setEditingAudioFields((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+      showToast("Audio storage setting updated", "success");
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, "warning");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const audioBackend = audioSettingValue(audioStorage, "audio_storage_backend", "local");
+  const isS3Backend = audioBackend === "s3";
+
+  const renderAudioStorageRow = (setting: AudioStorageSettingStatus) => {
+    const info = AUDIO_STORAGE_INFO[setting.field];
+    if (!info || setting.field === "audio_storage_backend") return null;
+
+    if (isS3Backend && setting.field === "audio_storage_local_path") return null;
+    if (!isS3Backend && setting.field.startsWith("audio_s3_")) return null;
+
+    const isEditing = setting.field in editingAudioFields;
+    const inputType = info.inputType ?? (setting.sensitive ? "password" : "text");
+
+    return (
+      <div key={setting.field} className="px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-sm font-medium text-gray-900">{info.label}</span>
+              <code className="text-[10px] text-gray-400 bg-gray-50 rounded px-1.5 py-0.5">
+                {setting.env_var}
+              </code>
+              {setting.is_set && (
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    setting.source === "dashboard"
+                      ? "bg-blue-50 text-blue-700"
+                      : "bg-green-50 text-green-700"
+                  }`}
+                >
+                  {setting.source === "dashboard" ? "Dashboard" : ".env"}
+                </span>
+              )}
+              {!setting.is_set && (
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+                  Not set
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400">{info.description}</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {setting.is_set && !isEditing && (
+              <span className="text-xs text-gray-400 font-mono max-w-[14rem] truncate">
+                {setting.display_value}
+              </span>
+            )}
+
+            {isEditing ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type={inputType}
+                  value={editingAudioFields[setting.field]}
+                  onChange={(e) =>
+                    setEditingAudioFields((prev) => ({
+                      ...prev,
+                      [setting.field]: e.target.value,
+                    }))
+                  }
+                  placeholder="Enter new value…"
+                  className="w-64 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-1.5 text-xs text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none transition-all"
+                  autoFocus
+                />
+                <button
+                  onClick={() => handleAudioSave(setting.field)}
+                  disabled={saving || !editingAudioFields[setting.field]}
+                  className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800 disabled:opacity-50 transition-all"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => handleAudioCancelEdit(setting.field)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleAudioEdit(setting.field)}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-all"
+                >
+                  {setting.is_set ? "Update" : "Set"}
+                </button>
+                {setting.source === "dashboard" && (
+                  <button
+                    onClick={() => handleAudioClearOverride(setting.field)}
+                    disabled={saving}
+                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 hover:border-red-200 transition-all"
+                    title="Clear dashboard override and use .env value"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -380,6 +611,42 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Interview audio storage */}
+      <SettingsCollapsibleSection title="Interview audio storage">
+        <div className="px-5 py-4 border-b border-gray-50">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-gray-900">Storage backend</span>
+                <code className="text-[10px] text-gray-400 bg-gray-50 rounded px-1.5 py-0.5">
+                  AUDIO_STORAGE_BACKEND
+                </code>
+              </div>
+              <p className="text-xs text-gray-400">
+                {AUDIO_STORAGE_INFO.audio_storage_backend.description}
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                Per-agent <strong>Store interview audio</strong> must still be enabled on each voice agent.
+              </p>
+            </div>
+            <select
+              value={audioBackend}
+              disabled={saving}
+              onChange={(e) =>
+                handleAudioBackendChange(e.target.value as "local" | "s3")
+              }
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 outline-none"
+            >
+              <option value="local">Local disk</option>
+              <option value="s3">S3 / compatible</option>
+            </select>
+          </div>
+        </div>
+        <div className="divide-y divide-gray-50">
+          {audioStorage.map((s) => renderAudioStorageRow(s))}
+        </div>
+      </SettingsCollapsibleSection>
+
       {/* API Keys by Category */}
       {CATEGORIES.map((category, idx) => {
         const categoryKeys = keys.filter(
@@ -388,14 +655,12 @@ export default function SettingsPage() {
         if (categoryKeys.length === 0) return null;
 
         return (
-          <div
+          <SettingsCollapsibleSection
             key={category}
-            className="card"
-            data-tour={idx === 0 ? "settings-keys" : undefined}
+            title={category}
+            defaultOpen={idx === 0}
+            dataTour={idx === 0 ? "settings-keys" : undefined}
           >
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-sm font-semibold text-gray-900">{category}</h2>
-            </div>
             <div className="divide-y divide-gray-50">
               {categoryKeys.map((key) => {
                 const info = KEY_INFO[key.field];
@@ -494,7 +759,7 @@ export default function SettingsPage() {
                 );
               })}
             </div>
-          </div>
+          </SettingsCollapsibleSection>
         );
       })}
 
@@ -503,7 +768,8 @@ export default function SettingsPage() {
         <p className="font-medium text-gray-700 mb-2">How it works</p>
         <ul className="list-disc list-inside space-y-1 text-xs">
           <li>
-            API keys set here are stored in Redis and take priority over <code>.env</code> values.
+            API keys and audio storage settings set here are stored in Redis and take priority over{" "}
+            <code>.env</code> values.
           </li>
           <li>Changes take effect immediately — no restart required.</li>
           <li>Click "Clear" to remove a dashboard override and fall back to the <code>.env</code> value.</li>

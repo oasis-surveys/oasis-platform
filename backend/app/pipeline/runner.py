@@ -49,6 +49,12 @@ from app.pipeline.transcript_logger import (
     TranscriptUserCapture,
     TranscriptLogger,
 )
+from app.audio.recording import (
+    AgentAudioTap,
+    AudioRecordingManager,
+    UserAudioTap,
+)
+from app.audio.storage import build_session_prefix, get_audio_storage
 
 
 # ── OpenAI EU data-residency endpoints ─────────────────────────────────────
@@ -80,6 +86,36 @@ async def _openai_realtime_base_url() -> str:
         if await _openai_use_eu()
         else _OPENAI_DEFAULT_REALTIME_URL
     )
+
+
+async def _setup_audio_recording(
+    *,
+    record_audio: bool,
+    session_id: uuid.UUID,
+    study_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    participant_id: Optional[str],
+    pipeline_type: str,
+) -> tuple[Optional[AudioRecordingManager], UserAudioTap, AgentAudioTap]:
+    """Create session audio recorder when storage is configured and agent opts in."""
+    storage = await get_audio_storage()
+    if not record_audio or not storage:
+        return None, UserAudioTap(None), AgentAudioTap(None)
+
+    prefix = build_session_prefix(
+        study_id=study_id,
+        agent_id=agent_id,
+        participant_id=participant_id,
+        session_id=session_id,
+    )
+    manager = AudioRecordingManager(
+        storage,
+        session_prefix=prefix,
+        session_id=session_id,
+        pipeline_type=pipeline_type,
+    )
+    logger.info(f"Audio recording enabled for session {session_id} at {prefix}")
+    return manager, UserAudioTap(manager), AgentAudioTap(manager)
 
 
 async def _get_key(field: str) -> str:
@@ -258,14 +294,17 @@ async def build_pipeline(
     max_duration_seconds: Optional[int] = None,
     notify_callback=None,
     study_id: Optional[uuid.UUID] = None,
+    agent_id: Optional[uuid.UUID] = None,
+    participant_id: Optional[str] = None,
+    record_audio: bool = False,
     silence_timeout_seconds: Optional[int] = None,
     silence_prompt: Optional[str] = None,
     interview_mode: Optional[str] = None,
     interview_guide: Optional[dict] = None,
-) -> PipelineTask:
+) -> tuple[PipelineTask, Optional[AudioRecordingManager]]:
     """
-    Build and return a ready-to-run PipelineTask.
-    The caller only needs to `await runner.run(task)`.
+    Build and return a ready-to-run PipelineTask plus optional audio manager.
+    The caller runs `await runner.run(task)` then finalises session audio in DB.
     """
 
     # ── Structured interview prompt enhancement ───────────────────
@@ -294,11 +333,21 @@ async def build_pipeline(
         ),
     )
 
+    audio_manager, user_tap, agent_tap = await _setup_audio_recording(
+        record_audio=record_audio,
+        session_id=session_id,
+        study_id=study_id or uuid.UUID(int=0),
+        agent_id=agent_id or uuid.UUID(int=0),
+        participant_id=participant_id,
+        pipeline_type=pipeline_type,
+    )
+
     # ── Transcript logging (shared state, two processors) ──────────
     transcript_state = TranscriptLoggerState(
         session_id=session_id,
         db_session_factory=async_session_factory,
         notify_callback=notify_callback,
+        audio_manager=audio_manager,
     )
     user_capture = TranscriptUserCapture(transcript_state)
     transcript_logger = TranscriptLogger(transcript_state)
@@ -306,6 +355,8 @@ async def build_pipeline(
     if pipeline_type == "voice_to_voice":
         task = await _build_v2v_pipeline(
             transport=transport,
+            user_tap=user_tap,
+            agent_tap=agent_tap,
             user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -321,6 +372,8 @@ async def build_pipeline(
     else:
         task = await _build_modular_pipeline(
             transport=transport,
+            user_tap=user_tap,
+            agent_tap=agent_tap,
             user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -340,7 +393,7 @@ async def build_pipeline(
             interview_guide=interview_guide,
         )
 
-    return task
+    return task, audio_manager
 
 
 # ── RAG tool registration ────────────────────────────────────────────────────
@@ -589,6 +642,8 @@ async def _build_llm(llm_model: str):
 async def _build_modular_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_tap: UserAudioTap,
+    agent_tap: AgentAudioTap,
     user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
@@ -677,12 +732,14 @@ async def _build_modular_pipeline(
     # appearing to "loop" — it was a context bug, not a guide bug.
     pipeline_nodes = [
         transport.input(),               # audio from browser
+        user_tap,                        # optional per-turn user PCM capture
         stt,                             # speech → text
         user_capture,                    # log user transcriptions
         context_aggregator.user(),       # accumulate user turns
         llm,                             # text → LLM response
         transcript_logger,               # log agent text (TextFrame)
         tts,                             # text → speech
+        agent_tap,                       # agent PCM + TTSStopped (right after TTS)
         transport.output(),              # audio back to browser
         context_aggregator.assistant(),  # accumulate bot turns
     ]
@@ -746,6 +803,8 @@ async def _build_modular_pipeline(
 async def _build_v2v_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_tap: UserAudioTap,
+    agent_tap: AgentAudioTap,
     user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
@@ -762,6 +821,8 @@ async def _build_v2v_pipeline(
     if llm_model.startswith("google/"):
         return await _build_gemini_live_pipeline(
             transport=transport,
+            user_tap=user_tap,
+            agent_tap=agent_tap,
             user_capture=user_capture,
             transcript_logger=transcript_logger,
             llm_model=llm_model,
@@ -777,6 +838,8 @@ async def _build_v2v_pipeline(
     # Default: OpenAI Realtime
     return await _build_openai_realtime_pipeline(
         transport=transport,
+        user_tap=user_tap,
+        agent_tap=agent_tap,
         user_capture=user_capture,
         transcript_logger=transcript_logger,
         llm_model=llm_model,
@@ -843,6 +906,8 @@ def _build_v2v_idle_processor(
 async def _build_openai_realtime_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_tap: UserAudioTap,
+    agent_tap: AgentAudioTap,
     user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
@@ -872,7 +937,10 @@ async def _build_openai_realtime_pipeline(
     from pipecat.services.openai.realtime.events import (
         SessionProperties,
         AudioConfiguration,
+        AudioInput,
         AudioOutput,
+        InputAudioTranscription,
+        TurnDetection,
     )
 
     model_name = _resolve_model_name(llm_model)
@@ -902,6 +970,12 @@ async def _build_openai_realtime_pipeline(
             session_properties=SessionProperties(
                 output_modalities=["audio"],
                 audio=AudioConfiguration(
+                    input=AudioInput(
+                        transcription=InputAudioTranscription(
+                            language=language[:2] if language else None,
+                        ),
+                        turn_detection=TurnDetection(),
+                    ),
                     output=AudioOutput(voice=voice),
                 ),
             ),
@@ -917,18 +991,20 @@ async def _build_openai_realtime_pipeline(
     # Both user_capture and transcript_logger sit after the Realtime LLM
     # because it emits TranscriptionFrame (user) and TextFrame (agent)
     # downstream.
+    # user_capture MUST sit before Realtime: user TranscriptionFrames are
+    # pushed UPSTREAM from the Realtime service, not downstream.
     nodes = [
         transport.input(),
-        realtime_llm,
+        user_tap,
         user_capture,
+        realtime_llm,
+        agent_tap,
         transcript_logger,
         transport.output(),
     ]
 
     idle_processor = _build_v2v_idle_processor(silence_timeout_seconds, silence_prompt)
     if idle_processor:
-        # Sit between user_capture (which emits UserStoppedSpeakingFrame
-        # via the realtime LLM downstream) and transcript_logger.
         nodes.insert(nodes.index(transcript_logger), idle_processor)
 
     pipeline = Pipeline(nodes)
@@ -974,6 +1050,8 @@ async def _build_openai_realtime_pipeline(
 async def _build_gemini_live_pipeline(
     *,
     transport: FastAPIWebsocketTransport,
+    user_tap: UserAudioTap,
+    agent_tap: AgentAudioTap,
     user_capture: TranscriptUserCapture,
     transcript_logger: TranscriptLogger,
     llm_model: str,
@@ -1026,11 +1104,13 @@ async def _build_gemini_live_pipeline(
     if study_id and await _study_has_knowledge(study_id):
         _register_rag_tool(gemini_llm, study_id)
 
-    # V2V pipeline: NO context aggregator needed.
+    # user_capture before Gemini Live (same UPSTREAM transcription as OpenAI RT).
     nodes = [
         transport.input(),
-        gemini_llm,
+        user_tap,
         user_capture,
+        gemini_llm,
+        agent_tap,
         transcript_logger,
         transport.output(),
     ]

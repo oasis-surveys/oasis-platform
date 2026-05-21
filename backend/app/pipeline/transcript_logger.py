@@ -31,6 +31,7 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
     InterimTranscriptionFrame,
     TextFrame,
+    UserStartedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -49,10 +50,12 @@ class TranscriptLoggerState:
         db_session_factory,
         *,
         notify_callback=None,
+        audio_manager=None,
     ):
         self.session_id = session_id
         self.db_session_factory = db_session_factory
         self.notify_callback = notify_callback
+        self.audio_manager = audio_manager
         self.sequence: int = 0
         self.agent_buffer: list[str] = []
 
@@ -64,6 +67,7 @@ class TranscriptLoggerState:
             return
 
         self.sequence += 1
+
         entry = TranscriptEntry(
             id=uuid.uuid4(),
             session_id=self.session_id,
@@ -132,6 +136,9 @@ class TranscriptUserCapture(FrameProcessor):
             await self.push_frame(frame, direction)
             return
 
+        if self._state.audio_manager and isinstance(frame, UserStartedSpeakingFrame):
+            self._state.audio_manager.resume_user_capture()
+
         # Everything else → pass through
         await self.push_frame(frame, direction)
 
@@ -165,4 +172,9 @@ class TranscriptLogger(FrameProcessor):
     async def cleanup(self):
         """Flush remaining agent text on shutdown."""
         await self._state.flush_agent_buffer()
+        if self._state.audio_manager:
+            try:
+                await self._state.audio_manager.finalize_session()
+            except Exception as exc:
+                logger.error(f"TranscriptLogger: audio session finalize failed: {exc}")
         await super().cleanup()

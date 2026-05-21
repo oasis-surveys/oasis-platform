@@ -42,6 +42,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ./data/recordings:/data/oasis-recordings
     networks:
       - oasis_net
 

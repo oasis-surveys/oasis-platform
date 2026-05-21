@@ -11,6 +11,7 @@ import {
 } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import CopyButton from "../components/CopyButton";
+import StoreAudioToggle from "../components/StoreAudioToggle";
 import { useToast } from "../components/Toast";
 
 // ── Model options ─────────────────────────────────────────────
@@ -413,6 +414,7 @@ function buildAgentConfigJSON(form: FormData): string {
     silence_timeout_seconds: form.silence_timeout_seconds ? parseInt(form.silence_timeout_seconds) : null,
     silence_prompt: form.silence_prompt || null,
     twilio_phone_number: form.twilio_phone_number || null,
+    store_audio: form.store_audio,
   };
   return JSON.stringify(config, null, 2);
 }
@@ -480,6 +482,7 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     silence_timeout_seconds: obj.silence_timeout_seconds != null ? String(obj.silence_timeout_seconds) : "",
     silence_prompt: (obj.silence_prompt as string) || "Take your time. Let me know when you're ready to continue.",
     twilio_phone_number: (obj.twilio_phone_number as string) || "",
+    store_audio: Boolean(obj.store_audio),
   };
   return result;
 }
@@ -515,6 +518,7 @@ interface FormData {
   silence_timeout_seconds: string;
   silence_prompt: string;
   twilio_phone_number: string;
+  store_audio: boolean;
 }
 
 const DEFAULT_FORM: FormData = {
@@ -562,6 +566,7 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   silence_timeout_seconds: "",
   silence_prompt: "Take your time. Let me know when you're ready to continue.",
   twilio_phone_number: "",
+  store_audio: false,
 };
 
 // ── Grouped select helper ──────────────────────────────────────
@@ -846,6 +851,7 @@ export default function AgentFormPage() {
           silence_timeout_seconds: a.silence_timeout_seconds ? String(a.silence_timeout_seconds) : "",
           silence_prompt: a.silence_prompt || "Take your time. Let me know when you're ready to continue.",
           twilio_phone_number: a.twilio_phone_number || "",
+          store_audio: Boolean(a.store_audio),
         });
         participants.list(studyId, agentId).then(setPidList).catch(console.error);
         setLoadFailed(false);
@@ -949,6 +955,7 @@ export default function AgentFormPage() {
       silence_timeout_seconds: silenceParsed,
       silence_prompt: form.silence_prompt || null,
       twilio_phone_number: form.twilio_phone_number || null,
+      store_audio: form.modality === "voice" ? form.store_audio : false,
     };
 
     try {
@@ -2233,6 +2240,15 @@ export default function AgentFormPage() {
                     : "Min 60s · Max 7200s (2 hours)"}
                 </span>
               </div>
+            </div>
+          )}
+
+          {form.modality === "voice" && (
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <StoreAudioToggle
+                enabled={form.store_audio}
+                onChange={(store_audio) => setForm((prev) => ({ ...prev, store_audio }))}
+              />
             </div>
           )}
         </div>

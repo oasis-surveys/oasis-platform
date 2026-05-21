@@ -24,6 +24,7 @@ from sqlalchemy import select
 from app.database import async_session_factory
 from app.models.agent import Agent, AgentModality, AgentStatus, ParticipantIdMode, ParticipantIdentifier
 from app.models.session import Session, SessionStatus, aggregate_session_tokens
+from app.audio.storage import recording_enabled_for_agent
 from app.realtime import publish_transcript_event
 from app.session_manager import register_session, unregister_session
 
@@ -100,6 +101,7 @@ async def interview_ws(
                 else (agent.interview_mode or "free_form")
             ),
             "interview_guide": agent.interview_guide,
+            "store_audio": bool(agent.store_audio),
         }
 
         # ── 2. Resolve participant_id ──────────────────────────────
@@ -145,12 +147,15 @@ async def interview_ws(
                 return
             participant_id = pid.strip()
 
+        record_audio = recording_enabled_for_agent(agent_cfg["store_audio"])
+
         # ── 3. Create a new session ────────────────────────────────
         session = Session(
             id=uuid.uuid4(),
             agent_id=agent_cfg["id"],
             status=SessionStatus.ACTIVE,
             participant_id=participant_id,
+            audio_recording_enabled=record_audio,
         )
         db.add(session)
         await db.commit()
@@ -188,6 +193,7 @@ async def interview_ws(
 
     # ── 4. Build & run the Pipecat pipeline ────────────────────────
     final_status = SessionStatus.COMPLETED
+    audio_manager = None
     try:
         from pipecat.pipeline.runner import PipelineRunner
         from app.pipeline.runner import build_pipeline
@@ -196,7 +202,7 @@ async def interview_ws(
         async def _notify(payload: dict):
             await publish_transcript_event(str(session_id), payload)
 
-        task = await build_pipeline(
+        task, audio_manager = await build_pipeline(
             websocket=websocket,
             session_id=session_id,
             system_prompt=agent_cfg["system_prompt"],
@@ -212,6 +218,9 @@ async def interview_ws(
             max_duration_seconds=agent_cfg["max_duration_seconds"],
             notify_callback=_notify,
             study_id=agent_cfg["study_id"],
+            agent_id=agent_cfg["id"],
+            participant_id=participant_id,
+            record_audio=record_audio,
             silence_timeout_seconds=agent_cfg["silence_timeout_seconds"],
             silence_prompt=agent_cfg["silence_prompt"],
             interview_mode=agent_cfg["interview_mode"],
@@ -252,6 +261,11 @@ async def interview_ws(
                     sess.ended_at = end_time
                     sess.duration_seconds = duration
                     sess.total_tokens = await aggregate_session_tokens(db, session_id)
+                    if sess.audio_recording_enabled and audio_manager:
+                        sess.audio_storage_uri = audio_manager.storage_uri
+                        sess.audio_recording_status = await audio_manager.finalize_session()
+                    elif sess.audio_recording_enabled:
+                        sess.audio_recording_status = "failed"
                     await db.commit()
 
             # Broadcast session_ended event so live monitors close cleanly

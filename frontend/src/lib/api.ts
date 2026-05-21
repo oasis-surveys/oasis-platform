@@ -142,6 +142,7 @@ export interface Agent {
   silence_timeout_seconds: number | null;
   silence_prompt: string | null;
   twilio_phone_number: string | null;
+  store_audio: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -201,8 +202,26 @@ export interface SessionItem {
   total_tokens: number | null;
   participant_id: string | null;
   ended_at: string | null;
+  audio_recording_enabled: boolean;
+  audio_storage_uri: string | null;
+  audio_recording_status: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface AudioTurn {
+  sequence: number;
+  role: string;
+  filename: string;
+  duration_ms?: number | null;
+  content_preview?: string | null;
+}
+
+export interface SessionAudioManifest {
+  session_id: string;
+  storage_uri: string | null;
+  recording_status: string;
+  turns: AudioTurn[];
 }
 
 export interface TranscriptEntry {
@@ -494,6 +513,19 @@ export const sessions = {
       { method: "POST" }
     ),
 
+  getAudioManifest: (studyId: string, agentId: string, sessionId: string) =>
+    request<SessionAudioManifest>(
+      `/studies/${studyId}/agents/${agentId}/sessions/${sessionId}/audio`
+    ),
+
+  audioTurnUrl: (
+    studyId: string,
+    agentId: string,
+    sessionId: string,
+    filename: string
+  ) =>
+    `${BASE}/studies/${studyId}/agents/${agentId}/sessions/${sessionId}/audio/${filename}`,
+
   exportCsvUrl: (studyId: string, agentId: string, params?: SessionListParams) => {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set("status", params.status);
@@ -525,6 +557,17 @@ export const sessions = {
 
   downloadJson: (studyId: string, agentId: string, params?: SessionListParams) =>
     downloadAuthed(sessions.exportJsonUrl(studyId, agentId, params), "sessions.json"),
+
+  downloadAudioTurn: (
+    studyId: string,
+    agentId: string,
+    sessionId: string,
+    filename: string
+  ) =>
+    downloadAuthed(
+      sessions.audioTurnUrl(studyId, agentId, sessionId, filename),
+      filename
+    ),
 };
 
 /** Fetch a URL with the auth token, then save the blob with a sensible filename. */
@@ -594,6 +637,19 @@ export interface FlagsResponse {
   flags: FlagStatus[];
 }
 
+export interface AudioStorageSettingStatus {
+  field: string;
+  env_var: string;
+  is_set: boolean;
+  source: "env" | "dashboard" | "none";
+  display_value: string;
+  sensitive: boolean;
+}
+
+export interface AudioStorageResponse {
+  settings: AudioStorageSettingStatus[];
+}
+
 export const settingsApi = {
   getKeys: () => request<ApiKeysResponse>("/settings/keys"),
 
@@ -607,6 +663,15 @@ export const settingsApi = {
 
   updateFlags: (updates: Record<string, boolean>) =>
     request<FlagsResponse>("/settings/flags", {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    }),
+
+  getAudioStorage: () =>
+    request<AudioStorageResponse>("/settings/audio-storage"),
+
+  updateAudioStorage: (updates: Record<string, string>) =>
+    request<AudioStorageResponse>("/settings/audio-storage", {
       method: "PUT",
       body: JSON.stringify(updates),
     }),

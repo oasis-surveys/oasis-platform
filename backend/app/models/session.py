@@ -9,7 +9,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func, select
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func, select
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
@@ -22,6 +22,13 @@ class SessionStatus(str, enum.Enum):
     COMPLETED = "completed"
     TIMED_OUT = "timed_out"
     ERROR = "error"
+
+
+class AudioRecordingStatus(str, enum.Enum):
+    NONE = "none"
+    COMPLETE = "complete"
+    PARTIAL = "partial"
+    FAILED = "failed"
 
 
 class SpeakerRole(str, enum.Enum):
@@ -60,6 +67,17 @@ class Session(Base):
 
     # ── Participant metadata ──
     participant_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # ── Audio recording (voice web interviews) ──
+    audio_recording_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    audio_storage_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    audio_recording_status: Mapped[str] = mapped_column(
+        String(32),
+        default=AudioRecordingStatus.NONE.value,
+        server_default=AudioRecordingStatus.NONE.value,
+    )
 
     # ── Relationships ──
     agent = relationship(

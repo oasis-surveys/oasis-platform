@@ -43,6 +43,9 @@ logs/
 *.sqlite3
 pgdata/
 
+# Local interview audio recordings
+data/recordings/
+
 # Redis
 dump.rdb
 GOVERNANCE.md
