@@ -66,7 +66,7 @@ class EngagementConfig(BaseModel):
     weights: EngagementWeights = Field(default_factory=EngagementWeights)
 
 
-# ── Adaptive behavior sub-schemas (Phase 3a) ─────────────────
+# ── Adaptive behavior sub-schemas ────────────────────────────
 
 ADAPTIVE_TRIGGERS = (
     "sustained_disengagement",

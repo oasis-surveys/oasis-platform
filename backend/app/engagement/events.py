@@ -1,5 +1,5 @@
 """
-OASIS — Rolling-window engagement event detection (Phase 2).
+OASIS — Rolling-window engagement event detection.
 
 Stateful detector fed one turn label at a time. Emits discrete events when
 the recent window of turns crosses a condition. Each event fires once when its

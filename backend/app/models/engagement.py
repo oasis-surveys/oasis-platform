@@ -4,7 +4,7 @@ OASIS — EngagementTurn model.
 One row per participant turn in a voice interview when the agent has
 engagement tracking enabled. Holds raw per-turn features plus a derived
 score/label. Append-only; computed observationally and never alters the
-interview itself (Phase 1).
+interview itself.
 """
 
 import uuid
@@ -49,7 +49,7 @@ class EngagementTurn(Base):
 
 
 class EngagementEvent(Base):
-    """A discrete rolling-window engagement event for a session (Phase 2)."""
+    """A discrete rolling-window engagement event for a session."""
 
     __tablename__ = "engagement_events"
 
@@ -70,7 +70,7 @@ class EngagementEvent(Base):
 
 
 class AdaptiveAction(Base):
-    """A record of an adaptive behavior action (Phase 3, audit/disclosure).
+    """A record of an adaptive behavior action (audit/disclosure).
 
     Written whether the action was applied (``mode='live'``) or only logged
     (``mode='shadow'``), so researchers can see exactly what adaptation did or

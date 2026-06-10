@@ -1,4 +1,4 @@
-"""Tests for the adaptive behavior policy engine (Phase 3a)."""
+"""Tests for the adaptive behavior policy engine."""
 
 import uuid
 
@@ -136,6 +136,41 @@ def test_supports_tts_speed_helper():
     assert supports_tts_speed("OpenAI")
     assert not supports_tts_speed("azure")
     assert not supports_tts_speed(None)
+
+
+def test_pace_via_instructions_only_for_openai_gpt4o_tts():
+    """OpenAI's numeric ``speed`` is post-synthesis time-stretching and
+    distorts the voice; gpt-4o TTS models take prosody instructions instead.
+    ElevenLabs/Cartesia render the requested speed natively, so they keep
+    the numeric parameter."""
+    from app.pipeline.adaptive_processor import pace_via_instructions
+
+    assert pace_via_instructions("openai", "gpt-4o-mini-tts")
+    assert pace_via_instructions("openai", None)  # default model is gpt-4o-mini-tts
+    assert not pace_via_instructions("openai", "tts-1")
+    assert not pace_via_instructions("elevenlabs", "gpt-4o-mini-tts")
+    assert not pace_via_instructions("cartesia", None)
+    assert not pace_via_instructions(None, None)
+
+
+def test_pace_instruction_mapping():
+    from app.pipeline.adaptive_processor import pace_instruction
+
+    assert "slowly and calmly" in pace_instruction(0.8)
+    assert "slightly slower" in pace_instruction(0.95)
+    assert "natural" in pace_instruction(1.0)
+    assert "brisker" in pace_instruction(1.1)
+
+
+def test_match_style_action_in_catalog():
+    spec = ACTION_CATALOG["match_style"]
+    assert spec.type == PROMPT
+    assert "mirror" in spec.default_instruction.lower()
+    engine = AdaptivePolicyEngine(
+        _policy([{"on": "positive_engagement_streak", "action": "match_style"}])
+    )
+    a = engine.evaluate({"positive_engagement_streak"}, now=0.0)[0]
+    assert a.instruction == spec.default_instruction
 
 
 # ── Text-chat adaptation path ────────────────────────────────

@@ -1,5 +1,5 @@
 """
-OASIS — Adaptive behavior processor (Phase 3a, modular voice pipeline).
+OASIS — Adaptive behavior processor (modular voice pipeline).
 
 Reads the per-turn engagement signals written by ``EngagementProcessor`` and,
 when the agent has an adaptive policy, takes at most one prompt action and one
@@ -45,6 +45,35 @@ def supports_tts_speed(provider: Optional[str]) -> bool:
     return (provider or "").lower() in _SPEED_PROVIDERS
 
 
+def pace_via_instructions(provider: Optional[str], model: Optional[str]) -> bool:
+    """Whether pace should be steered with voice instructions instead of the
+    numeric ``speed`` parameter.
+
+    OpenAI's ``speed`` parameter is applied as post-synthesis time-stretching,
+    which audibly distorts the voice. Their ``gpt-4o-*`` TTS models accept an
+    ``instructions`` field that steers prosody at generation time, so pacing
+    sounds natural. ElevenLabs and Cartesia generate at the requested speed
+    natively, so the numeric parameter stays the better mechanism there.
+    """
+    if (provider or "").lower() != "openai":
+        return False
+    return (model or "gpt-4o-mini-tts").startswith("gpt-4o")
+
+
+def pace_instruction(speed: float) -> str:
+    """Map a numeric speed target to a natural-prosody voice instruction."""
+    if speed <= 0.85:
+        return (
+            "Speak slowly and calmly, with an unhurried pace and natural "
+            "pauses between sentences."
+        )
+    if speed < 1.0:
+        return "Speak at a slightly slower, calmer pace than usual."
+    if speed > 1.0:
+        return "Speak at a slightly brisker, more energetic pace."
+    return "Speak at your natural, conversational pace."
+
+
 class AdaptiveBehaviorProcessor(FrameProcessor):
     def __init__(
         self,
@@ -54,6 +83,7 @@ class AdaptiveBehaviorProcessor(FrameProcessor):
         signals: AdaptiveSignals,
         policy: AdaptivePolicy,
         tts_provider: Optional[str] = None,
+        tts_model: Optional[str] = None,
         name: str = "AdaptiveBehaviorProcessor",
     ):
         super().__init__(name=name)
@@ -62,6 +92,7 @@ class AdaptiveBehaviorProcessor(FrameProcessor):
         self._signals = signals
         self._engine = AdaptivePolicyEngine(policy)
         self._tts_provider = tts_provider
+        self._tts_model = tts_model
         self._current_speed = 1.0
         self._last_turn_id = 0
         self._bg_tasks: set[asyncio.Task] = set()
@@ -123,8 +154,15 @@ class AdaptiveBehaviorProcessor(FrameProcessor):
                 elif act.type == TTS_SPEED and supports_tts_speed(self._tts_provider):
                     speed = float(act.params.get("speed", 1.0))
                     if abs(speed - self._current_speed) > 1e-6:
+                        if pace_via_instructions(self._tts_provider, self._tts_model):
+                            # Natural prosody steering; OpenAI's numeric
+                            # ``speed`` is post-synthesis time-stretching and
+                            # audibly distorts the voice.
+                            settings = {"instructions": pace_instruction(speed)}
+                        else:
+                            settings = {"speed": speed}
                         await self.push_frame(
-                            TTSUpdateSettingsFrame(settings={"speed": speed}),
+                            TTSUpdateSettingsFrame(settings=settings),
                             FrameDirection.DOWNSTREAM,
                         )
                         self._current_speed = speed
@@ -142,8 +180,16 @@ class AdaptiveBehaviorProcessor(FrameProcessor):
             detail["instruction"] = act.instruction
         else:
             detail["params"] = act.params
-            if act.type == TTS_SPEED and not supports_tts_speed(self._tts_provider):
-                detail["note"] = "tts_provider_does_not_support_speed"
+            if act.type == TTS_SPEED:
+                if not supports_tts_speed(self._tts_provider):
+                    detail["note"] = "tts_provider_does_not_support_speed"
+                elif pace_via_instructions(self._tts_provider, self._tts_model):
+                    detail["method"] = "voice_instructions"
+                    detail["instructions"] = pace_instruction(
+                        float(act.params.get("speed", 1.0))
+                    )
+                else:
+                    detail["method"] = "speed"
 
         try:
             async with self._db_session_factory() as db:

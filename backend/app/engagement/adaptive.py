@@ -1,5 +1,5 @@
 """
-OASIS — Adaptive behavior policy engine (Phase 3a).
+OASIS — Adaptive behavior policy engine.
 
 Maps engagement triggers (events and per-turn flags) to a small, curated set
 of actions: inject a system instruction before the next agent turn, or adjust
@@ -81,6 +81,17 @@ ACTION_CATALOG: dict[str, ActionSpec] = {
         PROMPT,
         "Check in about the participant's comfort and privacy in one short, warm "
         "sentence before continuing.",
+    ),
+    "match_style": ActionSpec(
+        "match_style",
+        "Mirror the participant's style",
+        PROMPT,
+        "From now on, subtly mirror the participant's communication style: "
+        "match their level of formality, their sentence length, and their "
+        "energy. If they are brief and casual, be brief and casual; if they "
+        "are detailed and reflective, give them room and depth. Keep the "
+        "mirroring subtle — never imitate their exact words back at them, and "
+        "never mention that you are adapting.",
     ),
     "slow_down": ActionSpec(
         "slow_down",

@@ -22,7 +22,8 @@ function newRule(): AdaptiveRule {
   return {
     on: "sustained_disengagement",
     action: "offer_break",
-    custom_instruction: null,
+    custom_instruction:
+      ADAPTIVE_ACTION_META.offer_break.defaultInstruction ?? null,
     cooldown_seconds: 60,
     params: {},
   };
@@ -142,13 +143,16 @@ export default function AdaptivePolicyFields({
                   <select
                     className="input !py-1.5 !text-sm"
                     value={rule.action}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const action = e.target.value as AdaptiveActionId;
                       updateRule(idx, {
-                        action: e.target.value as AdaptiveActionId,
+                        action,
                         params: {},
-                        custom_instruction: null,
-                      })
-                    }
+                        custom_instruction:
+                          ADAPTIVE_ACTION_META[action].defaultInstruction ??
+                          null,
+                      });
+                    }}
                   >
                     {actionOptions.map((a) => (
                       <option key={a} value={a}>
@@ -165,14 +169,18 @@ export default function AdaptivePolicyFields({
               {actionType === "prompt" && (
                 <label className="mt-3 flex flex-col gap-1">
                   <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                    Custom instruction (optional)
-                    <HelpTooltip text="Override the built-in instruction sent to the agent for this action. Leave blank to use the curated default." />
+                    Instruction sent to the agent
+                    <HelpTooltip text="This exact text is injected as guidance before the agent's next turn when the rule fires. Edit it freely — it works like a prompt template. Clearing it restores the built-in default." />
                   </span>
                   <textarea
                     className="input !py-1.5 !text-sm"
-                    rows={2}
+                    rows={3}
                     placeholder="Leave blank to use the built-in instruction"
-                    value={rule.custom_instruction ?? ""}
+                    value={
+                      rule.custom_instruction ??
+                      ADAPTIVE_ACTION_META[rule.action]?.defaultInstruction ??
+                      ""
+                    }
                     onChange={(e) =>
                       updateRule(idx, {
                         custom_instruction: e.target.value || null,

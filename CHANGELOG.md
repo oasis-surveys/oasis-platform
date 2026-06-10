@@ -6,6 +6,23 @@ sections — versions are added retroactively when a release is cut.
 
 ## 2026-06-10
 
+### Changed
+
+- Pace actions no longer distort the voice on OpenAI TTS. OpenAI's numeric
+  `speed` parameter is post-synthesis time-stretching, which audibly degrades
+  the audio; for `gpt-4o-*` TTS models the pipeline now steers pace with voice
+  instructions at generation time instead. ElevenLabs and Cartesia keep the
+  numeric parameter (they render the requested speed natively). The audit row
+  records which mechanism was used.
+- Added a `match_style` adaptive action that makes the agent subtly mirror
+  the participant's formality, sentence length, and energy.
+- Enabling adaptive behavior now seeds a starter policy (offer a break on
+  sustained disengagement, encourage elaboration on very short answers,
+  soften the next question on high filler), and each rule's instruction field
+  is pre-filled with the exact text that gets injected — editable like a
+  prompt template. `docs/ADAPTIVE_BEHAVIOR.md` now spells out what enabling
+  the mode does, the default policy, and the verbatim injected texts.
+
 ### Fixed
 
 - Structured interviews enforce one question per agent turn on the output
@@ -92,7 +109,7 @@ sections — versions are added retroactively when a release is cut.
 
 ### Added
 
-- Adaptive behavior (Phase 3a): act on engagement signals during an interview.
+- Adaptive behavior: act on engagement signals during an interview.
   Off by default and scoped per agent. A small per-agent policy maps engagement
   triggers (events or per-turn flags) to curated actions — prompt injections
   (offer a break, soften the next question, encourage elaboration, acknowledge
@@ -111,7 +128,7 @@ sections — versions are added retroactively when a release is cut.
   engagement metrics** toggle, which now appears for text agents. Audio-based
   signals (speech rate, energy) are not available for text and stay null. See
   [docs/ENGAGEMENT_METRICS.md](docs/ENGAGEMENT_METRICS.md).
-- Engagement events (Phase 2, observational): rolling-window detection of
+- Engagement events (observational): rolling-window detection of
   `sustained_disengagement`, `positive_engagement_streak`, and
   `recovery_after_dip`, stored in a new `engagement_events` table. Each event
   fires once when its condition is met and re-arms after it clears. Thresholds
@@ -120,7 +137,7 @@ sections — versions are added retroactively when a release is cut.
   page, in the engagement API response, in the JSON export, and as an
   `engagement_events` column in the CSV export. Still observe-only and modular
   voice only. See [docs/ENGAGEMENT_METRICS.md](docs/ENGAGEMENT_METRICS.md).
-- Engagement metrics for modular voice interviews (Phase 1, observational).
+- Engagement metrics for modular voice interviews (observational).
   Off by default; enable per agent with **Track engagement metrics**. Each
   participant turn records response latency, answer length, speech rate, filler
   count, and audio energy, plus a 0–1 rule-based score and label

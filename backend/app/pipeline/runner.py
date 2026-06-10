@@ -362,7 +362,7 @@ async def build_pipeline(
     if track_engagement and pipeline_type != "voice_to_voice":
         from app.pipeline.engagement_processor import EngagementProcessor
 
-        # Adaptive behavior (Phase 3a) consumes per-turn engagement signals.
+        # Adaptive behavior consumes per-turn engagement signals.
         adaptive_signals = None
         if adaptive_enabled:
             from app.engagement.adaptive import AdaptivePolicy, AdaptiveSignals
@@ -377,6 +377,7 @@ async def build_pipeline(
                     signals=adaptive_signals,
                     policy=policy,
                     tts_provider=tts_provider,
+                    tts_model=tts_model,
                 )
                 logger.info(
                     f"Adaptive behavior ({policy.mode}) enabled for session {session_id}"

@@ -1,5 +1,5 @@
 """
-OASIS — Engagement metrics (Phase 1, observational only).
+OASIS — Engagement metrics (observational only).
 
 Computes lightweight per-turn signals from a participant's voice turns
 (latency, length, speech rate, fillers, energy) and a transparent

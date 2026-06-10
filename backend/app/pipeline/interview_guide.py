@@ -219,7 +219,7 @@ def build_structured_prompt(
     guide: dict,
 ) -> str:
     """
-    Build a comprehensive system prompt that encodes the interview guide.
+    Build a system prompt that encodes the interview guide.
 
     Parameters
     ----------

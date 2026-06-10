@@ -8,6 +8,7 @@ import {
   DEFAULT_ENGAGEMENT_CONFIG,
   DEFAULT_ENGAGEMENT_CONFIG_TEXT,
   DEFAULT_ADAPTIVE_POLICY,
+  defaultAdaptiveRules,
   type Agent,
   type EngagementConfig,
   type AdaptivePolicy,
@@ -533,6 +534,20 @@ function adaptiveOn(form: FormData): boolean {
   return (
     engagementSupported(form) && form.track_engagement && form.adaptive_enabled
   );
+}
+
+// Turning adaptive behavior on for the first time seeds a starter policy so
+// researchers see (and can edit) exactly what the agent would do, instead of
+// facing an empty rule list.
+function toggleAdaptive(prev: FormData, adaptive_enabled: boolean): FormData {
+  return {
+    ...prev,
+    adaptive_enabled,
+    adaptive_policy:
+      adaptive_enabled && prev.adaptive_policy.rules.length === 0
+        ? { ...prev.adaptive_policy, rules: defaultAdaptiveRules() }
+        : prev.adaptive_policy,
+  };
 }
 
 function mergeEngagementConfig(
@@ -2379,7 +2394,7 @@ export default function AgentFormPage() {
                       <AdaptiveBehaviorToggle
                         enabled={form.adaptive_enabled}
                         onChange={(adaptive_enabled) =>
-                          setForm((prev) => ({ ...prev, adaptive_enabled }))
+                          setForm((prev) => toggleAdaptive(prev, adaptive_enabled))
                         }
                       />
                       {form.adaptive_enabled && (
@@ -2420,7 +2435,7 @@ export default function AgentFormPage() {
                       enabled={form.adaptive_enabled}
                       description="Use the engagement signals above to adjust the agent during this text chat (e.g. offer a break, soften a question, encourage elaboration). Starts in shadow mode, which logs intended actions without applying them. Pace actions do not apply to text. Off by default."
                       onChange={(adaptive_enabled) =>
-                        setForm((prev) => ({ ...prev, adaptive_enabled }))
+                        setForm((prev) => toggleAdaptive(prev, adaptive_enabled))
                       }
                     />
                     {form.adaptive_enabled && (
