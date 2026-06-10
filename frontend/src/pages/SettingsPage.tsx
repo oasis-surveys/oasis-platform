@@ -50,14 +50,14 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
     category: "AI Providers",
   },
   openai_compatible_llm_url: {
-    label: "OpenAI-Compatible LLM URL",
-    description: "Base URL for any custom OpenAI-compatible LLM endpoint (LiteLLM proxy, vLLM, Ollama). Used by 'custom/<model>' selections.",
-    category: "Self-Hosted",
+    label: "Custom LLM URL (LiteLLM / OpenAI-compatible)",
+    description: "Base URL of your LiteLLM proxy or any OpenAI-compatible LLM endpoint (vLLM, Ollama, OpenRouter, Groq). Used when an agent's model is 'custom/<model>'. Env var: OPENAI_COMPATIBLE_LLM_URL.",
+    category: "Custom / Self-Hosted",
   },
   openai_compatible_llm_api_key: {
-    label: "OpenAI-Compatible LLM API Key",
-    description: "Bearer token for the custom LLM endpoint (optional — many local servers ignore this).",
-    category: "Self-Hosted",
+    label: "Custom LLM API Key",
+    description: "API key / bearer token for the custom LLM endpoint (for LiteLLM: a litellm proxy key). Optional — many local servers ignore it. Env var: OPENAI_COMPATIBLE_LLM_API_KEY.",
+    category: "Custom / Self-Hosted",
   },
   scaleway_secret_key: {
     label: "Scaleway Secret Key",
@@ -72,77 +72,77 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
   azure_openai_api_key: {
     label: "Azure OpenAI API Key",
     description: "Required for self-hosted Azure OpenAI models.",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   azure_openai_endpoint: {
     label: "Azure OpenAI Endpoint",
     description: "The base URL for your Azure OpenAI deployment.",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   azure_openai_api_version: {
     label: "Azure OpenAI API Version",
     description: "API version string used by the Azure OpenAI client (e.g. 2024-08-01-preview).",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   gcp_project_id: {
     label: "GCP Project ID",
     description: "Required for GCP Vertex AI models.",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   gcp_location: {
     label: "GCP Location",
     description: "Vertex AI region (e.g. us-central1, europe-west4).",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   gcp_api_key: {
     label: "GCP API Key",
     description: "Alternative to Application Default Credentials for GCP.",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   self_hosted_stt_url: {
-    label: "Self-Hosted STT URL",
-    description: "Base URL for an OpenAI-compatible STT server (e.g. Speaches, faster-whisper).",
-    category: "Self-Hosted",
+    label: "Custom STT URL (LiteLLM / OpenAI-compatible)",
+    description: "Base URL for an OpenAI-compatible STT server (LiteLLM proxy, Speaches, faster-whisper). Used when an agent's STT provider is 'Custom / Self-Hosted'. Env var: SELF_HOSTED_STT_URL.",
+    category: "Custom / Self-Hosted",
   },
   self_hosted_stt_api_key: {
-    label: "Self-Hosted STT API Key",
-    description: "API key for the self-hosted STT server (optional — many local servers ignore this).",
-    category: "Self-Hosted",
+    label: "Custom STT API Key",
+    description: "API key for the custom STT server (optional — many local servers ignore this). Env var: SELF_HOSTED_STT_API_KEY.",
+    category: "Custom / Self-Hosted",
   },
   self_hosted_stt_model: {
-    label: "Self-Hosted STT Model",
-    description: "Model name to pass to the STT server (default: whisper-1).",
-    category: "Self-Hosted",
+    label: "Custom STT Model",
+    description: "Model name to pass to the STT server (default: whisper-1). Env var: SELF_HOSTED_STT_MODEL.",
+    category: "Custom / Self-Hosted",
   },
   self_hosted_tts_url: {
-    label: "Self-Hosted TTS URL",
-    description: "Base URL for an OpenAI-compatible TTS server (e.g. Kokoro, Piper).",
-    category: "Self-Hosted",
+    label: "Custom TTS URL (LiteLLM / OpenAI-compatible)",
+    description: "Base URL for an OpenAI-compatible TTS server (LiteLLM proxy, Kokoro, Piper). Used when an agent's TTS provider is 'Custom / Self-Hosted'. Env var: SELF_HOSTED_TTS_URL.",
+    category: "Custom / Self-Hosted",
   },
   self_hosted_tts_api_key: {
-    label: "Self-Hosted TTS API Key",
-    description: "API key for the self-hosted TTS server (optional — many local servers ignore this).",
-    category: "Self-Hosted",
+    label: "Custom TTS API Key",
+    description: "API key for the custom TTS server (optional — many local servers ignore this). Env var: SELF_HOSTED_TTS_API_KEY.",
+    category: "Custom / Self-Hosted",
   },
   self_hosted_tts_model: {
-    label: "Self-Hosted TTS Model",
-    description: "Model name to pass to the TTS server (default: tts-1).",
-    category: "Self-Hosted",
+    label: "Custom TTS Model",
+    description: "Model name to pass to the TTS server (default: tts-1). Env var: SELF_HOSTED_TTS_MODEL.",
+    category: "Custom / Self-Hosted",
   },
   embedding_api_url: {
     label: "Embedding API URL",
     description: "Base URL for an OpenAI-compatible embedding server. Leave empty to use OpenAI.",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   embedding_api_key: {
     label: "Embedding API Key",
     description: "API key for the embedding server. Falls back to OpenAI API key if empty.",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   embedding_model: {
     label: "Embedding Model",
     description: "Model name for embeddings (default: text-embedding-3-small). Must output 1536 dimensions to match the DB schema.",
-    category: "Self-Hosted",
+    category: "Custom / Self-Hosted",
   },
   twilio_account_sid: {
     label: "Twilio Account SID",
@@ -206,7 +206,7 @@ const AUDIO_STORAGE_INFO: Record<
   },
 };
 
-const CATEGORIES = ["AI Providers", "Self-Hosted", "Telephony"];
+const CATEGORIES = ["AI Providers", "Custom / Self-Hosted", "Telephony"];
 
 function audioSettingValue(
   settings: AudioStorageSettingStatus[],

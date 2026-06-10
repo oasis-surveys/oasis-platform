@@ -66,6 +66,7 @@ https://github.com/user-attachments/assets/bbf5a613-a28a-4dd0-a962-9250ac1f05a1
 - **Multi-provider.** OpenAI, Google Gemini, Scaleway, Azure, GCP Vertex, or any LiteLLM-compatible provider. Custom model IDs supported.
 - **Self-hosted STT/TTS.** OpenAI Whisper, Deepgram, ElevenLabs, Cartesia, Scaleway, or bring your own OpenAI-compatible server.
 - **Knowledge base (RAG).** Upload documents, OASIS chunks and embeds them with pgvector. Agents can retrieve relevant context during interviews. Embeddings work with OpenAI or any self-hosted server.
+- **Engagement metrics & adaptive behavior.** Per-turn engagement scoring for voice and text (lexical, latency, energy signals), plus an opt-in rule-based policy that can offer breaks, soften questions, or adjust speaking pace — shadow mode by default, every action audited.
 - **Research-first.** Study-level organization, participant identifiers (random/predefined/self-reported), diarized transcripts, session analytics, data export.
 - **Phone interviews (beta).** Twilio Media Streams for incoming calls.
 - **Self-hosted.** Everything in Docker. No data leaves your infra unless you point at external APIs. Optional dashboard auth.
@@ -97,6 +98,32 @@ Five Docker containers on one internal network:
 │                    └─────────┘ └───────┘                 │
 └──────────────────────────────────────────────────────────┘
 ```
+
+How the pieces fit together, including the three interview pipelines and
+where models run (cloud providers or your own hardware):
+
+<p align="center">
+  <img src="misc/system-diagram.svg" alt="OASIS system overview: participant and researcher connect through Caddy to the React frontend and the FastAPI backend, which runs three interview pipelines (modular voice, voice-to-voice, text chat) against cloud AI providers or locally hosted models, with PostgreSQL, Redis, and audio storage underneath" width="920"/>
+</p>
+
+All three interview pipelines live in the backend. Modular voice and text chat
+share the same engagement and adaptive processors; voice-to-voice trades that
+flexibility for the lowest latency.
+
+### Engagement metrics & adaptive behavior
+
+OASIS can score participant engagement on every turn (word count, hedging,
+response latency, voiced energy) and — optionally — adapt the agent with a
+rule-based, fully audited policy. It ships in a non-acting shadow mode by
+default, so you can review what the policy *would* do before letting it touch
+a real interview.
+
+<p align="center">
+  <img src="misc/adaptive-behavior.svg" alt="Adaptive behavior flow: each participant turn is scored by the engagement processor, the adaptive policy engine matches triggers to actions, shadow mode only logs to the audit trail while live mode injects a hidden guidance note or adjusts speaking pace before the agent's next turn" width="800"/>
+</p>
+
+Details and the exact default texts: [`docs/ENGAGEMENT_METRICS.md`](docs/ENGAGEMENT_METRICS.md)
+and [`docs/ADAPTIVE_BEHAVIOR.md`](docs/ADAPTIVE_BEHAVIOR.md).
 
 ## Quick Start
 

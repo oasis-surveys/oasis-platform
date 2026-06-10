@@ -301,6 +301,10 @@ async def build_pipeline(
     silence_prompt: Optional[str] = None,
     interview_mode: Optional[str] = None,
     interview_guide: Optional[dict] = None,
+    track_engagement: bool = False,
+    engagement_config: Optional[dict] = None,
+    adaptive_enabled: bool = False,
+    adaptive_policy: Optional[dict] = None,
 ) -> tuple[PipelineTask, Optional[AudioRecordingManager]]:
     """
     Build and return a ready-to-run PipelineTask plus optional audio manager.
@@ -352,6 +356,44 @@ async def build_pipeline(
     user_capture = TranscriptUserCapture(transcript_state)
     transcript_logger = TranscriptLogger(transcript_state)
 
+    # ── Engagement metrics (modular voice only, observe-only) ──
+    engagement_processor = None
+    adaptive_processor = None
+    if track_engagement and pipeline_type != "voice_to_voice":
+        from app.pipeline.engagement_processor import EngagementProcessor
+
+        # Adaptive behavior consumes per-turn engagement signals.
+        adaptive_signals = None
+        if adaptive_enabled:
+            from app.engagement.adaptive import AdaptivePolicy, AdaptiveSignals
+            from app.pipeline.adaptive_processor import AdaptiveBehaviorProcessor
+
+            policy = AdaptivePolicy.from_dict(adaptive_policy)
+            if policy.rules:
+                adaptive_signals = AdaptiveSignals()
+                adaptive_processor = AdaptiveBehaviorProcessor(
+                    session_id=session_id,
+                    db_session_factory=async_session_factory,
+                    signals=adaptive_signals,
+                    policy=policy,
+                    tts_provider=tts_provider,
+                    tts_model=tts_model,
+                )
+                logger.info(
+                    f"Adaptive behavior ({policy.mode}) enabled for session {session_id}"
+                )
+
+        engagement_processor = EngagementProcessor(
+            session_id=session_id,
+            db_session_factory=async_session_factory,
+            transcript_state=transcript_state,
+            language=language,
+            notify_callback=notify_callback,
+            config=engagement_config,
+            signals=adaptive_signals,
+        )
+        logger.info(f"Engagement tracking enabled for session {session_id}")
+
     if pipeline_type == "voice_to_voice":
         task = await _build_v2v_pipeline(
             transport=transport,
@@ -391,6 +433,8 @@ async def build_pipeline(
             silence_prompt=silence_prompt,
             interview_mode=interview_mode,
             interview_guide=interview_guide,
+            engagement_processor=engagement_processor,
+            adaptive_processor=adaptive_processor,
         )
 
     return task, audio_manager
@@ -661,6 +705,8 @@ async def _build_modular_pipeline(
     silence_prompt: Optional[str] = None,
     interview_mode: Optional[str] = None,
     interview_guide: Optional[dict] = None,
+    engagement_processor=None,
+    adaptive_processor=None,
 ) -> PipelineTask:
     """Build the modular STT → LLM → TTS pipeline."""
 
@@ -708,9 +754,14 @@ async def _build_modular_pipeline(
 
     # ── Structured interview guide processor (optional) ──────
     guide_processor = None
+    guide_output_filter = None
     if interview_mode == "structured" and interview_guide:
-        from app.pipeline.interview_guide import InterviewGuideProcessor
-        guide_processor = InterviewGuideProcessor(interview_guide)
+        from app.pipeline.interview_guide import (
+            InterviewGuideProcessor,
+            StructuredOutputFilter,
+        )
+        guide_processor = InterviewGuideProcessor(interview_guide, language=language)
+        guide_output_filter = StructuredOutputFilter()
         logger.info(
             "Interview guide processor active "
             f"({guide_processor.total_questions} questions)"
@@ -755,6 +806,25 @@ async def _build_modular_pipeline(
         # Find user_capture's position dynamically (idle_processor may have shifted it)
         insert_at = pipeline_nodes.index(user_capture) + 1
         pipeline_nodes.insert(insert_at, guide_processor)
+
+    # The structured output filter enforces one-question-per-turn on the
+    # LLM's streamed text. It sits directly after the LLM and BEFORE the
+    # transcript logger, so persisted transcripts (and the assistant context
+    # downstream) match what the participant actually hears.
+    if guide_output_filter:
+        pipeline_nodes.insert(pipeline_nodes.index(llm) + 1, guide_output_filter)
+
+    # Engagement processor sits right after user_capture (observe-only). It
+    # reads the freshly-assigned transcript sequence and never blocks frames.
+    if engagement_processor:
+        insert_at = pipeline_nodes.index(user_capture) + 1
+        pipeline_nodes.insert(insert_at, engagement_processor)
+
+    # Adaptive processor sits right after the engagement processor so it can
+    # read this turn's signals and inject before the user context aggregator.
+    if adaptive_processor and engagement_processor:
+        insert_at = pipeline_nodes.index(engagement_processor) + 1
+        pipeline_nodes.insert(insert_at, adaptive_processor)
 
     pipeline = Pipeline(pipeline_nodes)
 
@@ -879,18 +949,19 @@ def _build_v2v_idle_processor(
     msg = silence_prompt or "Take your time. Let me know when you're ready to continue."
 
     async def _on_idle(processor: "UserIdleProcessor", retry_count: int) -> bool:
-        logger.info(f"V2V user idle (retry #{retry_count}) — nudging via LLM")
+        from app.engagement.adaptive import guidance_message
+
+        logger.info(f"User idle (retry #{retry_count}) — nudging via LLM")
+        # User-role note: mid-conversation system messages are rejected by
+        # some chat APIs (OpenAI gpt-5.x) with a 400 error.
         await processor.push_frame(
             LLMMessagesAppendFrame(
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            f"[silence detected] The participant has been "
-                            f"quiet for a while. Gently check in with: "
-                            f'"{msg}"'
-                        ),
-                    }
+                    guidance_message(
+                        f"[silence detected] The participant has been "
+                        f"quiet for a while. Gently check in with: "
+                        f'"{msg}"'
+                    )
                 ],
                 run_llm=True,
             )
@@ -1208,12 +1279,21 @@ async def _build_stt(provider: str, language: str, model: Optional[str] = None):
     provider = provider.lower()
 
     if provider == "deepgram":
-        from pipecat.services.deepgram.stt import DeepgramSTTService
-        from deepgram import LiveOptions
+        # deepgram-sdk v4+ removed the top-level LiveOptions export; Pipecat
+        # 0.0.105+ takes a DeepgramSTTSettings object instead.
+        from pipecat.services.deepgram.stt import (
+            DeepgramSTTService,
+            DeepgramSTTSettings,
+        )
         api_key = await _get_key("deepgram_api_key")
-        kwargs = {"api_key": api_key}
+        settings_kwargs: dict = {}
         if model:
-            kwargs["live_options"] = LiveOptions(model=model)
+            settings_kwargs["model"] = model
+        if language:
+            settings_kwargs["language"] = language
+        kwargs = {"api_key": api_key}
+        if settings_kwargs:
+            kwargs["settings"] = DeepgramSTTSettings(**settings_kwargs)
         return DeepgramSTTService(**kwargs)
 
     if provider in ("whisper", "openai"):

@@ -178,6 +178,23 @@ class Agent(Base):
         Boolean, default=False, server_default="false"
     )
 
+    # ── Engagement metrics (voice web interviews; observational only) ──
+    track_engagement: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    # Tuning for the engagement scorer/event detector. None → built-in defaults.
+    engagement_config: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
+
+    # ── Adaptive behavior (uses engagement signals to adjust the agent) ──
+    adaptive_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    adaptive_policy: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
+
     # ── Telephony (Twilio) ──
     twilio_phone_number: Mapped[str | None] = mapped_column(
         String(30), nullable=True

@@ -102,6 +102,10 @@ async def interview_ws(
             ),
             "interview_guide": agent.interview_guide,
             "store_audio": bool(agent.store_audio),
+            "track_engagement": bool(agent.track_engagement),
+            "engagement_config": agent.engagement_config,
+            "adaptive_enabled": bool(agent.adaptive_enabled),
+            "adaptive_policy": agent.adaptive_policy,
         }
 
         # ── 2. Resolve participant_id ──────────────────────────────
@@ -149,6 +153,17 @@ async def interview_ws(
 
         record_audio = recording_enabled_for_agent(agent_cfg["store_audio"])
 
+        # Adaptation can affect this session only when engagement is on, the
+        # pipeline is modular, the policy has rules, and the mode is live.
+        _policy = agent_cfg.get("adaptive_policy") or {}
+        adaptive_active = bool(
+            agent_cfg["track_engagement"]
+            and agent_cfg["adaptive_enabled"]
+            and agent_cfg["pipeline_type"] != "voice_to_voice"
+            and _policy.get("rules")
+            and _policy.get("mode") == "live"
+        )
+
         # ── 3. Create a new session ────────────────────────────────
         session = Session(
             id=uuid.uuid4(),
@@ -156,6 +171,7 @@ async def interview_ws(
             status=SessionStatus.ACTIVE,
             participant_id=participant_id,
             audio_recording_enabled=record_audio,
+            adaptive_active=adaptive_active,
         )
         db.add(session)
         await db.commit()
@@ -225,6 +241,10 @@ async def interview_ws(
             silence_prompt=agent_cfg["silence_prompt"],
             interview_mode=agent_cfg["interview_mode"],
             interview_guide=agent_cfg["interview_guide"],
+            track_engagement=agent_cfg["track_engagement"],
+            engagement_config=agent_cfg["engagement_config"],
+            adaptive_enabled=agent_cfg["adaptive_enabled"],
+            adaptive_policy=agent_cfg["adaptive_policy"],
         )
 
         runner = PipelineRunner(handle_sigint=False, handle_sigterm=False)

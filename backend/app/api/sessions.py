@@ -20,10 +20,15 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.agent import Agent
+from app.models.engagement import AdaptiveAction, EngagementEvent, EngagementTurn
 from app.models.session import Session, SessionStatus, TranscriptEntry
 from app.realtime import publish_transcript_event
 from app.audio.storage import build_session_prefix, get_audio_storage
 from app.schemas.session import (
+    AdaptiveActionRead,
+    EngagementEventRead,
+    EngagementSummaryRead,
+    EngagementTurnRead,
     SessionAudioManifestRead,
     SessionDetailRead,
     SessionRead,
@@ -173,6 +178,14 @@ async def export_sessions_csv(
         "role",
         "content",
         "spoken_at",
+        "engagement_score",
+        "engagement_label",
+        "response_latency_ms",
+        "word_count",
+        "speech_rate_wpm",
+        "filler_count",
+        "engagement_events",
+        "adaptive_actions",
     ])
 
     # Process in batches
@@ -181,12 +194,35 @@ async def export_sessions_csv(
         batch_result = await db.execute(
             select(Session)
             .where(Session.id.in_(batch_ids))
-            .options(selectinload(Session.entries))
+            .options(
+                selectinload(Session.entries),
+                selectinload(Session.engagement_turns),
+                selectinload(Session.engagement_events),
+                selectinload(Session.adaptive_actions),
+            )
             .order_by(Session.created_at.desc())
         )
         batch_sessions = batch_result.scalars().all()
 
         for session in batch_sessions:
+            # Engagement rows key off the user transcript sequence.
+            eng_by_seq = {
+                e.transcript_sequence: e for e in session.engagement_turns
+            }
+            # Events grouped by the turn that triggered them.
+            events_by_seq: dict[int, list[str]] = {}
+            for ev in session.engagement_events:
+                if ev.transcript_sequence is not None:
+                    events_by_seq.setdefault(ev.transcript_sequence, []).append(
+                        ev.event_type
+                    )
+            # Adaptive actions grouped by the turn that triggered them.
+            actions_by_seq: dict[int, list[str]] = {}
+            for act in session.adaptive_actions:
+                if act.transcript_sequence is not None:
+                    applied = (act.detail or {}).get("applied")
+                    tag = f"{act.action}({act.mode}{'' if applied else ':not_applied'})"
+                    actions_by_seq.setdefault(act.transcript_sequence, []).append(tag)
             if not session.entries:
                 writer.writerow([
                     str(session.id),
@@ -196,9 +232,14 @@ async def export_sessions_csv(
                     session.created_at.isoformat(),
                     session.ended_at.isoformat() if session.ended_at else "",
                     "", "", "", "",
+                    "", "", "", "", "", "", "", "",
                 ])
             else:
                 for entry in sorted(session.entries, key=lambda e: e.sequence):
+                    is_user = entry.role.value == "user"
+                    eng = eng_by_seq.get(entry.sequence) if is_user else None
+                    events = events_by_seq.get(entry.sequence, []) if is_user else []
+                    actions = actions_by_seq.get(entry.sequence, []) if is_user else []
                     writer.writerow([
                         str(session.id),
                         session.participant_id or "",
@@ -210,6 +251,14 @@ async def export_sessions_csv(
                         entry.role.value,
                         entry.content,
                         entry.spoken_at.isoformat(),
+                        eng.score if eng else "",
+                        eng.label if eng else "",
+                        eng.response_latency_ms if eng else "",
+                        eng.word_count if eng else "",
+                        eng.speech_rate_wpm if eng else "",
+                        eng.filler_count if eng else "",
+                        ", ".join(events),
+                        ", ".join(actions),
                     ])
 
         # Expire loaded objects to free memory between batches
@@ -260,13 +309,23 @@ async def export_sessions_json(
         batch_result = await db.execute(
             select(Session)
             .where(Session.id.in_(batch_ids))
-            .options(selectinload(Session.entries))
+            .options(
+                selectinload(Session.entries),
+                selectinload(Session.engagement_turns),
+                selectinload(Session.engagement_events),
+                selectinload(Session.adaptive_actions),
+            )
             .order_by(Session.created_at.desc())
         )
         batch_sessions = batch_result.scalars().all()
 
         for session in batch_sessions:
-            data.append({
+            engagement_rows = sorted(
+                session.engagement_turns, key=lambda e: e.transcript_sequence
+            )
+            engagement_events = list(session.engagement_events)
+            adaptive_actions = list(session.adaptive_actions)
+            session_data = {
                 "session_id": str(session.id),
                 "status": session.status.value,
                 "duration_seconds": session.duration_seconds,
@@ -285,7 +344,37 @@ async def export_sessions_json(
                     }
                     for entry in sorted(session.entries, key=lambda e: e.sequence)
                 ],
-            })
+            }
+            if engagement_rows:
+                summary = _summarize_engagement(
+                    session.id, engagement_rows, engagement_events
+                )
+                session_data["engagement"] = {
+                    "turn_count": summary.turn_count,
+                    "average_score": summary.average_score,
+                    "label": summary.label,
+                    "average_latency_ms": summary.average_latency_ms,
+                    "average_words": summary.average_words,
+                    "low_engagement_turns": summary.low_engagement_turns,
+                    "turns": [t.model_dump() for t in summary.turns],
+                    "events": [e.model_dump() for e in summary.events],
+                }
+            if session.adaptive_active or adaptive_actions:
+                session_data["adaptive"] = {
+                    "active": bool(session.adaptive_active),
+                    "actions": [
+                        {
+                            "transcript_sequence": a.transcript_sequence,
+                            "trigger": a.trigger,
+                            "action": a.action,
+                            "mode": a.mode,
+                            "detail": a.detail,
+                            "created_at": a.created_at.isoformat(),
+                        }
+                        for a in adaptive_actions
+                    ],
+                }
+            data.append(session_data)
 
         # Expire loaded objects to free memory between batches
         db.expire_all()
@@ -393,6 +482,114 @@ async def download_session_audio_turn(
         content=data,
         media_type="audio/wav",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Session engagement metrics ──────────────────────────────────────────────
+
+def _summarize_engagement(
+    session_id: UUID,
+    rows: list[EngagementTurn],
+    events: list[EngagementEvent] | None = None,
+    adaptive_actions: list["AdaptiveAction"] | None = None,
+    adaptive_active: bool = False,
+) -> EngagementSummaryRead:
+    turns = [
+        EngagementTurnRead(
+            transcript_sequence=r.transcript_sequence,
+            response_latency_ms=r.response_latency_ms,
+            voiced_ms=r.voiced_ms,
+            word_count=r.word_count,
+            char_count=r.char_count,
+            speech_rate_wpm=r.speech_rate_wpm,
+            filler_count=r.filler_count,
+            rms_energy=r.rms_energy,
+            score=r.score,
+            label=r.label,
+            flags=list((r.extras or {}).get("flags", [])),
+        )
+        for r in rows
+    ]
+
+    scores = [r.score for r in rows if r.score is not None]
+    latencies = [r.response_latency_ms for r in rows if r.response_latency_ms is not None]
+    words = [r.word_count for r in rows if r.word_count is not None]
+    avg_score = round(sum(scores) / len(scores), 3) if scores else None
+
+    if avg_score is None:
+        label = None
+    elif avg_score < 0.34:
+        label = "low"
+    elif avg_score >= 0.67:
+        label = "high"
+    else:
+        label = "medium"
+
+    return EngagementSummaryRead(
+        session_id=session_id,
+        turn_count=len(rows),
+        average_score=avg_score,
+        label=label,
+        average_latency_ms=int(sum(latencies) / len(latencies)) if latencies else None,
+        average_words=round(sum(words) / len(words), 1) if words else None,
+        low_engagement_turns=sum(1 for r in rows if r.label == "low"),
+        turns=turns,
+        events=[
+            EngagementEventRead(
+                transcript_sequence=e.transcript_sequence,
+                event_type=e.event_type,
+                score_at_event=e.score_at_event,
+            )
+            for e in (events or [])
+        ],
+        adaptive_active=adaptive_active,
+        adaptive_actions=[
+            AdaptiveActionRead(
+                transcript_sequence=a.transcript_sequence,
+                trigger=a.trigger,
+                action=a.action,
+                mode=a.mode,
+                detail=a.detail,
+                created_at=a.created_at,
+            )
+            for a in (adaptive_actions or [])
+        ],
+    )
+
+
+@router.get("/{session_id}/engagement", response_model=EngagementSummaryRead)
+async def get_session_engagement(
+    study_id: UUID,
+    agent_id: UUID,
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return per-turn engagement metrics and a session summary."""
+    session, _agent = await _get_session_with_agent(study_id, agent_id, session_id, db)
+    result = await db.execute(
+        select(EngagementTurn)
+        .where(EngagementTurn.session_id == session.id)
+        .order_by(EngagementTurn.transcript_sequence)
+    )
+    rows = list(result.scalars().all())
+    ev_result = await db.execute(
+        select(EngagementEvent)
+        .where(EngagementEvent.session_id == session.id)
+        .order_by(EngagementEvent.created_at)
+    )
+    events = list(ev_result.scalars().all())
+    act_result = await db.execute(
+        select(AdaptiveAction)
+        .where(AdaptiveAction.session_id == session.id)
+        .order_by(AdaptiveAction.created_at)
+    )
+    actions = list(act_result.scalars().all())
+    return _summarize_engagement(
+        session.id,
+        rows,
+        events,
+        adaptive_actions=actions,
+        adaptive_active=bool(session.adaptive_active),
     )
 
 

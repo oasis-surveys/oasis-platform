@@ -143,9 +143,178 @@ export interface Agent {
   silence_prompt: string | null;
   twilio_phone_number: string | null;
   store_audio: boolean;
+  track_engagement: boolean;
+  engagement_config: EngagementConfig | null;
+  adaptive_enabled: boolean;
+  adaptive_policy: AdaptivePolicy | null;
   created_at: string;
   updated_at: string;
 }
+
+export interface EngagementWeights {
+  length: number;
+  latency: number;
+  rate: number;
+  fillers: number;
+  energy: number;
+}
+
+export interface EngagementConfig {
+  window_size: number;
+  low_threshold: number;
+  high_threshold: number;
+  long_latency_ms: number;
+  short_answer_words: number;
+  weights: EngagementWeights;
+}
+
+export const DEFAULT_ENGAGEMENT_CONFIG: EngagementConfig = {
+  window_size: 3,
+  low_threshold: 0.34,
+  high_threshold: 0.67,
+  long_latency_ms: 4000,
+  short_answer_words: 3,
+  weights: { length: 0.35, latency: 0.25, rate: 0.15, fillers: 0.15, energy: 0.1 },
+};
+
+// Text interviews: latency is reading + typing time, so thresholds are much
+// wider, and only length / latency / lexical hedging contribute to the score.
+export const DEFAULT_ENGAGEMENT_CONFIG_TEXT: EngagementConfig = {
+  window_size: 3,
+  low_threshold: 0.34,
+  high_threshold: 0.67,
+  long_latency_ms: 45000,
+  short_answer_words: 3,
+  weights: { length: 0.5, latency: 0.2, rate: 0, fillers: 0.3, energy: 0 },
+};
+
+// ── Adaptive behavior ─────────────────────────────────────────
+
+export type AdaptiveTrigger =
+  | "sustained_disengagement"
+  | "positive_engagement_streak"
+  | "recovery_after_dip"
+  | "long_latency"
+  | "very_short_answer"
+  | "high_filler";
+
+export type AdaptiveActionId =
+  | "offer_break"
+  | "soften_next_probe"
+  | "encourage_elaboration"
+  | "acknowledge_effort"
+  | "privacy_check"
+  | "match_style"
+  | "slow_down"
+  | "reset_pace";
+
+export interface AdaptiveRule {
+  on: AdaptiveTrigger;
+  action: AdaptiveActionId;
+  custom_instruction: string | null;
+  cooldown_seconds: number;
+  params: Record<string, number>;
+}
+
+export interface AdaptivePolicy {
+  mode: "shadow" | "live";
+  rules: AdaptiveRule[];
+}
+
+export const ADAPTIVE_TRIGGER_LABELS: Record<AdaptiveTrigger, string> = {
+  sustained_disengagement: "Sustained disengagement",
+  positive_engagement_streak: "Positive engagement streak",
+  recovery_after_dip: "Recovery after a dip",
+  long_latency: "Long response delay (turn)",
+  very_short_answer: "Very short answer (turn)",
+  high_filler: "High filler / hedging (turn)",
+};
+
+// Labels and default instruction texts mirror the backend's ACTION_CATALOG
+// (backend/app/engagement/adaptive.py). The instruction shown in the form is
+// exactly what gets injected — researchers can edit it per rule.
+export const ADAPTIVE_ACTION_META: Record<
+  AdaptiveActionId,
+  { label: string; type: "prompt" | "tts_speed"; defaultInstruction?: string }
+> = {
+  offer_break: {
+    label: "Offer a break",
+    type: "prompt",
+    defaultInstruction:
+      "The participant has shown signs of fatigue or disengagement over the " +
+      "last few turns. Gently offer a short break or to move to a lighter " +
+      "topic. Keep it brief and warm. Do not mention that this was detected " +
+      "automatically.",
+  },
+  soften_next_probe: {
+    label: "Soften the next question",
+    type: "prompt",
+    defaultInstruction:
+      "Make your next question gentler and less probing. Lead with warmth and " +
+      "give the participant room to answer at their own pace.",
+  },
+  encourage_elaboration: {
+    label: "Encourage elaboration",
+    type: "prompt",
+    defaultInstruction:
+      "The participant's recent answers have been brief. Warmly invite them to " +
+      "say more with a single open follow-up question.",
+  },
+  acknowledge_effort: {
+    label: "Acknowledge engagement",
+    type: "prompt",
+    defaultInstruction:
+      "Briefly acknowledge the participant's effort and engagement before " +
+      "continuing with the interview.",
+  },
+  privacy_check: {
+    label: "Check in on comfort",
+    type: "prompt",
+    defaultInstruction:
+      "Check in about the participant's comfort and privacy in one short, warm " +
+      "sentence before continuing.",
+  },
+  match_style: {
+    label: "Mirror the participant's style",
+    type: "prompt",
+    defaultInstruction:
+      "From now on, subtly mirror the participant's communication style: " +
+      "match their level of formality, their sentence length, and their " +
+      "energy. If they are brief and casual, be brief and casual; if they " +
+      "are detailed and reflective, give them room and depth. Keep the " +
+      "mirroring subtle — never imitate their exact words back at them, and " +
+      "never mention that you are adapting.",
+  },
+  slow_down: { label: "Slow speaking pace", type: "tts_speed" },
+  reset_pace: { label: "Reset speaking pace", type: "tts_speed" },
+};
+
+// Starter rules seeded into the form when adaptive behavior is first enabled.
+// They are ordinary, fully editable rules — adjust or remove them like any
+// other (the instruction text is pre-filled from the catalog defaults).
+export function defaultAdaptiveRules(): AdaptiveRule[] {
+  const rule = (
+    on: AdaptiveTrigger,
+    action: AdaptiveActionId,
+    cooldown_seconds: number
+  ): AdaptiveRule => ({
+    on,
+    action,
+    custom_instruction: ADAPTIVE_ACTION_META[action].defaultInstruction ?? null,
+    cooldown_seconds,
+    params: {},
+  });
+  return [
+    rule("sustained_disengagement", "offer_break", 180),
+    rule("very_short_answer", "encourage_elaboration", 90),
+    rule("high_filler", "soften_next_probe", 120),
+  ];
+}
+
+export const DEFAULT_ADAPTIVE_POLICY: AdaptivePolicy = {
+  mode: "shadow",
+  rules: [],
+};
 
 export interface AgentListItem {
   id: string;
@@ -205,6 +374,7 @@ export interface SessionItem {
   audio_recording_enabled: boolean;
   audio_storage_uri: string | null;
   audio_recording_status: string;
+  adaptive_active?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -222,6 +392,49 @@ export interface SessionAudioManifest {
   storage_uri: string | null;
   recording_status: string;
   turns: AudioTurn[];
+}
+
+export interface EngagementTurn {
+  transcript_sequence: number;
+  response_latency_ms: number | null;
+  voiced_ms: number | null;
+  word_count: number | null;
+  char_count: number | null;
+  speech_rate_wpm: number | null;
+  filler_count: number | null;
+  rms_energy: number | null;
+  score: number | null;
+  label: string | null;
+  flags: string[];
+}
+
+export interface EngagementEvent {
+  transcript_sequence: number | null;
+  event_type: string;
+  score_at_event: number | null;
+}
+
+export interface AdaptiveActionRecord {
+  transcript_sequence: number | null;
+  trigger: string;
+  action: string;
+  mode: string;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface EngagementSummary {
+  session_id: string;
+  turn_count: number;
+  average_score: number | null;
+  label: string | null;
+  average_latency_ms: number | null;
+  average_words: number | null;
+  low_engagement_turns: number;
+  turns: EngagementTurn[];
+  events: EngagementEvent[];
+  adaptive_active: boolean;
+  adaptive_actions: AdaptiveActionRecord[];
 }
 
 export interface TranscriptEntry {
@@ -516,6 +729,11 @@ export const sessions = {
   getAudioManifest: (studyId: string, agentId: string, sessionId: string) =>
     request<SessionAudioManifest>(
       `/studies/${studyId}/agents/${agentId}/sessions/${sessionId}/audio`
+    ),
+
+  getEngagement: (studyId: string, agentId: string, sessionId: string) =>
+    request<EngagementSummary>(
+      `/studies/${studyId}/agents/${agentId}/sessions/${sessionId}/engagement`
     ),
 
   audioTurnUrl: (

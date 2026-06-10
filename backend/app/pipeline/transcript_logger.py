@@ -20,6 +20,7 @@ placed after the LLM.
 Everything is flushed to the DB asynchronously to avoid blocking the pipeline.
 """
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -58,9 +59,16 @@ class TranscriptLoggerState:
         self.audio_manager = audio_manager
         self.sequence: int = 0
         self.agent_buffer: list[str] = []
+        self._bg_tasks: set[asyncio.Task] = set()
 
     async def persist_entry(self, role: str, content: str):
-        """Write a single transcript entry to the DB."""
+        """Record a transcript entry.
+
+        The sequence number is assigned synchronously (so ordering is
+        deterministic for every consumer of ``state.sequence``); the DB write
+        and the real-time notification run as a background task so they never
+        add latency to the audio pipeline's turn path.
+        """
         from app.models.session import TranscriptEntry, SpeakerRole
 
         if not content.strip():
@@ -77,6 +85,11 @@ class TranscriptLoggerState:
             spoken_at=datetime.now(timezone.utc),
         )
 
+        task = asyncio.create_task(self._write_and_notify(entry, role))
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
+
+    async def _write_and_notify(self, entry, role: str) -> None:
         try:
             async with self.db_session_factory() as db:
                 db.add(entry)
@@ -84,19 +97,23 @@ class TranscriptLoggerState:
         except Exception as exc:
             logger.error(f"TranscriptLogger: failed to persist entry: {exc}")
 
-        # Fire real-time notification
         if self.notify_callback:
             try:
                 await self.notify_callback(
                     {
                         "type": "transcript",
                         "role": role,
-                        "content": content.strip(),
-                        "sequence": self.sequence,
+                        "content": entry.content,
+                        "sequence": entry.sequence,
                     }
                 )
             except Exception:
                 pass
+
+    async def drain(self) -> None:
+        """Wait for pending background writes (used at session teardown)."""
+        if self._bg_tasks:
+            await asyncio.gather(*list(self._bg_tasks), return_exceptions=True)
 
     async def flush_agent_buffer(self):
         """Persist the accumulated agent turn."""
@@ -172,6 +189,7 @@ class TranscriptLogger(FrameProcessor):
     async def cleanup(self):
         """Flush remaining agent text on shutdown."""
         await self._state.flush_agent_buffer()
+        await self._state.drain()
         if self._state.audio_manager:
             try:
                 await self._state.audio_manager.finalize_session()

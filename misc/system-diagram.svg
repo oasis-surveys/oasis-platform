@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 810" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="810" fill="#ffffff"/>
+
+  <!-- Actors -->
+  <rect x="90" y="24" width="250" height="54" rx="10" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+  <text x="215" y="46" text-anchor="middle" font-size="13.5" font-weight="600" fill="#0F172A">Participant</text>
+  <text x="215" y="64" text-anchor="middle" font-size="11" fill="#475569">browser (mic / text) &#183; phone</text>
+
+  <rect x="860" y="24" width="250" height="54" rx="10" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="985" y="46" text-anchor="middle" font-size="13.5" font-weight="600" fill="#0F172A">Researcher</text>
+  <text x="985" y="64" text-anchor="middle" font-size="11" fill="#475569">dashboard</text>
+
+  <line x1="215" y1="78" x2="215" y2="120" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="985" y1="78" x2="985" y2="120" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Caddy -->
+  <rect x="90" y="122" width="1020" height="44" rx="8" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.5"/>
+  <text x="600" y="149" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0F172A">Caddy &#8212; reverse proxy &#183; HTTPS (ports 80/443)</text>
+
+  <line x1="215" y1="166" x2="215" y2="204" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="226" y="190" font-size="10" fill="#64748B">WebSocket / REST</text>
+  <line x1="985" y1="166" x2="985" y2="204" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Frontend -->
+  <rect x="860" y="206" width="250" height="64" rx="10" fill="#F0FDF4" stroke="#22C55E" stroke-width="1.5"/>
+  <text x="985" y="232" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0F172A">Frontend &#8212; React + Nginx</text>
+  <text x="985" y="252" text-anchor="middle" font-size="11" fill="#475569">dashboard &amp; interview widget</text>
+
+  <!-- External providers -->
+  <rect x="860" y="300" width="250" height="138" rx="10" fill="#FFF7ED" stroke="#F97316" stroke-width="1.5"/>
+  <text x="985" y="326" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0F172A">External AI providers (cloud)</text>
+  <text x="985" y="352" text-anchor="middle" font-size="11" fill="#475569">OpenAI &#183; Google Gemini</text>
+  <text x="985" y="372" text-anchor="middle" font-size="11" fill="#475569">Deepgram &#183; ElevenLabs &#183; Cartesia</text>
+  <text x="985" y="392" text-anchor="middle" font-size="11" fill="#475569">Scaleway &#183; Azure</text>
+  <text x="985" y="418" text-anchor="middle" font-size="10" font-style="italic" fill="#9A3412">only the providers you configure</text>
+  <line x1="812" y1="369" x2="858" y2="369" stroke="#64748B" stroke-width="1.5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+  <!-- Locally hosted models -->
+  <rect x="860" y="466" width="250" height="160" rx="10" fill="#F0F9FF" stroke="#0EA5E9" stroke-width="1.5"/>
+  <text x="985" y="492" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0F172A">Locally hosted models</text>
+  <text x="985" y="518" text-anchor="middle" font-size="11" fill="#475569">LLM: vLLM &#183; Ollama &#183; LiteLLM proxy</text>
+  <text x="985" y="538" text-anchor="middle" font-size="11" fill="#475569">STT / TTS: any OpenAI-compatible</text>
+  <text x="985" y="558" text-anchor="middle" font-size="11" fill="#475569">server (e.g. faster-whisper)</text>
+  <text x="985" y="584" text-anchor="middle" font-size="11" fill="#475569">your hardware &#183; HPC &#183; on-prem</text>
+  <text x="985" y="608" text-anchor="middle" font-size="10" font-style="italic" fill="#075985">no data leaves your infrastructure</text>
+  <line x1="812" y1="546" x2="858" y2="546" stroke="#64748B" stroke-width="1.5" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+  <!-- Backend -->
+  <rect x="90" y="206" width="720" height="470" rx="12" fill="#FFFFFF" stroke="#64748B" stroke-width="1.5"/>
+  <text x="450" y="232" text-anchor="middle" font-size="13.5" font-weight="700" fill="#0F172A">Backend &#8212; FastAPI &#183; Pipecat &#183; LiteLLM</text>
+
+  <!-- Lane 1: modular voice -->
+  <rect x="110" y="248" width="210" height="412" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="215" y="270" text-anchor="middle" font-size="12" font-weight="700" fill="#1D4ED8">Modular voice</text>
+
+  <rect x="122" y="284" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#3B82F6"/>
+  <text x="215" y="301" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Audio in</text>
+  <text x="215" y="316" text-anchor="middle" font-size="10" fill="#475569">WebSocket stream</text>
+  <line x1="215" y1="324" x2="215" y2="340" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="122" y="342" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#3B82F6"/>
+  <text x="215" y="359" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">STT</text>
+  <text x="215" y="374" text-anchor="middle" font-size="10" fill="#475569">Deepgram &#183; Whisper &#183; custom</text>
+  <line x1="215" y1="382" x2="215" y2="398" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="122" y="400" width="186" height="40" rx="7" fill="#F5F3FF" stroke="#8B5CF6"/>
+  <text x="215" y="417" text-anchor="middle" font-size="10.5" font-weight="600" fill="#0F172A">Guide &#183; Engagement &#183; Adaptive</text>
+  <text x="215" y="432" text-anchor="middle" font-size="10" fill="#475569">structured + adaptive processors</text>
+  <line x1="215" y1="440" x2="215" y2="456" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="122" y="458" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#3B82F6"/>
+  <text x="215" y="475" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">LLM</text>
+  <text x="215" y="490" text-anchor="middle" font-size="10" fill="#475569">OpenAI &#183; Gemini &#183; Scaleway &#183; &#8230;</text>
+  <line x1="215" y1="498" x2="215" y2="514" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="122" y="516" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#3B82F6"/>
+  <text x="215" y="533" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">TTS</text>
+  <text x="215" y="548" text-anchor="middle" font-size="10" fill="#475569">ElevenLabs &#183; OpenAI &#183; Cartesia</text>
+  <line x1="215" y1="556" x2="215" y2="572" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="122" y="574" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#3B82F6"/>
+  <text x="215" y="591" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Audio out</text>
+  <text x="215" y="606" text-anchor="middle" font-size="10" fill="#475569">+ session recording</text>
+
+  <text x="215" y="640" text-anchor="middle" font-size="10" font-style="italic" fill="#64748B">diarized transcript logged per turn</text>
+
+  <!-- Lane 2: voice-to-voice -->
+  <rect x="340" y="248" width="210" height="412" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="445" y="270" text-anchor="middle" font-size="12" font-weight="700" fill="#4338CA">Voice-to-voice</text>
+
+  <rect x="352" y="284" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#6366F1"/>
+  <text x="445" y="301" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Audio in / out</text>
+  <text x="445" y="316" text-anchor="middle" font-size="10" fill="#475569">WebSocket stream</text>
+  <line x1="445" y1="324" x2="445" y2="376" stroke="#64748B" stroke-width="1.3" marker-start="url(#arr)" marker-end="url(#arr)"/>
+
+  <rect x="352" y="378" width="186" height="56" rx="7" fill="#FFFFFF" stroke="#6366F1"/>
+  <text x="445" y="398" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Realtime model</text>
+  <text x="445" y="413" text-anchor="middle" font-size="10" fill="#475569">OpenAI Realtime &#183; Gemini Live</text>
+  <text x="445" y="427" text-anchor="middle" font-size="10" fill="#475569">speech to speech, one model</text>
+  <line x1="445" y1="434" x2="445" y2="490" stroke="#64748B" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+
+  <rect x="352" y="492" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#6366F1"/>
+  <text x="445" y="509" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Session recording</text>
+  <text x="445" y="524" text-anchor="middle" font-size="10" fill="#475569">WAV &#183; local or S3</text>
+
+  <text x="445" y="572" text-anchor="middle" font-size="10" font-style="italic" fill="#64748B">lowest latency;</text>
+  <text x="445" y="586" text-anchor="middle" font-size="10" font-style="italic" fill="#64748B">engagement &amp; adaptive</text>
+  <text x="445" y="600" text-anchor="middle" font-size="10" font-style="italic" fill="#64748B">not available here</text>
+
+  <!-- Lane 3: text chat -->
+  <rect x="570" y="248" width="210" height="412" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <text x="675" y="270" text-anchor="middle" font-size="12" font-weight="700" fill="#0F766E">Text chat</text>
+
+  <rect x="582" y="284" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#14B8A6"/>
+  <text x="675" y="301" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Message</text>
+  <text x="675" y="316" text-anchor="middle" font-size="10" fill="#475569">REST request</text>
+  <line x1="675" y1="324" x2="675" y2="340" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="582" y="342" width="186" height="40" rx="7" fill="#F5F3FF" stroke="#8B5CF6"/>
+  <text x="675" y="359" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Engagement &#183; Adaptive</text>
+  <text x="675" y="374" text-anchor="middle" font-size="10" fill="#475569">inline, same policy as voice</text>
+  <line x1="675" y1="382" x2="675" y2="398" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="582" y="400" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#14B8A6"/>
+  <text x="675" y="417" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">RAG retrieval</text>
+  <text x="675" y="432" text-anchor="middle" font-size="10" fill="#475569">pgvector, if knowledge docs</text>
+  <line x1="675" y1="440" x2="675" y2="456" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="582" y="458" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#14B8A6"/>
+  <text x="675" y="475" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">LLM</text>
+  <text x="675" y="490" text-anchor="middle" font-size="10" fill="#475569">via LiteLLM, any provider</text>
+  <line x1="675" y1="498" x2="675" y2="514" stroke="#64748B" stroke-width="1.3" marker-end="url(#arr)"/>
+
+  <rect x="582" y="516" width="186" height="40" rx="7" fill="#FFFFFF" stroke="#14B8A6"/>
+  <text x="675" y="533" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0F172A">Reply</text>
+  <text x="675" y="548" text-anchor="middle" font-size="10" fill="#475569">+ engagement row per turn</text>
+
+  <!-- Storage row -->
+  <line x1="255" y1="676" x2="255" y2="712" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="530" y1="676" x2="530" y2="712" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="725" y1="676" x2="725" y2="712" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="90" y="714" width="330" height="64" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+  <text x="255" y="738" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0F172A">PostgreSQL (pgvector)</text>
+  <text x="255" y="758" text-anchor="middle" font-size="10.5" fill="#475569">transcripts &#183; engagement &#183; adaptive audit &#183; embeddings</text>
+
+  <rect x="445" y="714" width="170" height="64" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+  <text x="530" y="738" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0F172A">Redis</text>
+  <text x="530" y="758" text-anchor="middle" font-size="10.5" fill="#475569">sessions &#183; live events</text>
+
+  <rect x="640" y="714" width="170" height="64" rx="10" fill="#F1F5F9" stroke="#64748B" stroke-width="1.5"/>
+  <text x="725" y="738" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0F172A">Audio storage</text>
+  <text x="725" y="758" text-anchor="middle" font-size="10.5" fill="#475569">local disk / S3</text>
+</svg>
