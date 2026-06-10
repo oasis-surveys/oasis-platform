@@ -21,7 +21,7 @@
   <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker"/>
   <img src="https://img.shields.io/badge/Pipecat-AI_Pipeline-black" alt="Pipecat"/>
   <img src="https://img.shields.io/badge/LiteLLM-Multi_Provider-orange" alt="LiteLLM"/>
-  <a href="https://doi.org/10.5281/zenodo.19041571"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.19041571.svg" alt="DOI"></a>
+  <a href="https://doi.org/10.5281/zenodo.20619426"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.20619426.svg" alt="DOI"></a>
 </p>
 
 <p align="center">
