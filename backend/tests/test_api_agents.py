@@ -67,6 +67,73 @@ class TestAgentsCRUD:
         assert data["silence_prompt"] == "Take your time."
         assert data["widget_listening_message"] == "Listening…"
 
+    async def test_create_agent_with_engagement_config(self, client: AsyncClient, study_id: str):
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Engaged Agent",
+                "track_engagement": True,
+                "engagement_config": {
+                    "window_size": 4,
+                    "low_threshold": 0.3,
+                    "weights": {"length": 0.5},
+                },
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["track_engagement"] is True
+        assert data["engagement_config"]["window_size"] == 4
+        assert data["engagement_config"]["low_threshold"] == 0.3
+        # Unspecified weights fall back to schema defaults.
+        assert data["engagement_config"]["weights"]["length"] == 0.5
+        assert data["engagement_config"]["weights"]["latency"] == 0.25
+
+    async def test_invalid_engagement_window_fails(self, client: AsyncClient, study_id: str):
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={"name": "Bad", "engagement_config": {"window_size": 99}},
+        )
+        assert resp.status_code == 422
+
+    async def test_create_agent_with_adaptive_policy(self, client: AsyncClient, study_id: str):
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Adaptive Agent",
+                "track_engagement": True,
+                "adaptive_enabled": True,
+                "adaptive_policy": {
+                    "mode": "shadow",
+                    "rules": [
+                        {
+                            "on": "sustained_disengagement",
+                            "action": "offer_break",
+                            "cooldown_seconds": 90,
+                        }
+                    ],
+                },
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["adaptive_enabled"] is True
+        assert data["adaptive_policy"]["mode"] == "shadow"
+        assert data["adaptive_policy"]["rules"][0]["action"] == "offer_break"
+
+    async def test_invalid_adaptive_action_fails(self, client: AsyncClient, study_id: str):
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Bad Adaptive",
+                "adaptive_policy": {
+                    "mode": "live",
+                    "rules": [{"on": "long_latency", "action": "do_a_barrel_roll"}],
+                },
+            },
+        )
+        assert resp.status_code == 422
+
     async def test_create_agent_empty_name_fails(self, client: AsyncClient, study_id: str):
         resp = await client.post(
             f"/api/studies/{study_id}/agents",

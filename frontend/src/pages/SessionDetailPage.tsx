@@ -9,6 +9,9 @@ import {
   getAuthToken,
   type SessionDetail,
   type SessionAudioManifest,
+  type EngagementSummary,
+  ADAPTIVE_ACTION_META,
+  ADAPTIVE_TRIGGER_LABELS,
 } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import { useToast } from "../components/Toast";
@@ -23,6 +26,12 @@ const ROLE_LABELS: Record<string, string> = {
   user: "Participant",
   agent: "Agent",
   system: "System",
+};
+
+const ENGAGEMENT_EVENT_LABELS: Record<string, string> = {
+  sustained_disengagement: "Sustained disengagement",
+  positive_engagement_streak: "Positive engagement streak",
+  recovery_after_dip: "Recovery after a dip",
 };
 
 const WS_MONITOR_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws/monitor`;
@@ -101,6 +110,7 @@ export default function SessionDetailPage() {
   const [liveStatus, setLiveStatus] = useState<string>("connecting");
   const [terminating, setTerminating] = useState(false);
   const [audioManifest, setAudioManifest] = useState<SessionAudioManifest | null>(null);
+  const [engagement, setEngagement] = useState<EngagementSummary | null>(null);
   const ws = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -136,6 +146,17 @@ export default function SessionDetailPage() {
       .then(setAudioManifest)
       .catch(() => setAudioManifest(null));
   }, [studyId, agentId, sessionId, session?.audio_recording_enabled, session?.status]);
+
+  useEffect(() => {
+    if (!studyId || !agentId || !sessionId || !session) {
+      setEngagement(null);
+      return;
+    }
+    sessions
+      .getEngagement(studyId, agentId, sessionId)
+      .then((e) => setEngagement(e.turn_count > 0 ? e : null))
+      .catch(() => setEngagement(null));
+  }, [studyId, agentId, sessionId, session?.status]);
 
   useEffect(() => {
     if (!isLive || !sessionId) return;
@@ -423,6 +444,192 @@ export default function SessionDetailPage() {
         )}
       </div>
 
+      {/* ── Engagement metrics ── */}
+      {engagement && (
+        <div className="card overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+              Engagement metrics
+              <HelpTooltip text="Observational signals computed per participant turn (response latency, answer length, speech rate, filler words) and a 0–1 rule-based score. This does not change the interview and is included in CSV/JSON exports." />
+            </span>
+            {engagement.label && <EngagementBadge label={engagement.label} />}
+          </div>
+
+          <div className="px-5 py-5">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+              <div>
+                <span className="text-gray-400 block text-[10px] font-semibold uppercase tracking-wider">Avg score</span>
+                <span className="font-medium text-gray-900">
+                  {engagement.average_score != null ? engagement.average_score.toFixed(2) : "—"}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-[10px] font-semibold uppercase tracking-wider">Turns scored</span>
+                <span className="font-medium text-gray-900">{engagement.turn_count}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-[10px] font-semibold uppercase tracking-wider">Avg latency</span>
+                <span className="font-medium text-gray-900">
+                  {engagement.average_latency_ms != null
+                    ? `${(engagement.average_latency_ms / 1000).toFixed(1)}s`
+                    : "—"}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-[10px] font-semibold uppercase tracking-wider">Avg words</span>
+                <span className="font-medium text-gray-900">
+                  {engagement.average_words != null ? engagement.average_words.toFixed(1) : "—"}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-[10px] font-semibold uppercase tracking-wider">Low turns</span>
+                <span className="font-medium text-gray-900">{engagement.low_engagement_turns}</span>
+              </div>
+            </div>
+
+            {engagement.events.length > 0 && (
+              <div className="mt-4 border-t border-gray-50 pt-3">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  Events
+                </span>
+                <ul className="mt-2 space-y-1.5">
+                  {engagement.events.map((ev, i) => (
+                    <li
+                      key={`${ev.event_type}-${ev.transcript_sequence}-${i}`}
+                      className="flex items-center gap-2 text-xs text-gray-700"
+                    >
+                      <span
+                        className={`inline-block h-1.5 w-1.5 rounded-full ${
+                          ev.event_type === "positive_engagement_streak"
+                            ? "bg-emerald-500"
+                            : ev.event_type === "recovery_after_dip"
+                            ? "bg-sky-500"
+                            : "bg-rose-500"
+                        }`}
+                      />
+                      <span>{ENGAGEMENT_EVENT_LABELS[ev.event_type] || ev.event_type}</span>
+                      {ev.transcript_sequence != null && (
+                        <span className="text-gray-400">· turn #{ev.transcript_sequence}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {engagement.adaptive_actions.length > 0 && (
+              <div className="mt-4 border-t border-gray-50 pt-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    Adaptive actions
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
+                      engagement.adaptive_active
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-gray-100 text-gray-500"
+                    }`}
+                  >
+                    {engagement.adaptive_active ? "Live" : "Shadow"}
+                  </span>
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {engagement.adaptive_actions.map((a, i) => {
+                    const applied = (a.detail || {})["applied"] === true;
+                    return (
+                      <li
+                        key={`${a.action}-${a.transcript_sequence}-${i}`}
+                        className="flex flex-wrap items-center gap-2 text-xs text-gray-700"
+                      >
+                        <span
+                          className={`inline-block h-1.5 w-1.5 rounded-full ${
+                            applied ? "bg-emerald-500" : "bg-gray-300"
+                          }`}
+                        />
+                        <span className="font-medium">
+                          {ADAPTIVE_ACTION_META[
+                            a.action as keyof typeof ADAPTIVE_ACTION_META
+                          ]?.label || a.action}
+                        </span>
+                        <span className="text-gray-400">
+                          ·{" "}
+                          {ADAPTIVE_TRIGGER_LABELS[
+                            a.trigger as keyof typeof ADAPTIVE_TRIGGER_LABELS
+                          ] || a.trigger}
+                        </span>
+                        {a.transcript_sequence != null && (
+                          <span className="text-gray-400">
+                            · turn #{a.transcript_sequence}
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] uppercase tracking-wide ${
+                            applied ? "text-emerald-600" : "text-gray-400"
+                          }`}
+                        >
+                          {a.mode === "live" && applied
+                            ? "applied"
+                            : "logged"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            <details className="mt-4 group">
+              <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-800 select-none">
+                Per-turn breakdown
+              </summary>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-gray-400 border-b border-gray-100">
+                      <th className="py-1.5 pr-3 font-semibold">Turn</th>
+                      <th className="py-1.5 pr-3 font-semibold">Score</th>
+                      <th className="py-1.5 pr-3 font-semibold">Latency</th>
+                      <th className="py-1.5 pr-3 font-semibold">Words</th>
+                      <th className="py-1.5 pr-3 font-semibold">Rate (wpm)</th>
+                      <th className="py-1.5 pr-3 font-semibold">Fillers</th>
+                      <th className="py-1.5 pr-3 font-semibold">Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {engagement.turns.map((t) => (
+                      <tr key={t.transcript_sequence} className="border-b border-gray-50">
+                        <td className="py-1.5 pr-3 text-gray-500">#{t.transcript_sequence}</td>
+                        <td className="py-1.5 pr-3">
+                          <span className="inline-flex items-center gap-2">
+                            {t.label && <EngagementBadge label={t.label} small />}
+                            <span className="text-gray-700">
+                              {t.score != null ? t.score.toFixed(2) : "—"}
+                            </span>
+                          </span>
+                        </td>
+                        <td className="py-1.5 pr-3 text-gray-700">
+                          {t.response_latency_ms != null
+                            ? `${(t.response_latency_ms / 1000).toFixed(1)}s`
+                            : "—"}
+                        </td>
+                        <td className="py-1.5 pr-3 text-gray-700">{t.word_count ?? "—"}</td>
+                        <td className="py-1.5 pr-3 text-gray-700">
+                          {t.speech_rate_wpm != null ? Math.round(t.speech_rate_wpm) : "—"}
+                        </td>
+                        <td className="py-1.5 pr-3 text-gray-700">{t.filler_count ?? "—"}</td>
+                        <td className="py-1.5 pr-3 text-gray-400">
+                          {t.flags.length > 0 ? t.flags.join(", ") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </div>
+        </div>
+      )}
+
       {/* ── Transcript ── */}
       <div className="card overflow-hidden">
         <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
@@ -492,6 +699,24 @@ export default function SessionDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function EngagementBadge({ label, small }: { label: string; small?: boolean }) {
+  const styles: Record<string, string> = {
+    high: "bg-emerald-100 text-emerald-800",
+    medium: "bg-amber-100 text-amber-800",
+    low: "bg-rose-100 text-rose-800",
+  };
+  const cls = styles[label] || "bg-gray-100 text-gray-700";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full font-semibold uppercase tracking-wide ${cls} ${
+        small ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]"
+      }`}
+    >
+      {label}
+    </span>
   );
 }
 

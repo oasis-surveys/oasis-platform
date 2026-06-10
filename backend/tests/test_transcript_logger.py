@@ -43,12 +43,14 @@ class TestTranscriptLogger:
     async def test_persist_entry_user(self):
         state, mock_session = self._make_state()
         await state.persist_entry("user", "Hello, world!")
+        await state.drain()  # DB write happens in the background
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
 
     async def test_persist_entry_agent(self):
         state, mock_session = self._make_state()
         await state.persist_entry("agent", "Agent response")
+        await state.drain()
         mock_session.add.assert_called_once()
 
     async def test_persist_entry_empty_skipped(self):
@@ -73,6 +75,7 @@ class TestTranscriptLogger:
         state, mock_session = self._make_state()
         state.agent_buffer = ["Hello ", "world!"]
         await state.flush_agent_buffer()
+        await state.drain()
         mock_session.add.assert_called_once()
         assert state.agent_buffer == []
 
@@ -85,6 +88,7 @@ class TestTranscriptLogger:
         callback = AsyncMock()
         state, _ = self._make_state(notify_callback=callback)
         await state.persist_entry("user", "Test message")
+        await state.drain()
         callback.assert_called_once()
         payload = callback.call_args[0][0]
         assert payload["type"] == "transcript"
@@ -97,6 +101,7 @@ class TestTranscriptLogger:
         state, _ = self._make_state(notify_callback=callback)
         # Should not raise
         await state.persist_entry("user", "Test")
+        await state.drain()
 
     async def test_cleanup_flushes_buffer(self):
         logger, state, mock_session = self._make_logger()

@@ -172,7 +172,7 @@ Confirm with whoever manages your OpenAI org before flipping the toggle. If your
 
 OpenAI also notes a 10% pricing uplift for some models when used through a data residency endpoint. Mention this to your billing person if budgets are tight.
 
-For Realtime voice-to-voice specifically, the EU endpoint supports `gpt-realtime`, `gpt-realtime-1.5`, `gpt-realtime-mini`, and `gpt-4o-realtime-preview-2025-06-03`. Older preview snapshots are US-only.
+For Realtime voice-to-voice specifically, the EU endpoint supports `gpt-realtime`, `gpt-realtime-1.5`, `gpt-realtime-2`, and `gpt-realtime-mini`. The older `gpt-4o-realtime-preview` snapshots have been removed from the OpenAI API.
 
 </details>
 

@@ -4,6 +4,130 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-06-10
+
+### Fixed
+
+- Structured interviews enforce one question per agent turn on the output
+  path. The model sometimes crammed a probe, a leaked stage direction
+  ("(Transition: ...)" read aloud), and the next main question into a single
+  spoken turn, advancing through the whole guide in a couple of exchanges
+  regardless of the protocol prompt. A new `StructuredOutputFilter` between
+  the LLM and TTS re-emits the streamed response sentence by sentence,
+  unwraps leaked transition labels, and cuts everything after the turn's
+  first question — transcripts and the model's own context both match what
+  the participant actually hears. The protocol prompt now also states the
+  one-question limit is enforced and forbids reading transition labels.
+
+## 2026-06-09
+
+### Fixed
+
+- Structured interviews no longer cut to the closing message while the
+  participant is still asking about the final question. The guide processor's
+  hard turn-counter was content-blind: the agent's answers to "what do you
+  mean?" and its verbatim question repeats were charged against the follow-up
+  budget, so a clarification exchange at the last question exhausted the
+  budget and the close nudge fired — the agent then repeated the question and
+  delivered the closing message in the same turn. The processor now buffers
+  the participant's transcribed speech, skips counting bot turns that reply
+  to clarification/repeat requests, and holds the advance/close nudge until
+  the participant gives a substantive answer. Detection follows the agent's
+  configured interview language, with pattern sets for all twelve languages
+  offered in the agent form (English is always included as a baseline for
+  code-switching participants).
+  The closing instructions also explicitly forbid combining a question with
+  the closing message in one turn.
+- Deepgram STT failed to start (`ImportError: cannot import name 'LiveOptions'
+  from 'deepgram'`): deepgram-sdk v4+ removed the top-level `LiveOptions`
+  export. The pipeline now passes `DeepgramSTTSettings` as Pipecat 0.0.105
+  expects. The Deepgram model list was also verified against the live
+  `api.deepgram.com/v1/models` endpoint; Nova 3 is the default.
+- Injected mid-conversation guidance (adaptive actions, structured-interview
+  nudges, silence check-ins, text-chat knowledge-base context) is now sent as
+  a clearly marked user-role note instead of a system message. OpenAI gpt-5.x
+  rejects a system message that appears after an assistant message with a 400
+  error ("Unexpected role 'system' after role 'assistant'"), which silenced
+  the agent for the remainder of the session after the first adaptive action.
+- Voice engagement turns are finalized at the aggregator's turn-stop boundary,
+  fixing `response_latency_ms` always being recorded as empty: turns were
+  previously finalized one turn late, by which time the bot-stopped timestamp
+  had been refreshed and the latency delta was discarded as negative. Latency
+  is now captured once when the participant starts speaking.
+- Engagement and adaptive behavior now evaluate once per participant turn
+  instead of once per STT fragment. Segmented STT services (OpenAI Whisper)
+  emit one transcription per VAD segment, so a single spoken turn could
+  produce several fragments that each scored as a "very short answer",
+  over-firing adaptive actions mid-turn and stacking multiple injected
+  instructions into one LLM call. Fragments are now aggregated and scored at
+  the actual turn boundary, and the adaptive processor acts at most once per
+  turn.
+- Transcript entries are written to the database in a background task instead
+  of on the audio pipeline's frame path, removing a per-fragment DB round trip
+  from the turn latency. Sequence numbers are still assigned synchronously.
+- Structured interviews no longer steamroll participant questions: the
+  protocol prompt now instructs the model to briefly answer clarification
+  questions (without consuming the follow-up budget) before continuing with
+  the current probe, to ask exactly one question per turn and wait for the
+  answer, and to count follow-ups by which probes were actually asked rather
+  than by message count (agent turns can appear split in the context, which
+  previously caused premature transitions). The advance/closing nudges also
+  answer a pending participant question first.
+- Model catalog refreshed and verified against the live provider APIs
+  (June 2026): added Gemini 3.5 Flash; added Scaleway Qwen 3.5 397B,
+  Qwen 3.6 35B, Mistral Medium 3.5 128B, and Gemma 4 26B; removed models the
+  providers no longer serve (Scaleway DeepSeek-R1 Distill, Llama 3.1 8B,
+  Mistral Nemo; OpenAI `gpt-4o-realtime-preview`). All listed OpenAI, Google,
+  and Scaleway models were confirmed present on the providers' live model
+  endpoints, with completion smoke tests for the new flagships.
+
+### Changed
+
+- Custom LiteLLM / OpenAI-compatible provider configuration is now clearly
+  labeled: the dashboard Settings category is "Custom / Self-Hosted" with
+  explicit env var names per field, the agent form's provider dropdowns and
+  hints mention LiteLLM, and `.env.example` documents
+  `OPENAI_COMPATIBLE_LLM_URL`/`_API_KEY` (LLM) and `SELF_HOSTED_STT_*` /
+  `SELF_HOSTED_TTS_*` (STT/TTS) for LiteLLM proxies.
+
+### Added
+
+- Adaptive behavior (Phase 3a): act on engagement signals during an interview.
+  Off by default and scoped per agent. A small per-agent policy maps engagement
+  triggers (events or per-turn flags) to curated actions — prompt injections
+  (offer a break, soften the next question, encourage elaboration, acknowledge
+  effort, privacy check) and, for modular voice, speaking-pace changes. Defaults
+  to a non-acting **shadow** mode that logs intended actions without applying
+  them; switching to **live** is a deliberate choice. Every action (applied or
+  shadow) is written to a new `adaptive_actions` table and surfaced on the
+  session detail page, in the engagement API response, and in the JSON
+  (`adaptive`) and CSV (`adaptive_actions`) exports. Sessions that can adapt live
+  are flagged via `sessions.adaptive_active`. Available for modular voice and
+  text chat (pace actions are no-ops for text); not available for voice-to-voice.
+  See [docs/ADAPTIVE_BEHAVIOR.md](docs/ADAPTIVE_BEHAVIOR.md).
+- Engagement metrics for text chat interviews (observational): response latency
+  (reading + typing time), answer length, and lexical hedging, scored with a
+  text-specific threshold profile. Enabled per agent with the same **Track
+  engagement metrics** toggle, which now appears for text agents. Audio-based
+  signals (speech rate, energy) are not available for text and stay null. See
+  [docs/ENGAGEMENT_METRICS.md](docs/ENGAGEMENT_METRICS.md).
+- Engagement events (Phase 2, observational): rolling-window detection of
+  `sustained_disengagement`, `positive_engagement_streak`, and
+  `recovery_after_dip`, stored in a new `engagement_events` table. Each event
+  fires once when its condition is met and re-arms after it clears. Thresholds
+  and component weights are now tunable per agent via **Engagement tuning** in
+  the agent form (`engagement_config`). Events appear on the session detail
+  page, in the engagement API response, in the JSON export, and as an
+  `engagement_events` column in the CSV export. Still observe-only and modular
+  voice only. See [docs/ENGAGEMENT_METRICS.md](docs/ENGAGEMENT_METRICS.md).
+- Engagement metrics for modular voice interviews (Phase 1, observational).
+  Off by default; enable per agent with **Track engagement metrics**. Each
+  participant turn records response latency, answer length, speech rate, filler
+  count, and audio energy, plus a 0–1 rule-based score and label
+  (low/medium/high). Metrics are stored per session, shown on the session detail
+  page, and included in the CSV and JSON exports. This does not change the
+  interview. See [docs/ENGAGEMENT_METRICS.md](docs/ENGAGEMENT_METRICS.md).
+
 ## 2026-05-21
 
 ### Added

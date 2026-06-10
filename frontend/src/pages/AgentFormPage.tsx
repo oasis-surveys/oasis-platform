@@ -5,13 +5,22 @@ import {
   participants,
   settingsApi,
   isValidWidgetHexColor,
+  DEFAULT_ENGAGEMENT_CONFIG,
+  DEFAULT_ENGAGEMENT_CONFIG_TEXT,
+  DEFAULT_ADAPTIVE_POLICY,
   type Agent,
+  type EngagementConfig,
+  type AdaptivePolicy,
   type ParticipantIdentifier,
   type ApiKeyStatus,
 } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import CopyButton from "../components/CopyButton";
 import StoreAudioToggle from "../components/StoreAudioToggle";
+import TrackEngagementToggle from "../components/TrackEngagementToggle";
+import EngagementConfigFields from "../components/EngagementConfigFields";
+import AdaptiveBehaviorToggle from "../components/AdaptiveBehaviorToggle";
+import AdaptivePolicyFields from "../components/AdaptivePolicyFields";
 import { useToast } from "../components/Toast";
 
 // ── Model options ─────────────────────────────────────────────
@@ -32,18 +41,20 @@ const LLM_MODELS_MODULAR = [
   { value: "openai/gpt-4o", label: "GPT-4o", group: "OpenAI" },
   { value: "openai/gpt-4o-mini", label: "GPT-4o Mini", group: "OpenAI" },
   { value: "openai/o3", label: "o3 (reasoning)", group: "OpenAI" },
-  // Scaleway — Generative APIs (OpenAI-compatible)
+  // Scaleway — Generative APIs (OpenAI-compatible).
+  // Verified against the live https://api.scaleway.ai/v1/models endpoint, June 2026.
+  { value: "scaleway/qwen3.5-397b-a17b", label: "Qwen 3.5 397B A17B (newest)", group: "Scaleway" },
+  { value: "scaleway/mistral-medium-3.5-128b", label: "Mistral Medium 3.5 128B", group: "Scaleway" },
   { value: "scaleway/qwen3-235b-a22b-instruct-2507", label: "Qwen 3 235B A22B Instruct", group: "Scaleway" },
+  { value: "scaleway/qwen3.6-35b-a3b", label: "Qwen 3.6 35B A3B (fast)", group: "Scaleway" },
   { value: "scaleway/mistral-small-3.2-24b-instruct-2506", label: "Mistral Small 3.2 24B", group: "Scaleway" },
   { value: "scaleway/voxtral-small-24b-2507", label: "Voxtral Small 24B (audio-capable)", group: "Scaleway" },
   { value: "scaleway/gpt-oss-120b", label: "GPT-OSS 120B", group: "Scaleway" },
   { value: "scaleway/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct", group: "Scaleway" },
+  { value: "scaleway/gemma-4-26b-a4b-it", label: "Gemma 4 26B A4B IT", group: "Scaleway" },
   { value: "scaleway/gemma-3-27b-it", label: "Gemma 3 27B IT", group: "Scaleway" },
-  { value: "scaleway/deepseek-r1-distill-llama-70b", label: "DeepSeek-R1 Distill 70B", group: "Scaleway" },
   { value: "scaleway/devstral-2-123b-instruct-2512", label: "Devstral 2 123B Instruct", group: "Scaleway" },
   { value: "scaleway/pixtral-12b-2409", label: "Pixtral 12B (vision)", group: "Scaleway" },
-  { value: "scaleway/llama-3.1-8b-instruct", label: "Llama 3.1 8B Instruct", group: "Scaleway" },
-  { value: "scaleway/mistral-nemo-instruct-2407", label: "Mistral Nemo Instruct", group: "Scaleway" },
   // Azure OpenAI (self-hosted)
   { value: "azure/gpt-4o", label: "Azure GPT-4o", group: "Azure" },
   { value: "azure/gpt-4o-mini", label: "Azure GPT-4o Mini", group: "Azure" },
@@ -59,7 +70,8 @@ const LLM_MODELS_MODULAR = [
   { value: "anthropic/claude-sonnet-4-5", label: "Claude Sonnet 4.5 (legacy)", group: "Anthropic" },
   { value: "anthropic/claude-opus-4-5", label: "Claude Opus 4.5 (legacy)", group: "Anthropic" },
   // Google Gemini — text models (uses GOOGLE_API_KEY directly, no GCP project).
-  // Verified against ai.google.dev/gemini-api/docs/models, May 2026.
+  // Verified against the live generativelanguage.googleapis.com models endpoint, June 2026.
+  { value: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash (newest stable)", group: "Google AI" },
   { value: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", group: "Google AI" },
   { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (preview)", group: "Google AI" },
   { value: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", group: "Google AI" },
@@ -69,7 +81,9 @@ const LLM_MODELS_MODULAR = [
 ];
 
 const LLM_MODELS_V2V = [
-  // OpenAI Realtime — speech-to-speech. Verified May 2026.
+  // OpenAI Realtime — speech-to-speech. Verified against the live
+  // api.openai.com/v1/models endpoint, June 2026. gpt-4o-realtime-preview was
+  // removed from the API and is no longer listed.
   // gpt-realtime-2 supports a `reasoning_effort` param that we don't expose
   // yet. Pipecat's SessionProperties doesn't have the field, so we use
   // OpenAI's default until upstream adds it.
@@ -77,8 +91,7 @@ const LLM_MODELS_V2V = [
   { value: "openai/gpt-realtime-1.5", label: "GPT Realtime 1.5", group: "OpenAI" },
   { value: "openai/gpt-realtime", label: "GPT Realtime", group: "OpenAI" },
   { value: "openai/gpt-realtime-mini", label: "GPT Realtime Mini (cost-efficient)", group: "OpenAI" },
-  { value: "openai/gpt-4o-realtime-preview", label: "GPT-4o Realtime (legacy)", group: "OpenAI" },
-  // Google Gemini — native audio (Live API, bidiGenerateContent). Verified May 2026.
+  // Google Gemini — native audio (Live API, bidiGenerateContent). Verified June 2026.
   { value: "google/gemini-3.1-flash-live-preview", label: "Gemini 3.1 Flash Live (newest preview)", group: "Google" },
   { value: "google/gemini-2.5-flash-native-audio-latest", label: "Gemini 2.5 Flash Native Audio (latest)", group: "Google" },
 ];
@@ -114,17 +127,18 @@ const STT_PROVIDERS = [
   { value: "deepgram", label: "Deepgram" },
   { value: "scaleway", label: "Scaleway Whisper" },
   { value: "azure", label: "Azure Speech" },
-  { value: "self_hosted", label: "Self-Hosted (OpenAI-compatible)" },
+  { value: "self_hosted", label: "Custom / Self-Hosted (LiteLLM, OpenAI-compatible)" },
 ];
 
+// Verified against the live api.deepgram.com/v1/models endpoint, June 2026.
 const DEEPGRAM_MODELS = [
-  { value: "nova-2", label: "Nova 2 (default)" },
+  { value: "nova-3", label: "Nova 3 (default)" },
+  { value: "nova-3-medical", label: "Nova 3 Medical" },
+  { value: "nova-2", label: "Nova 2" },
   { value: "nova-2-general", label: "Nova 2 General" },
   { value: "nova-2-meeting", label: "Nova 2 Meeting" },
   { value: "nova-2-phonecall", label: "Nova 2 Phone Call" },
-  { value: "nova-3", label: "Nova 3" },
   { value: "enhanced", label: "Enhanced" },
-  { value: "base", label: "Base" },
 ];
 
 const OPENAI_STT_MODELS = [
@@ -143,7 +157,7 @@ const TTS_PROVIDERS = [
   { value: "elevenlabs", label: "ElevenLabs" },
   { value: "cartesia", label: "Cartesia (Sonic)" },
   { value: "azure", label: "Azure Speech" },
-  { value: "self_hosted", label: "Self-Hosted (OpenAI-compatible)" },
+  { value: "self_hosted", label: "Custom / Self-Hosted (LiteLLM, OpenAI-compatible)" },
 ];
 
 // Cartesia ships with a small set of named "Sonic" voices. Users can also paste any
@@ -415,6 +429,13 @@ function buildAgentConfigJSON(form: FormData): string {
     silence_prompt: form.silence_prompt || null,
     twilio_phone_number: form.twilio_phone_number || null,
     store_audio: form.store_audio,
+    track_engagement: engagementSupported(form) ? form.track_engagement : false,
+    engagement_config:
+      engagementSupported(form) && form.track_engagement
+        ? form.engagement_config
+        : null,
+    adaptive_enabled: adaptiveOn(form),
+    adaptive_policy: adaptiveOn(form) ? form.adaptive_policy : null,
   };
   return JSON.stringify(config, null, 2);
 }
@@ -483,8 +504,55 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     silence_prompt: (obj.silence_prompt as string) || "Take your time. Let me know when you're ready to continue.",
     twilio_phone_number: (obj.twilio_phone_number as string) || "",
     store_audio: Boolean(obj.store_audio),
+    track_engagement: Boolean(obj.track_engagement),
+    engagement_config: mergeEngagementConfig(
+      obj.modality === "text" ? "text" : "voice",
+      obj.engagement_config as Partial<EngagementConfig> | null | undefined
+    ),
+    adaptive_enabled: Boolean(obj.adaptive_enabled),
+    adaptive_policy: mergeAdaptivePolicy(
+      obj.adaptive_policy as Partial<AdaptivePolicy> | null | undefined
+    ),
   };
   return result;
+}
+
+function mergeAdaptivePolicy(
+  stored: Partial<AdaptivePolicy> | null | undefined
+): AdaptivePolicy {
+  if (!stored) return { ...DEFAULT_ADAPTIVE_POLICY };
+  return {
+    mode: stored.mode === "live" ? "live" : "shadow",
+    rules: Array.isArray(stored.rules) ? stored.rules : [],
+  };
+}
+
+// Adaptive behavior is available wherever engagement is, and only matters
+// when engagement tracking is on.
+function adaptiveOn(form: FormData): boolean {
+  return (
+    engagementSupported(form) && form.track_engagement && form.adaptive_enabled
+  );
+}
+
+function mergeEngagementConfig(
+  modality: "voice" | "text",
+  stored: Partial<EngagementConfig> | null | undefined
+): EngagementConfig {
+  const base =
+    modality === "text" ? DEFAULT_ENGAGEMENT_CONFIG_TEXT : DEFAULT_ENGAGEMENT_CONFIG;
+  return {
+    ...base,
+    ...(stored || {}),
+    weights: { ...base.weights, ...(stored?.weights || {}) },
+  };
+}
+
+// Engagement metrics are available for text agents and for modular voice
+// agents (not voice-to-voice, which doesn't expose the needed signals).
+function engagementSupported(form: FormData): boolean {
+  if (form.modality === "text") return true;
+  return form.modality === "voice" && form.pipeline_type !== "voice_to_voice";
 }
 
 // ── Form data ─────────────────────────────────────────────────
@@ -519,6 +587,10 @@ interface FormData {
   silence_prompt: string;
   twilio_phone_number: string;
   store_audio: boolean;
+  track_engagement: boolean;
+  engagement_config: EngagementConfig;
+  adaptive_enabled: boolean;
+  adaptive_policy: AdaptivePolicy;
 }
 
 const DEFAULT_FORM: FormData = {
@@ -567,6 +639,10 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   silence_prompt: "Take your time. Let me know when you're ready to continue.",
   twilio_phone_number: "",
   store_audio: false,
+  track_engagement: false,
+  engagement_config: DEFAULT_ENGAGEMENT_CONFIG,
+  adaptive_enabled: false,
+  adaptive_policy: DEFAULT_ADAPTIVE_POLICY,
 };
 
 // ── Grouped select helper ──────────────────────────────────────
@@ -852,6 +928,13 @@ export default function AgentFormPage() {
           silence_prompt: a.silence_prompt || "Take your time. Let me know when you're ready to continue.",
           twilio_phone_number: a.twilio_phone_number || "",
           store_audio: Boolean(a.store_audio),
+          track_engagement: Boolean(a.track_engagement),
+          engagement_config: mergeEngagementConfig(
+            a.modality === "text" ? "text" : "voice",
+            a.engagement_config
+          ),
+          adaptive_enabled: Boolean(a.adaptive_enabled),
+          adaptive_policy: mergeAdaptivePolicy(a.adaptive_policy),
         });
         participants.list(studyId, agentId).then(setPidList).catch(console.error);
         setLoadFailed(false);
@@ -956,6 +1039,13 @@ export default function AgentFormPage() {
       silence_prompt: form.silence_prompt || null,
       twilio_phone_number: form.twilio_phone_number || null,
       store_audio: form.modality === "voice" ? form.store_audio : false,
+      track_engagement: engagementSupported(form) ? form.track_engagement : false,
+      engagement_config:
+        engagementSupported(form) && form.track_engagement
+          ? form.engagement_config
+          : null,
+      adaptive_enabled: adaptiveOn(form),
+      adaptive_policy: adaptiveOn(form) ? form.adaptive_policy : null,
     };
 
     try {
@@ -1233,7 +1323,15 @@ export default function AgentFormPage() {
                   type="button"
                   role="radio"
                   aria-checked={form.modality === "voice"}
-                  onClick={() => setForm((f) => ({ ...f, modality: "voice" }))}
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      modality: "voice",
+                      engagement_config: f.track_engagement
+                        ? f.engagement_config
+                        : DEFAULT_ENGAGEMENT_CONFIG,
+                    }))
+                  }
                   className={`relative rounded-xl border-2 px-4 py-4 text-left transition-all ${
                     form.modality === "voice"
                       ? "border-gray-900 bg-gray-50 shadow-sm"
@@ -1269,6 +1367,9 @@ export default function AgentFormPage() {
                       modality: "text",
                       pipeline_type: "modular",
                       ...(needsModelReset ? { llm_model: "openai/gpt-4.1" } : {}),
+                      engagement_config: f.track_engagement
+                        ? f.engagement_config
+                        : DEFAULT_ENGAGEMENT_CONFIG_TEXT,
                     };
                   })}
                   className={`relative rounded-xl border-2 px-4 py-4 text-left transition-all ${
@@ -1844,7 +1945,9 @@ export default function AgentFormPage() {
                   <code className="bg-gray-100 px-1 rounded text-xs">azure/</code>,{" "}
                   <code className="bg-gray-100 px-1 rounded text-xs">gcp/</code>. Use{" "}
                   <code className="bg-gray-100 px-1 rounded text-xs">custom/&lt;model&gt;</code>{" "}
-                  to hit your own LiteLLM/vLLM/Ollama proxy (set the URL in Settings).
+                  to hit your own LiteLLM/vLLM/Ollama proxy (set the URL and API key under Settings → Custom / Self-Hosted, or via{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">OPENAI_COMPATIBLE_LLM_URL</code> /{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">OPENAI_COMPATIBLE_LLM_API_KEY</code> in <code className="bg-gray-100 px-1 rounded text-xs">.env</code>).
                 </p>
               </div>
             )}
@@ -1908,12 +2011,12 @@ export default function AgentFormPage() {
             )}
             {isModular && form.stt_provider === "self_hosted" && (
               <InfoBanner color="sky">
-                <strong>Self-Hosted STT:</strong> Point this at any OpenAI-compatible speech-to-text server (e.g. Speaches/faster-whisper, LocalAI). Configure <code>SELF_HOSTED_STT_URL</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
+                <strong>Custom STT:</strong> Point this at a LiteLLM proxy or any OpenAI-compatible speech-to-text server (e.g. Speaches/faster-whisper, LocalAI). Configure <code>SELF_HOSTED_STT_URL</code> and <code>SELF_HOSTED_STT_API_KEY</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
               </InfoBanner>
             )}
             {isModular && form.tts_provider === "self_hosted" && (
               <InfoBanner color="sky">
-                <strong>Self-Hosted TTS:</strong> Point this at any OpenAI-compatible text-to-speech server (e.g. Kokoro, Piper, LocalAI). Configure <code>SELF_HOSTED_TTS_URL</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
+                <strong>Custom TTS:</strong> Point this at a LiteLLM proxy or any OpenAI-compatible text-to-speech server (e.g. Kokoro, Piper, LocalAI). Configure <code>SELF_HOSTED_TTS_URL</code> and <code>SELF_HOSTED_TTS_API_KEY</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
               </InfoBanner>
             )}
 
@@ -1936,7 +2039,7 @@ export default function AgentFormPage() {
                           stt_provider: p,
                           stt_model:
                             p === "deepgram"
-                              ? "nova-2"
+                              ? "nova-3"
                               : p === "scaleway"
                                 ? "whisper-large-v3"
                                 : p === "self_hosted"
@@ -2249,6 +2352,89 @@ export default function AgentFormPage() {
                 enabled={form.store_audio}
                 onChange={(store_audio) => setForm((prev) => ({ ...prev, store_audio }))}
               />
+            </div>
+          )}
+
+          {form.modality === "voice" && (
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <TrackEngagementToggle
+                enabled={form.track_engagement}
+                disabled={form.pipeline_type === "voice_to_voice"}
+                disabledReason="Engagement metrics are only available for the modular voice pipeline (STT, LLM, TTS). Voice-to-voice models do not expose the participant audio and turn timing needed to compute them. Switch the pipeline to modular to enable this."
+                onChange={(track_engagement) =>
+                  setForm((prev) => ({ ...prev, track_engagement }))
+                }
+              />
+
+              {form.track_engagement &&
+                form.pipeline_type !== "voice_to_voice" && (
+                  <>
+                    <EngagementConfigFields
+                      config={form.engagement_config}
+                      onChange={(engagement_config) =>
+                        setForm((prev) => ({ ...prev, engagement_config }))
+                      }
+                    />
+                    <div className="mt-5 pt-5 border-t border-gray-100">
+                      <AdaptiveBehaviorToggle
+                        enabled={form.adaptive_enabled}
+                        onChange={(adaptive_enabled) =>
+                          setForm((prev) => ({ ...prev, adaptive_enabled }))
+                        }
+                      />
+                      {form.adaptive_enabled && (
+                        <AdaptivePolicyFields
+                          policy={form.adaptive_policy}
+                          onChange={(adaptive_policy) =>
+                            setForm((prev) => ({ ...prev, adaptive_policy }))
+                          }
+                          allowSpeed
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
+            </div>
+          )}
+
+          {form.modality === "text" && (
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <TrackEngagementToggle
+                enabled={form.track_engagement}
+                description="Record per-turn engagement signals for this text chat (response time, answer length, and lexical hedging) plus a score for each participant turn. Observational only; it does not change the interview. Audio-based signals (speech rate, energy) are not available for text. Off by default."
+                onChange={(track_engagement) =>
+                  setForm((prev) => ({ ...prev, track_engagement }))
+                }
+              />
+
+              {form.track_engagement && (
+                <>
+                  <EngagementConfigFields
+                    config={form.engagement_config}
+                    onChange={(engagement_config) =>
+                      setForm((prev) => ({ ...prev, engagement_config }))
+                    }
+                  />
+                  <div className="mt-5 pt-5 border-t border-gray-100">
+                    <AdaptiveBehaviorToggle
+                      enabled={form.adaptive_enabled}
+                      description="Use the engagement signals above to adjust the agent during this text chat (e.g. offer a break, soften a question, encourage elaboration). Starts in shadow mode, which logs intended actions without applying them. Pace actions do not apply to text. Off by default."
+                      onChange={(adaptive_enabled) =>
+                        setForm((prev) => ({ ...prev, adaptive_enabled }))
+                      }
+                    />
+                    {form.adaptive_enabled && (
+                      <AdaptivePolicyFields
+                        policy={form.adaptive_policy}
+                        onChange={(adaptive_policy) =>
+                          setForm((prev) => ({ ...prev, adaptive_policy }))
+                        }
+                        allowSpeed={false}
+                      />
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

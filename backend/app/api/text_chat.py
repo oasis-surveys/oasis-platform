@@ -15,6 +15,7 @@ This endpoint:
 import asyncio
 import json
 import secrets
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -142,13 +143,15 @@ async def _maybe_inject_rag_context(
                 f"{r['content']}"
             )
         context_text = "\n\n---\n\n".join(context_parts)
+        # User-role note: mid-conversation system messages are rejected by
+        # some chat APIs (OpenAI gpt-5.x) with a 400 error.
         rag_message = {
-            "role": "system",
+            "role": "user",
             "content": (
-                "The following information from the study's knowledge base may "
-                "be relevant to the participant's question. Use it to inform "
-                "your response if appropriate, but do not mention that you are "
-                "consulting a knowledge base.\n\n"
+                "[Knowledge base context — this is background material for "
+                "you, not something the participant said. Use it to inform "
+                "your response if appropriate, but do not mention that you "
+                "are consulting a knowledge base.]\n\n"
                 f"{context_text}"
             ),
         }
@@ -301,6 +304,135 @@ async def _log_turn(
         await db.commit()
 
 
+async def _record_engagement_turn(
+    session_id: uuid.UUID,
+    scorer,
+    detector,
+    *,
+    sequence: int,
+    text: str,
+    language: str | None,
+    response_latency_ms: int | None,
+) -> None:
+    """
+    Compute and persist engagement metrics for one text-chat user turn.
+
+    Text interviews expose only lexical and timing signals (no audio), so
+    voiced duration, speech rate, and energy stay null. Never raises — a
+    failure here must not break the interview.
+    """
+    from app.engagement.features import TurnFeatures
+    from app.models.engagement import EngagementEvent, EngagementTurn
+
+    try:
+        features = TurnFeatures.from_turn(
+            transcript_sequence=sequence,
+            text=text or "",
+            language=language,
+            response_latency_ms=response_latency_ms,
+            voiced_ms=None,
+            modality="text",
+        )
+        result = scorer.score(features)
+        events = detector.observe(result.label)
+        event_types = [e.event_type for e in events]
+
+        async with async_session_factory() as db:
+            db.add(
+                EngagementTurn(
+                    id=uuid.uuid4(),
+                    session_id=session_id,
+                    transcript_sequence=sequence,
+                    response_latency_ms=features.response_latency_ms,
+                    voiced_ms=None,
+                    word_count=features.word_count,
+                    char_count=features.char_count,
+                    speech_rate_wpm=None,
+                    filler_count=features.filler_count,
+                    rms_energy=None,
+                    score=result.score,
+                    label=result.label,
+                    extras={
+                        "flags": result.flags,
+                        "components": result.components,
+                        "modality": "text",
+                    },
+                )
+            )
+            for ev in events:
+                db.add(
+                    EngagementEvent(
+                        id=uuid.uuid4(),
+                        session_id=session_id,
+                        transcript_sequence=sequence,
+                        event_type=ev.event_type,
+                        score_at_event=result.score,
+                        payload=ev.payload,
+                    )
+                )
+            await db.commit()
+        return {"triggers": set(event_types) | set(result.flags)}
+    except Exception as exc:
+        logger.error(f"Text engagement: failed to record turn {sequence}: {exc}")
+        return None
+
+
+async def _apply_text_adaptation(
+    session_id: uuid.UUID,
+    engine,
+    *,
+    sequence: int,
+    triggers: set[str],
+    messages: list[dict],
+) -> None:
+    """
+    Evaluate the adaptive policy for a text turn and, in live mode, inject a
+    system instruction before the next LLM call. Speed actions do not apply to
+    text. Every action is recorded for disclosure. Never raises.
+    """
+    import time
+
+    from app.engagement.adaptive import PROMPT, guidance_message
+    from app.models.engagement import AdaptiveAction
+
+    try:
+        actions = engine.evaluate(triggers, time.monotonic())
+        if not actions:
+            return
+        live = engine.policy.is_live
+        async with async_session_factory() as db:
+            for act in actions:
+                applied = False
+                if act.type == PROMPT and act.instruction:
+                    if live:
+                        # User-role note: mid-conversation system messages are
+                        # rejected by some chat APIs (OpenAI gpt-5.x, 400).
+                        messages.append(guidance_message(act.instruction))
+                        applied = True
+                    detail = {"applied": applied, "instruction": act.instruction}
+                else:
+                    # tts_speed has no effect in text chat.
+                    detail = {
+                        "applied": False,
+                        "params": act.params,
+                        "note": "speed_not_applicable_to_text",
+                    }
+                db.add(
+                    AdaptiveAction(
+                        id=uuid.uuid4(),
+                        session_id=session_id,
+                        transcript_sequence=sequence,
+                        trigger=act.trigger,
+                        action=act.action,
+                        mode=engine.policy.mode,
+                        detail=detail,
+                    )
+                )
+            await db.commit()
+    except Exception as exc:
+        logger.error(f"Text adaptation: failed at turn {sequence}: {exc}")
+
+
 @router.websocket("/ws/chat/{widget_key}")
 async def text_chat_ws(
     websocket: WebSocket,
@@ -351,6 +483,10 @@ async def text_chat_ws(
                 else (agent.interview_mode or "free_form")
             ),
             "interview_guide": agent.interview_guide,
+            "track_engagement": bool(agent.track_engagement),
+            "engagement_config": agent.engagement_config,
+            "adaptive_enabled": bool(agent.adaptive_enabled),
+            "adaptive_policy": agent.adaptive_policy,
         }
 
         # ── 2. Resolve participant_id ─────────────────────────────
@@ -391,12 +527,23 @@ async def text_chat_ws(
                 return
             participant_id = pid.strip()
 
+        # Adaptation can affect this chat only when engagement is on, the
+        # policy has rules, and the mode is live.
+        _policy = agent_cfg.get("adaptive_policy") or {}
+        adaptive_active = bool(
+            agent_cfg["track_engagement"]
+            and agent_cfg["adaptive_enabled"]
+            and _policy.get("rules")
+            and _policy.get("mode") == "live"
+        )
+
         # ── 3. Create session ─────────────────────────────────────
         session = Session(
             id=uuid.uuid4(),
             agent_id=agent_cfg["id"],
             status=SessionStatus.ACTIVE,
             participant_id=participant_id,
+            adaptive_active=adaptive_active,
         )
         db.add(session)
         await db.commit()
@@ -447,6 +594,33 @@ async def text_chat_ws(
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
     sequence = 0
 
+    # ── Engagement metrics (text profile; observational, lexical + timing) ──
+    engagement_scorer = None
+    engagement_detector = None
+    adaptive_engine = None
+    agent_sent_at: float | None = None
+    if agent_cfg["track_engagement"]:
+        from app.engagement.events import EventDetector
+        from app.engagement.scorer import RuleBasedScorer, ScorerConfig
+
+        _eng_cfg = ScorerConfig.from_dict(
+            agent_cfg["engagement_config"], modality="text"
+        )
+        engagement_scorer = RuleBasedScorer(_eng_cfg)
+        engagement_detector = EventDetector(_eng_cfg)
+        logger.info(f"Engagement tracking enabled for text session {session_id}")
+
+        if agent_cfg["adaptive_enabled"]:
+            from app.engagement.adaptive import AdaptivePolicy, AdaptivePolicyEngine
+
+            _policy_obj = AdaptivePolicy.from_dict(agent_cfg["adaptive_policy"])
+            if _policy_obj.rules:
+                adaptive_engine = AdaptivePolicyEngine(_policy_obj)
+                logger.info(
+                    f"Adaptive behavior ({_policy_obj.mode}) enabled for text "
+                    f"session {session_id}"
+                )
+
     # ── 5. Send welcome message ───────────────────────────────────
     welcome = agent_cfg["welcome_message"]
     if welcome:
@@ -464,6 +638,8 @@ async def text_chat_ws(
             "content": welcome,
             "sequence": sequence,
         })
+        if engagement_scorer:
+            agent_sent_at = time.monotonic()
 
     # ── 6. Chat loop ──────────────────────────────────────────────
     keepalive_stop = asyncio.Event()
@@ -517,6 +693,30 @@ async def text_chat_ws(
                 "sequence": sequence,
             })
 
+            if engagement_scorer:
+                latency_ms = (
+                    int((time.monotonic() - agent_sent_at) * 1000)
+                    if agent_sent_at is not None
+                    else None
+                )
+                eng = await _record_engagement_turn(
+                    session_id,
+                    engagement_scorer,
+                    engagement_detector,
+                    sequence=sequence,
+                    text=user_text,
+                    language=agent_cfg["language"],
+                    response_latency_ms=latency_ms,
+                )
+                if adaptive_engine and eng and eng.get("triggers"):
+                    await _apply_text_adaptation(
+                        session_id,
+                        adaptive_engine,
+                        sequence=sequence,
+                        triggers=eng["triggers"],
+                        messages=messages,
+                    )
+
             messages.append({"role": "user", "content": user_text})
 
             # Call LLM
@@ -554,6 +754,8 @@ async def text_chat_ws(
                     "text": agent_text,
                     "role": "agent",
                 })
+                if engagement_scorer:
+                    agent_sent_at = time.monotonic()
 
             except Exception as llm_err:
                 logger.exception(f"Chat {session_id}: LLM error — {llm_err}")

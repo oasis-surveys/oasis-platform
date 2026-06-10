@@ -38,6 +38,7 @@ class SessionRead(BaseModel):
     audio_recording_enabled: bool = False
     audio_storage_uri: Optional[str] = None
     audio_recording_status: str = "none"
+    adaptive_active: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -57,6 +58,57 @@ class SessionAudioManifestRead(BaseModel):
     storage_uri: Optional[str] = None
     recording_status: str
     turns: list[AudioTurnRead] = []
+
+
+# ── Engagement metrics ───────────────────────────────────────────────────────
+
+class EngagementTurnRead(BaseModel):
+    transcript_sequence: int
+    response_latency_ms: Optional[int] = None
+    voiced_ms: Optional[int] = None
+    word_count: Optional[int] = None
+    char_count: Optional[int] = None
+    speech_rate_wpm: Optional[float] = None
+    filler_count: Optional[int] = None
+    rms_energy: Optional[float] = None
+    score: Optional[float] = None
+    label: Optional[str] = None
+    flags: list[str] = []
+
+    model_config = {"from_attributes": True}
+
+
+class EngagementEventRead(BaseModel):
+    transcript_sequence: Optional[int] = None
+    event_type: str
+    score_at_event: Optional[float] = None
+
+    model_config = {"from_attributes": True}
+
+
+class AdaptiveActionRead(BaseModel):
+    transcript_sequence: Optional[int] = None
+    trigger: str
+    action: str
+    mode: str
+    detail: Optional[dict] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EngagementSummaryRead(BaseModel):
+    session_id: UUID
+    turn_count: int = 0
+    average_score: Optional[float] = None
+    label: Optional[str] = None
+    average_latency_ms: Optional[int] = None
+    average_words: Optional[float] = None
+    low_engagement_turns: int = 0
+    turns: list[EngagementTurnRead] = []
+    events: list[EngagementEventRead] = []
+    adaptive_active: bool = False
+    adaptive_actions: list[AdaptiveActionRead] = []
 
 
 class SessionDetailRead(SessionRead):

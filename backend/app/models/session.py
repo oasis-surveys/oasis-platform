@@ -79,6 +79,11 @@ class Session(Base):
         server_default=AudioRecordingStatus.NONE.value,
     )
 
+    # ── Adaptive behavior (set at session start when live) ──
+    adaptive_active: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+
     # ── Relationships ──
     agent = relationship(
         "Agent",
@@ -89,6 +94,24 @@ class Session(Base):
         back_populates="session",
         cascade="all, delete-orphan",
         order_by="TranscriptEntry.sequence",
+    )
+    engagement_turns = relationship(
+        "EngagementTurn",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="EngagementTurn.transcript_sequence",
+    )
+    engagement_events = relationship(
+        "EngagementEvent",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="EngagementEvent.created_at",
+    )
+    adaptive_actions = relationship(
+        "AdaptiveAction",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="AdaptiveAction.created_at",
     )
 
 
