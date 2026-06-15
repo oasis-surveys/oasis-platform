@@ -421,6 +421,7 @@ function buildAgentConfigJSON(form: FormData): string {
     widget_description: form.widget_description || null,
     widget_primary_color: form.widget_primary_color || null,
     widget_listening_message: form.widget_listening_message || null,
+    widget_show_progress: form.widget_show_progress,
     interview_mode: form.interview_mode,
     interview_guide:
       form.interview_mode === "structured" && form.interview_guide.questions.length > 0
@@ -497,6 +498,7 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     widget_description: (obj.widget_description as string) || "",
     widget_primary_color: (obj.widget_primary_color as string) || "#111827",
     widget_listening_message: (obj.widget_listening_message as string) || "Agent is listening…",
+    widget_show_progress: Boolean(obj.widget_show_progress),
     interview_mode: (obj.interview_mode as "free_form" | "structured") || "free_form",
     interview_guide: obj.interview_guide
       ? (obj.interview_guide as InterviewGuide)
@@ -596,6 +598,7 @@ interface FormData {
   widget_description: string;
   widget_primary_color: string;
   widget_listening_message: string;
+  widget_show_progress: boolean;
   interview_mode: "free_form" | "structured";
   interview_guide: InterviewGuide;
   silence_timeout_seconds: string;
@@ -645,6 +648,7 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   widget_description: "",
   widget_primary_color: "#0D7377",
   widget_listening_message: "Agent is listening…",
+  widget_show_progress: false,
   interview_mode: "free_form",
   interview_guide: {
     questions: [],
@@ -934,6 +938,7 @@ export default function AgentFormPage() {
           widget_description: a.widget_description || "",
           widget_primary_color: a.widget_primary_color || "#111827",
           widget_listening_message: a.widget_listening_message || "Agent is listening…",
+          widget_show_progress: Boolean(a.widget_show_progress),
           interview_mode: a.interview_mode || "free_form",
           interview_guide: a.interview_guide || {
             questions: [],
@@ -1045,6 +1050,7 @@ export default function AgentFormPage() {
       widget_description: form.widget_description || null,
       widget_primary_color: form.widget_primary_color || null,
       widget_listening_message: form.widget_listening_message || null,
+      widget_show_progress: form.widget_show_progress,
       interview_mode: form.interview_mode,
       interview_guide:
         form.interview_mode === "structured" && form.interview_guide.questions.length > 0
@@ -2762,6 +2768,31 @@ export default function AgentFormPage() {
               />
               <span className="text-xs text-gray-500">Preview of your primary colour</span>
             </div>
+
+            {/* Progress bar: structured mode only, and not voice-to-voice
+                (V2V streams audio with no text stage to strip the marker). */}
+            {form.interview_mode === "structured" &&
+              !(form.modality === "voice" && form.pipeline_type === "voice_to_voice") && (
+              <label className="flex items-start gap-3 rounded-xl bg-gray-50 p-3 border border-gray-100 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.widget_show_progress}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, widget_show_progress: e.target.checked }))
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+                />
+                <span className="text-sm text-gray-700">
+                  <span className="font-medium flex items-center gap-1">
+                    Show progress bar
+                    <HelpTooltip text="Displays a slim bar to participants that advances as the interview moves through your main questions. Follow-up probes do not move it. Available in structured mode, except for voice-to-voice pipelines." />
+                  </span>
+                  <span className="block text-xs text-gray-400 mt-0.5">
+                    Advances with main questions only, not probes.
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
         </div>
 

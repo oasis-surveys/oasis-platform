@@ -30,6 +30,7 @@ from app.pipeline.interview_guide import (
     StructuredOutputFilter,
     build_structured_prompt,
     looks_like_clarification,
+    strip_progress_marker,
 )
 
 
@@ -244,6 +245,94 @@ class TestStructuredOutputFilter:
         assert "trailing text" not in spoken
         assert "Second turn statement." in spoken
         assert "Second question?" in spoken
+
+
+class TestStripProgressMarker:
+    def test_extracts_and_removes_tag(self):
+        cleaned, n = strip_progress_marker("[[Q3]] What changed for you?")
+        assert n == 3
+        assert "[[Q3]]" not in cleaned
+        assert "What changed for you?" in cleaned
+
+    def test_no_marker_returns_none(self):
+        cleaned, n = strip_progress_marker("Just a normal answer.")
+        assert n is None
+        assert cleaned == "Just a normal answer."
+
+    def test_tolerates_whitespace_and_case(self):
+        _, n = strip_progress_marker("[[ q 2 ]] next question")
+        assert n == 2
+
+    def test_highest_number_wins_when_multiple(self):
+        _, n = strip_progress_marker("[[Q1]] foo [[Q4]] bar")
+        assert n == 4
+
+
+class TestProgressMarkerPrompt:
+    def test_instruction_added_only_when_enabled(self, two_question_guide):
+        on = build_structured_prompt("Hi.", two_question_guide, emit_progress=True)
+        off = build_structured_prompt("Hi.", two_question_guide, emit_progress=False)
+        assert "Progress marker" in on
+        assert "[[Qn]]" in on
+        assert "2 main questions" in on
+        assert "every later" in on  # emphasises tagging beyond the first question
+        assert "Progress marker" not in off
+
+
+class TestProgressBarReporting:
+    @pytest.mark.asyncio
+    async def test_marker_is_stripped_and_reported(self):
+        seen: List[tuple] = []
+
+        async def cb(current, total):
+            seen.append((current, total))
+
+        filt = StructuredOutputFilter(progress_callback=cb, total_questions=3)
+        down, _ = await run_test(
+            processor=filt,
+            frames_to_send=_llm_response(
+                "[[Q2]] What would you change about that?",
+            ),
+        )
+        spoken = _spoken_text(down)
+        assert "[[Q2]]" not in spoken
+        assert "What would you change about that?" in spoken
+        assert seen == [(2, 3)]
+
+    @pytest.mark.asyncio
+    async def test_marker_split_across_chunks(self):
+        seen: List[tuple] = []
+
+        async def cb(current, total):
+            seen.append((current, total))
+
+        filt = StructuredOutputFilter(progress_callback=cb, total_questions=4)
+        down, _ = await run_test(
+            processor=filt,
+            frames_to_send=_llm_response("[[", "Q", "3", "]] ", "How did that feel?"),
+        )
+        spoken = _spoken_text(down)
+        assert "Q3" not in spoken
+        assert "How did that feel?" in spoken
+        assert seen == [(3, 4)]
+
+    @pytest.mark.asyncio
+    async def test_progress_is_monotonic_and_clamped(self):
+        seen: List[tuple] = []
+
+        async def cb(current, total):
+            seen.append((current, total))
+
+        filt = StructuredOutputFilter(progress_callback=cb, total_questions=2)
+        frames = (
+            _llm_response("[[Q2]] Second question?")
+            + _llm_response("[[Q1]] A backward jump that must be ignored?")
+            + _llm_response("[[Q9]] Out of range, clamp to total?")
+        )
+        await run_test(processor=filt, frames_to_send=frames)
+        # Q2 reported once; backward Q1 ignored; Q9 clamps to 2 which is not an
+        # advance, so it's also ignored.
+        assert seen == [(2, 2)]
 
 
 class TestLooksLikeClarification:

@@ -150,6 +150,11 @@ class Agent(Base):
     widget_listening_message: Mapped[str | None] = mapped_column(
         String(255), nullable=True, default="Agent is listening…"
     )
+    # Show a main-question progress bar to participants. Only takes effect in
+    # structured interview mode; ignored for free-form agents.
+    widget_show_progress: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
 
     # ── Interview mode ──
     interview_mode: Mapped[InterviewMode] = mapped_column(

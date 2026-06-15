@@ -4,6 +4,24 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-06-15
+
+### Added
+
+- Optional progress bar for structured interviews. Researchers turn it on per
+  agent in the widget customization section, where it only shows up when the
+  agent is in structured mode and is not a voice-to-voice pipeline. When it is
+  on, the participant sees a slim bar in the widget's primary color that fills
+  as the interview moves through the main questions. Follow-up probes do not
+  move it, and it only goes forward, never backward and never past the last
+  question. It works for text chat and the modular voice pipeline.
+  The agent marks each main question with a hidden tag that is removed before
+  the participant sees or hears anything; the bar advances when a new tag
+  arrives. If the model ever skips a tag the bar just holds until the next main
+  question, so it cannot break the interview. Voice-to-voice is not supported
+  because that pipeline streams audio straight from the model, leaving no text
+  stage where the tag could be read and stripped.
+
 ## 2026-06-10
 
 ### Changed
