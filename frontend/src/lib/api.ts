@@ -129,6 +129,7 @@ export interface Agent {
   widget_description: string | null;
   widget_primary_color: string | null;
   widget_listening_message: string | null;
+  widget_show_progress: boolean;
   interview_mode: "free_form" | "structured";
   interview_guide: {
     questions: {
@@ -345,7 +346,10 @@ export interface WidgetConfig {
   widget_description: string | null;
   widget_primary_color: string;
   widget_listening_message: string | null;
+  widget_show_progress: boolean;
   participant_id_mode: "random" | "predefined" | "input";
+  interview_mode: "free_form" | "structured";
+  question_count: number;
   welcome_message: string | null;
   language: string;
 }

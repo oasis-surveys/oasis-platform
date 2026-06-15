@@ -106,6 +106,7 @@ async def interview_ws(
             "engagement_config": agent.engagement_config,
             "adaptive_enabled": bool(agent.adaptive_enabled),
             "adaptive_policy": agent.adaptive_policy,
+            "widget_show_progress": bool(agent.widget_show_progress),
         }
 
         # ── 2. Resolve participant_id ──────────────────────────────
@@ -245,6 +246,7 @@ async def interview_ws(
             engagement_config=agent_cfg["engagement_config"],
             adaptive_enabled=agent_cfg["adaptive_enabled"],
             adaptive_policy=agent_cfg["adaptive_policy"],
+            widget_show_progress=agent_cfg["widget_show_progress"],
         )
 
         runner = PipelineRunner(handle_sigint=False, handle_sigterm=False)

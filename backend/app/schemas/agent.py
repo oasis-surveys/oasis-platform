@@ -150,6 +150,7 @@ class AgentCreate(BaseModel):
     widget_description: str | None = None
     widget_primary_color: str | None = "#111827"
     widget_listening_message: str | None = "Agent is listening…"
+    widget_show_progress: bool = False
 
     # Interview mode
     interview_mode: InterviewMode = InterviewMode.FREE_FORM
@@ -203,6 +204,7 @@ class AgentUpdate(BaseModel):
     widget_description: str | None = None
     widget_primary_color: str | None = None
     widget_listening_message: str | None = None
+    widget_show_progress: bool | None = None
 
     # Interview mode
     interview_mode: InterviewMode | None = None
@@ -257,6 +259,7 @@ class AgentRead(BaseModel):
     widget_description: str | None
     widget_primary_color: str | None
     widget_listening_message: str | None
+    widget_show_progress: bool
 
     interview_mode: InterviewMode
     interview_guide: dict | None

@@ -189,6 +189,29 @@ def _clarification_re(lang: str) -> re.Pattern:
     return re.compile("|".join(patterns), re.IGNORECASE)
 
 
+def strip_progress_marker(text: str) -> tuple[str, Optional[int]]:
+    """Remove hidden ``[[Qn]]`` progress tags from ``text``.
+
+    Returns ``(cleaned_text, n)`` where ``n`` is the highest question number
+    seen (or ``None`` if no tag was present). Used by both the voice output
+    filter and the text-chat loop so participants never see the tag.
+    """
+    found: Optional[int] = None
+
+    def _sub(match: re.Match) -> str:
+        nonlocal found
+        try:
+            n = int(match.group(1))
+        except (TypeError, ValueError):
+            return ""
+        if found is None or n > found:
+            found = n
+        return ""
+
+    cleaned = PROGRESS_MARKER_RE.sub(_sub, text)
+    return cleaned, found
+
+
 def looks_like_clarification(text: str, language: str = "en") -> bool:
     """True if a user turn reads as a clarification/repeat request rather
     than an answer (e.g. "sorry?", "what do you mean by that?").
@@ -212,11 +235,42 @@ def looks_like_clarification(text: str, language: str = "en") -> bool:
     return False
 
 
+# ── Progress marker ─────────────────────────────────────────────────────────
+#
+# When the progress bar is enabled, the model prefixes each main question with a
+# hidden tag like ``[[Q3]]``. The tag never reaches the participant: the voice
+# path strips it in StructuredOutputFilter, the text path strips it before
+# sending. Probes, clarifications, and the closing carry no tag, so the bar only
+# advances on main questions. A missed tag is harmless: the bar holds until the
+# next tagged question.
+
+PROGRESS_MARKER_RE = re.compile(r"\[\[\s*Q\s*(\d+)\s*\]\]", re.IGNORECASE)
+
+
+def progress_marker_instruction(total: int) -> str:
+    """Prompt fragment asking the model to emit the hidden progress tag."""
+    return (
+        "\n\n### Progress marker (hidden, required on EVERY main question)\n"
+        f"This interview has {total} main questions, numbered 1 to {total}. "
+        "Every single time you ask a MAIN question, begin that message with a "
+        "hidden tag of the exact form [[Qn]], where n is the number of that "
+        "main question. Your first main question starts with [[Q1]], your "
+        f"second main question starts with [[Q2]], and so on up to [[Q{total}]]. "
+        "This is not a one-time thing: tag the second, third, and every later "
+        "main question too, not just the first. Do NOT add the tag to follow-up "
+        "probes, clarification answers, acknowledgements, or the closing "
+        "message. The tag is removed automatically before the participant sees "
+        "or hears it, so never mention it, never read it aloud, and never "
+        "explain it. Put nothing before the tag."
+    )
+
+
 # ── Prompt builder ──────────────────────────────────────────────────────────
 
 def build_structured_prompt(
     base_prompt: str,
     guide: dict,
+    emit_progress: bool = False,
 ) -> str:
     """
     Build a system prompt that encodes the interview guide.
@@ -354,7 +408,10 @@ unused probes remain, unless the participant has already clearly covered
 them or the protocol tells you to advance.
 """
 
-    return base_prompt.rstrip() + structured_section
+    prompt = base_prompt.rstrip() + structured_section
+    if emit_progress:
+        prompt += progress_marker_instruction(len(questions))
+    return prompt
 
 
 # ── Structured output filter ────────────────────────────────────────────────
@@ -396,14 +453,27 @@ class StructuredOutputFilter(FrameProcessor):
 
     Outside structured interviews the pipeline simply doesn't include this
     processor.
+
+    When ``progress_callback`` is provided, hidden ``[[Qn]]`` tags are pulled
+    out of the stream and reported (monotonically, clamped to
+    ``total_questions``) so the participant UI can advance a progress bar. The
+    tag is always removed before any text is pushed downstream to TTS.
     """
 
-    def __init__(self, name: str = "StructuredOutputFilter"):
+    def __init__(
+        self,
+        name: str = "StructuredOutputFilter",
+        progress_callback=None,
+        total_questions: int = 0,
+    ):
         super().__init__(name=name)
         self._in_response = False
         self._pending = ""
         self._question_done = False
         self._dropped_chars = 0
+        self._progress_callback = progress_callback
+        self._total_questions = total_questions
+        self._reported_progress = 0
 
     def _reset(self):
         self._in_response = False
@@ -411,7 +481,27 @@ class StructuredOutputFilter(FrameProcessor):
         self._question_done = False
         self._dropped_chars = 0
 
+    async def _report_progress(self, question_number: int):
+        """Report a main-question number to the UI: forward-only, clamped."""
+        if not self._progress_callback:
+            return
+        n = question_number
+        if self._total_questions:
+            n = min(n, self._total_questions)
+        if n <= self._reported_progress:
+            return
+        self._reported_progress = n
+        try:
+            await self._progress_callback(n, self._total_questions)
+        except Exception as exc:  # progress is best-effort, never break the call
+            logger.debug("[guide] progress callback failed: {}", exc)
+
     async def _emit_sentence(self, sentence: str, direction: FrameDirection):
+        # Pull progress tags out first so they never reach TTS, even on a
+        # sentence we go on to drop after the turn's first question.
+        sentence, marker = strip_progress_marker(sentence)
+        if marker is not None:
+            await self._report_progress(marker)
         if self._question_done:
             self._dropped_chars += len(sentence)
             return
@@ -716,6 +806,7 @@ class InterviewGuideProcessor(FrameProcessor):
 __all__ = [
     "build_structured_prompt",
     "looks_like_clarification",
+    "strip_progress_marker",
     "InterviewGuideProcessor",
     "StructuredOutputFilter",
     "DEFAULT_MAX_FOLLOW_UPS",

@@ -98,6 +98,17 @@ async def widget_config(widget_key: str, db: AsyncSession = Depends(get_db)):
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Agent not found or inactive")
 
+    _interview_mode = (
+        agent.interview_mode.value
+        if hasattr(agent.interview_mode, "value")
+        else (agent.interview_mode or "free_form")
+    )
+    _pipeline_type = (
+        agent.pipeline_type.value
+        if hasattr(agent.pipeline_type, "value")
+        else (agent.pipeline_type or "modular")
+    )
+
     return {
         "widget_key": agent.widget_key,
         "modality": (
@@ -113,6 +124,20 @@ async def widget_config(widget_key: str, db: AsyncSession = Depends(get_db)):
         "participant_id_mode": agent.participant_id_mode.value
             if hasattr(agent.participant_id_mode, "value")
             else agent.participant_id_mode,
+        "interview_mode": _interview_mode,
+        # Effective progress flag: only true when the bar can actually advance
+        # (structured, and not a voice-to-voice pipeline that can't strip the
+        # hidden marker). Keeps stale V2V configs from rendering a dead bar.
+        "widget_show_progress": bool(
+            agent.widget_show_progress
+            and _interview_mode == "structured"
+            and _pipeline_type != "voice_to_voice"
+        ),
+        # Total main questions, so the participant UI can render the bar
+        # without ever seeing the guide contents.
+        "question_count": len((agent.interview_guide or {}).get("questions", []))
+            if _interview_mode == "structured"
+            else 0,
         "welcome_message": agent.welcome_message,
         "language": agent.language,
     }

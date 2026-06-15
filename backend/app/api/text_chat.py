@@ -487,6 +487,7 @@ async def text_chat_ws(
             "engagement_config": agent.engagement_config,
             "adaptive_enabled": bool(agent.adaptive_enabled),
             "adaptive_policy": agent.adaptive_policy,
+            "widget_show_progress": bool(agent.widget_show_progress),
         }
 
         # ── 2. Resolve participant_id ─────────────────────────────
@@ -577,12 +578,25 @@ async def text_chat_ws(
 
     # ── 4. Build system prompt ────────────────────────────────────
     system_prompt = agent_cfg["system_prompt"]
-    if (
+    is_structured = bool(
         agent_cfg["interview_mode"] == "structured"
         and agent_cfg["interview_guide"]
-    ):
+    )
+    # Progress bar: only meaningful for structured chats with the toggle on.
+    show_progress = bool(is_structured and agent_cfg["widget_show_progress"])
+    progress_total = (
+        len(agent_cfg["interview_guide"].get("questions", []))
+        if is_structured
+        else 0
+    )
+    reported_progress = 0
+    if is_structured:
         from app.pipeline.interview_guide import build_structured_prompt
-        system_prompt = build_structured_prompt(system_prompt, agent_cfg["interview_guide"])
+        system_prompt = build_structured_prompt(
+            system_prompt,
+            agent_cfg["interview_guide"],
+            emit_progress=show_progress,
+        )
 
     # Add text-chat specific instructions
     system_prompt += (
@@ -730,14 +744,34 @@ async def text_chat_ws(
                     study_id=agent_cfg["study_id"],
                 )
                 agent_text = llm_result["content"]
+
+                # Keep the raw reply (tag included) in the model's own context
+                # so it keeps tagging later main questions. The tag is removed
+                # from everything the participant and the transcript see below.
                 messages.append({"role": "assistant", "content": agent_text})
+
+                display_text = agent_text
+                if show_progress:
+                    from app.pipeline.interview_guide import strip_progress_marker
+
+                    display_text, marker = strip_progress_marker(agent_text)
+                    display_text = display_text.lstrip()
+                    if marker is not None:
+                        marker = min(marker, progress_total) if progress_total else marker
+                        if marker > reported_progress:
+                            reported_progress = marker
+                            await websocket.send_json({
+                                "type": "progress",
+                                "current": reported_progress,
+                                "total": progress_total,
+                            })
 
                 # Log agent turn
                 sequence += 1
                 await _log_turn(
                     session_id,
                     SpeakerRole.AGENT,
-                    agent_text,
+                    display_text,
                     sequence,
                     prompt_tokens=llm_result["prompt_tokens"],
                     completion_tokens=llm_result["completion_tokens"],
@@ -745,13 +779,13 @@ async def text_chat_ws(
                 await publish_transcript_event(str(session_id), {
                     "type": "transcript",
                     "role": "agent",
-                    "content": agent_text,
+                    "content": display_text,
                     "sequence": sequence,
                 })
 
                 await websocket.send_json({
                     "type": "message",
-                    "text": agent_text,
+                    "text": display_text,
                     "role": "agent",
                 })
                 if engagement_scorer:

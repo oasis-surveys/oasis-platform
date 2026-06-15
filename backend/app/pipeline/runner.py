@@ -305,6 +305,7 @@ async def build_pipeline(
     engagement_config: Optional[dict] = None,
     adaptive_enabled: bool = False,
     adaptive_policy: Optional[dict] = None,
+    widget_show_progress: bool = False,
 ) -> tuple[PipelineTask, Optional[AudioRecordingManager]]:
     """
     Build and return a ready-to-run PipelineTask plus optional audio manager.
@@ -312,13 +313,40 @@ async def build_pipeline(
     """
 
     # ── Structured interview prompt enhancement ───────────────────
+    # The progress bar only works on the modular pipeline (the V2V audio stream
+    # has no text filter to strip the hidden marker), so we only ask the model
+    # to emit markers there.
+    emit_progress = bool(
+        widget_show_progress
+        and interview_mode == "structured"
+        and interview_guide
+        and pipeline_type != "voice_to_voice"
+    )
     effective_prompt = system_prompt
     if interview_mode == "structured" and interview_guide:
         from app.pipeline.interview_guide import build_structured_prompt
-        effective_prompt = build_structured_prompt(system_prompt, interview_guide)
+        effective_prompt = build_structured_prompt(
+            system_prompt, interview_guide, emit_progress=emit_progress
+        )
         logger.info(
             f"Structured interview mode: {len(interview_guide.get('questions', []))} questions loaded"
         )
+
+    # ── Progress bar updates (structured modular voice only) ──────
+    # Sent to the participant as a JSON text frame on the same WebSocket. The
+    # browser already distinguishes binary audio frames from JSON control
+    # messages, and these fire only a handful of times per interview.
+    _progress_callback = None
+    if emit_progress:
+        async def _send_progress(current: int, total: int):
+            try:
+                await websocket.send_json(
+                    {"type": "progress", "current": current, "total": total}
+                )
+            except Exception as exc:
+                logger.debug(f"Progress send failed (non-fatal): {exc}")
+
+        _progress_callback = _send_progress
 
     # ── Transport (WebSocket ↔ browser) ───────────────────────────
     serializer = _build_serializer()
@@ -435,6 +463,7 @@ async def build_pipeline(
             interview_guide=interview_guide,
             engagement_processor=engagement_processor,
             adaptive_processor=adaptive_processor,
+            progress_callback=_progress_callback,
         )
 
     return task, audio_manager
@@ -707,6 +736,7 @@ async def _build_modular_pipeline(
     interview_guide: Optional[dict] = None,
     engagement_processor=None,
     adaptive_processor=None,
+    progress_callback=None,
 ) -> PipelineTask:
     """Build the modular STT → LLM → TTS pipeline."""
 
@@ -761,7 +791,10 @@ async def _build_modular_pipeline(
             StructuredOutputFilter,
         )
         guide_processor = InterviewGuideProcessor(interview_guide, language=language)
-        guide_output_filter = StructuredOutputFilter()
+        guide_output_filter = StructuredOutputFilter(
+            progress_callback=progress_callback,
+            total_questions=guide_processor.total_questions,
+        )
         logger.info(
             "Interview guide processor active "
             f"({guide_processor.total_questions} questions)"

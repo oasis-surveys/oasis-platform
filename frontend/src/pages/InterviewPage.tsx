@@ -130,6 +130,7 @@ export default function InterviewPage() {
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
 
   // ── Text chat state ──
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -150,6 +151,10 @@ export default function InterviewPage() {
   const agentAvatar = config?.avatar || "neutral";
   const primaryColor = config?.widget_primary_color || "#0D7377";
   const listeningMessage = config?.widget_listening_message || "Agent is listening…";
+  const showProgress =
+    !!config?.widget_show_progress &&
+    config?.interview_mode === "structured" &&
+    (config?.question_count ?? 0) > 0;
 
   // ── 1. Fetch widget config on mount ─────────────────────────
   useEffect(() => {
@@ -232,6 +237,7 @@ export default function InterviewPage() {
     setErrorMsg("");
     setElapsed(0);
     setEndedReason("natural");
+    setProgress(null);
 
     try {
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -308,6 +314,8 @@ export default function InterviewPage() {
               receivedError = true;
               setStatus("error");
               setErrorMsg(json.error);
+            } else if (json.type === "progress") {
+              setProgress({ current: json.current, total: json.total });
             }
           } catch {
             /* ignore */
@@ -373,6 +381,7 @@ export default function InterviewPage() {
     setErrorMsg("");
     setElapsed(0);
     setEndedReason("natural");
+    setProgress(null);
     setChatMessages([]);
     setAgentTyping(false);
 
@@ -426,6 +435,9 @@ export default function InterviewPage() {
               break;
             case "typing":
               setAgentTyping(true);
+              break;
+            case "progress":
+              setProgress({ current: msg.current, total: msg.total });
               break;
             case "ping":
               break;
@@ -569,6 +581,11 @@ export default function InterviewPage() {
             </div>
           )}
         </div>
+
+        {/* ── Structured progress bar ────────────────────────── */}
+        {showProgress && status === "active" && (
+          <ProgressBar progress={progress} color={primaryColor} />
+        )}
 
         {/* ── Text Chat UI ───────────────────────────────────── */}
         {isTextChat && (status === "active" || status === "connecting") && (
@@ -979,6 +996,43 @@ export default function InterviewPage() {
       <p className="mt-16 text-[11px] text-gray-300 tracking-wider uppercase">
         Powered by OASIS
       </p>
+    </div>
+  );
+}
+
+// ── Structured progress bar ──────────────────────────────────────
+
+function ProgressBar({
+  progress,
+  color,
+}: {
+  progress: { current: number; total: number } | null;
+  color: string;
+}) {
+  const total = progress?.total ?? 0;
+  const current = progress?.current ?? 0;
+  // Before the first marker arrives we sit at 0; once it does, fill to the
+  // share of main questions reached.
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+
+  return (
+    <div className="w-full max-w-sm mb-8 animate-fade-in">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-gray-400">
+          Progress
+        </span>
+        {total > 0 && (
+          <span className="text-[11px] font-medium text-gray-500 tabular-nums">
+            {current > 0 ? `Question ${current} of ${total}` : `${total} questions`}
+          </span>
+        )}
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+        <div
+          className="h-full rounded-full transition-[width] duration-700 ease-out"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
     </div>
   );
 }
