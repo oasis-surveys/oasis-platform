@@ -596,13 +596,9 @@ async def text_chat_ws(
             build_structured_prompt,
             TextStructuredController,
         )
-        # Always emit the hidden [[Qn]] marker for structured chats — not just
-        # when the progress bar is on. The marker is the model's own
-        # declaration of which main question it just asked, which the
-        # controller uses to keep its position authoritative (see
-        # ``sync_to_marker``). It is stripped from everything the participant
-        # and transcript see below, so emitting it has no participant-facing
-        # cost.
+        # Emit the hidden [[Qn]] marker even when the progress bar is off: the
+        # controller uses it to track which question we're on. It's stripped
+        # before the participant and transcript see anything.
         system_prompt = build_structured_prompt(
             system_prompt,
             agent_cfg["interview_guide"],
@@ -748,10 +744,7 @@ async def text_chat_ws(
 
             messages.append({"role": "user", "content": user_text})
 
-            # Structured guardrail: if the previous bot turn exhausted the
-            # current question's follow-up budget and this participant turn is
-            # substantive, inject a guidance note telling the model to advance
-            # (or close). Mirrors the voice InterviewGuideProcessor nudge.
+            # Nudge the model to advance/close once a question's budget is up.
             if structured_controller is not None:
                 nudge = structured_controller.maybe_advance_message(user_text)
                 if nudge is not None:
@@ -770,7 +763,6 @@ async def text_chat_ws(
                 agent_text = llm_result["content"]
 
                 display_text = agent_text
-                # By default the model's context keeps exactly what it said.
                 context_text = agent_text
 
                 if structured_controller is not None:
@@ -779,17 +771,14 @@ async def text_chat_ws(
                         strip_progress_marker,
                     )
 
-                    # 1. Pull the hidden [[Qn]] tag out (never shown to anyone)
-                    #    and let the model's own declaration drive position.
+                    # Pull the hidden tag out and let it drive our position.
                     display_text, marker = strip_progress_marker(agent_text)
                     structured_controller.sync_to_marker(marker)
 
-                    # 2. Enforce one question per turn (parity with the voice
-                    #    StructuredOutputFilter). The cut content is removed
-                    #    from the model's context too — otherwise a crammed-in
-                    #    second question would be silently skipped, because the
-                    #    participant never saw it but the model would believe
-                    #    it had already been asked.
+                    # One question per turn, like the voice filter. We cut the
+                    # extra from the context too, otherwise a crammed-in second
+                    # question gets skipped: the participant never saw it but
+                    # the model thinks it asked it.
                     enforced, dropped = enforce_one_question_per_turn(display_text)
                     if dropped:
                         logger.info(
@@ -798,17 +787,14 @@ async def text_chat_ws(
                         )
                     display_text = enforced.strip()
 
-                    # 3. Re-attach the marker in the model's context only, so
-                    #    it keeps tagging later main questions while the
-                    #    context still reflects what was actually said.
+                    # Keep the tag in the context (not the transcript) so the
+                    # model keeps tagging later questions.
                     context_text = (
                         f"[[Q{marker}]] {display_text}"
                         if marker is not None
                         else display_text
                     )
 
-                    # 4. Count this turn against the question's budget (skips
-                    #    clarification replies) so the next turn can advance.
                     structured_controller.register_bot_turn(user_text)
 
                     if show_progress and marker is not None:

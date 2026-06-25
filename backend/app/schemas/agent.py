@@ -43,6 +43,17 @@ class InterviewGuide(BaseModel):
         "Thank you for your time. This concludes our interview.",
         description="Message spoken after the last question is complete",
     )
+    probe_selection: str = Field(
+        "ordered",
+        pattern="^(ordered|relevance)$",
+        description=(
+            "How follow-up probes are chosen. 'ordered' asks the probes in "
+            "list order (standardized/reproducible across participants). "
+            "'relevance' lets the agent pick the most relevant probe from the "
+            "list for each answer (more adaptive). The per-question "
+            "max_follow_ups cap applies either way."
+        ),
+    )
 
 
 # ── Engagement config sub-schemas ────────────────────────────

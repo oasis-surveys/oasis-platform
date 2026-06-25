@@ -136,6 +136,23 @@ class TestBuildStructuredPrompt:
         assert "the participant has given\ntheir final answer" in out
         assert "Never deliver the closing message in the same turn as a question" in out
 
+    def test_ordered_probe_selection_is_default(self, two_question_guide):
+        # No probe_selection key → ordered wording.
+        out = build_structured_prompt("Hi.", two_question_guide)
+        assert "use these in order" in out
+        assert "Ask probes from the list in order" in out
+
+    def test_relevance_probe_selection_changes_wording(self, two_question_guide):
+        relevance_guide = {**two_question_guide, "probe_selection": "relevance"}
+        out = build_structured_prompt("Hi.", relevance_guide)
+        # Ordered-specific wording is gone; relevance menu wording is present.
+        assert "use these in order" not in out
+        assert "a menu" in out
+        assert "most relevant" in out
+        # The numbered probe list and follow-up cap are unchanged.
+        assert "1. Walk me through this morning." in out
+        assert "Maximum follow-ups for this question: 2" in out
+
 
 def _llm_response(*chunks: str) -> List[Frame]:
     frames: List[Frame] = [LLMFullResponseStartFrame()]
@@ -807,11 +824,11 @@ class TestTextStructuredController:
         c = TextStructuredController(two_question_guide)
         c.sync_to_marker(2)
         assert c.current_question_index == 1
-        c.sync_to_marker(1)  # backward — ignored
+        c.sync_to_marker(1)  # backward, ignored
         assert c.current_question_index == 1
-        c.sync_to_marker(None)  # no marker — ignored
+        c.sync_to_marker(None)  # no marker, ignored
         assert c.current_question_index == 1
-        c.sync_to_marker(99)  # out of range — ignored
+        c.sync_to_marker(99)  # out of range, ignored
         assert c.current_question_index == 1
 
     def test_marker_sync_clears_pending_nudge(self, two_question_guide):
@@ -819,7 +836,7 @@ class TestTextStructuredController:
         for t in ("a1", "a2", "a3"):
             c.register_bot_turn(t)
         assert c.snapshot()["nudge_pending"] is True
-        # The model advanced on its own (declared Q2) — trust it.
+        # The model advanced on its own (declared Q2), so trust it.
         c.sync_to_marker(2)
         assert c.current_question_index == 1
         assert c.snapshot()["nudge_pending"] is False

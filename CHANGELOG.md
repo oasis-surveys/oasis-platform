@@ -4,6 +4,33 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-06-25
+
+### Added
+
+- Probe selection mode for structured interviews. Each agent can now choose how
+  the AI works through a question's follow-up probes. "Ordered" goes down the
+  list in order, same as before. "Relevance" lets it pick whichever probe fits
+  the answer best. The toggle lives in the structured guide section of the agent
+  form. There's no speed cost either way (the model already has the full list in
+  front of it), and the per-question max follow-ups still caps how many it asks.
+
+### Fixed
+
+- Structured interviews over text chat now follow the guide the way voice
+  already did. Before this, text chat only got the protocol prompt and nothing
+  actually held the model to it, so it could loop on one question, never move
+  on, or cram several questions into a single message. Text chat now counts
+  follow-ups per question, nudges the model to advance or wrap up once the
+  budget is spent, and cuts a reply back to one question when it tries to ask
+  more. Clarification questions from the participant don't burn the budget. It
+  also reads the hidden question tag the model emits to stay in sync with
+  whichever question the model thinks it's on, and logs a short summary at the
+  end of the session (questions reached, how often it had to nudge).
+- The text chat input grows with what you type instead of pushing everything
+  onto one scrolling line, so long answers are readable while you write them.
+  Enter still sends, Shift+Enter adds a line break.
+
 ## 2026-06-15
 
 ### Added

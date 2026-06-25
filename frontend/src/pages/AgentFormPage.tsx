@@ -226,9 +226,12 @@ interface InterviewQuestion {
   transition: string;
 }
 
+type ProbeSelection = "ordered" | "relevance";
+
 interface InterviewGuide {
   questions: InterviewQuestion[];
   closing_message: string;
+  probe_selection: ProbeSelection;
 }
 
 const EMPTY_QUESTION: InterviewQuestion = {
@@ -237,6 +240,20 @@ const EMPTY_QUESTION: InterviewQuestion = {
   max_follow_ups: 3,
   transition: "",
 };
+
+/**
+ * Fill in defaults for an interview guide loaded from the API or an imported
+ * file. Older agents predate `probe_selection`, so it defaults to "ordered"
+ * (the prior behaviour).
+ */
+function withGuideDefaults(g: Partial<InterviewGuide> | null | undefined): InterviewGuide {
+  return {
+    questions: g?.questions ?? [],
+    closing_message:
+      g?.closing_message ?? "Thank you for your time. This concludes our interview.",
+    probe_selection: g?.probe_selection === "relevance" ? "relevance" : "ordered",
+  };
+}
 
 // ── File helpers ──────────────────────────────────────────────
 
@@ -275,6 +292,7 @@ function generateGuideJSONTemplate(): string {
       },
     ],
     closing_message: "Thank you for your time. This concludes our interview.",
+    probe_selection: "ordered",
   };
   return JSON.stringify(template, null, 2);
 }
@@ -354,7 +372,7 @@ function parseGuideCSV(content: string): InterviewGuide {
   }
 
   if (questions.length === 0) throw new Error("No valid questions found in CSV.");
-  return { questions, closing_message: closingMessage };
+  return { questions, closing_message: closingMessage, probe_selection: "ordered" };
 }
 
 function parseGuideJSON(content: string): InterviewGuide {
@@ -390,6 +408,7 @@ function parseGuideJSON(content: string): InterviewGuide {
       typeof obj.closing_message === "string"
         ? obj.closing_message
         : "Thank you for your time. This concludes our interview.",
+    probe_selection: obj.probe_selection === "relevance" ? "relevance" : "ordered",
   };
 }
 
@@ -500,9 +519,9 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     widget_listening_message: (obj.widget_listening_message as string) || "Agent is listening…",
     widget_show_progress: Boolean(obj.widget_show_progress),
     interview_mode: (obj.interview_mode as "free_form" | "structured") || "free_form",
-    interview_guide: obj.interview_guide
-      ? (obj.interview_guide as InterviewGuide)
-      : { questions: [], closing_message: "Thank you for your time. This concludes our interview." },
+    interview_guide: withGuideDefaults(
+      obj.interview_guide as Partial<InterviewGuide> | undefined,
+    ),
     silence_timeout_seconds: obj.silence_timeout_seconds != null ? String(obj.silence_timeout_seconds) : "",
     silence_prompt: (obj.silence_prompt as string) || "Take your time. Let me know when you're ready to continue.",
     twilio_phone_number: (obj.twilio_phone_number as string) || "",
@@ -653,6 +672,7 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   interview_guide: {
     questions: [],
     closing_message: "Thank you for your time. This concludes our interview.",
+    probe_selection: "ordered",
   },
   silence_timeout_seconds: "",
   silence_prompt: "Take your time. Let me know when you're ready to continue.",
@@ -940,10 +960,9 @@ export default function AgentFormPage() {
           widget_listening_message: a.widget_listening_message || "Agent is listening…",
           widget_show_progress: Boolean(a.widget_show_progress),
           interview_mode: a.interview_mode || "free_form",
-          interview_guide: a.interview_guide || {
-            questions: [],
-            closing_message: "Thank you for your time. This concludes our interview.",
-          },
+          interview_guide: withGuideDefaults(
+            a.interview_guide as Partial<InterviewGuide> | undefined,
+          ),
           silence_timeout_seconds: a.silence_timeout_seconds ? String(a.silence_timeout_seconds) : "",
           silence_prompt: a.silence_prompt || "Take your time. Let me know when you're ready to continue.",
           twilio_phone_number: a.twilio_phone_number || "",
@@ -1567,6 +1586,54 @@ export default function AgentFormPage() {
                 probes that the agent can use to get deeper answers. The agent will adapt its probing
                 based on what the participant actually says.
               </p>
+
+              {/* ── Probe selection (ordered vs relevance) ── */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-medium text-gray-700">Probe selection</span>
+                  <HelpTooltip text="How the agent picks follow-up probes within a question. Ordered: asks your probes top to bottom. This is standardized and reproducible across participants, which is best for comparable research data. Relevance: picks the most relevant probe from your list for each answer, which is more natural but less standardized. The max follow-ups limit applies either way, and there's no added latency." />
+                </div>
+                <div className="flex gap-3">
+                  {([
+                    {
+                      value: "ordered" as ProbeSelection,
+                      title: "Ordered",
+                      desc: "Asks probes top-to-bottom",
+                    },
+                    {
+                      value: "relevance" as ProbeSelection,
+                      title: "Relevance-selected",
+                      desc: "Picks the most relevant probe per answer",
+                    },
+                  ]).map((opt) => {
+                    const active =
+                      (form.interview_guide.probe_selection || "ordered") === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            interview_guide: {
+                              ...f.interview_guide,
+                              probe_selection: opt.value,
+                            },
+                          }))
+                        }
+                        className={`flex-1 rounded-lg border-2 px-3 py-2 text-left transition-all ${
+                          active
+                            ? "border-gray-900 bg-gray-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="font-medium text-xs text-gray-900">{opt.title}</div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">{opt.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* ── Guide upload/download bar ── */}
               <div className="flex items-center justify-between rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
