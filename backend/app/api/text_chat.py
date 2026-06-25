@@ -590,12 +590,27 @@ async def text_chat_ws(
         else 0
     )
     reported_progress = 0
+    structured_controller = None
     if is_structured:
-        from app.pipeline.interview_guide import build_structured_prompt
+        from app.pipeline.interview_guide import (
+            build_structured_prompt,
+            TextStructuredController,
+        )
+        # Always emit the hidden [[Qn]] marker for structured chats — not just
+        # when the progress bar is on. The marker is the model's own
+        # declaration of which main question it just asked, which the
+        # controller uses to keep its position authoritative (see
+        # ``sync_to_marker``). It is stripped from everything the participant
+        # and transcript see below, so emitting it has no participant-facing
+        # cost.
         system_prompt = build_structured_prompt(
             system_prompt,
             agent_cfg["interview_guide"],
-            emit_progress=show_progress,
+            emit_progress=True,
+        )
+        structured_controller = TextStructuredController(
+            agent_cfg["interview_guide"],
+            language=agent_cfg["language"] or "en",
         )
 
     # Add text-chat specific instructions
@@ -733,6 +748,15 @@ async def text_chat_ws(
 
             messages.append({"role": "user", "content": user_text})
 
+            # Structured guardrail: if the previous bot turn exhausted the
+            # current question's follow-up budget and this participant turn is
+            # substantive, inject a guidance note telling the model to advance
+            # (or close). Mirrors the voice InterviewGuideProcessor nudge.
+            if structured_controller is not None:
+                nudge = structured_controller.maybe_advance_message(user_text)
+                if nudge is not None:
+                    messages.append(nudge)
+
             # Call LLM
             try:
                 # Send typing indicator
@@ -745,18 +769,49 @@ async def text_chat_ws(
                 )
                 agent_text = llm_result["content"]
 
-                # Keep the raw reply (tag included) in the model's own context
-                # so it keeps tagging later main questions. The tag is removed
-                # from everything the participant and the transcript see below.
-                messages.append({"role": "assistant", "content": agent_text})
-
                 display_text = agent_text
-                if show_progress:
-                    from app.pipeline.interview_guide import strip_progress_marker
+                # By default the model's context keeps exactly what it said.
+                context_text = agent_text
 
+                if structured_controller is not None:
+                    from app.pipeline.interview_guide import (
+                        enforce_one_question_per_turn,
+                        strip_progress_marker,
+                    )
+
+                    # 1. Pull the hidden [[Qn]] tag out (never shown to anyone)
+                    #    and let the model's own declaration drive position.
                     display_text, marker = strip_progress_marker(agent_text)
-                    display_text = display_text.lstrip()
-                    if marker is not None:
+                    structured_controller.sync_to_marker(marker)
+
+                    # 2. Enforce one question per turn (parity with the voice
+                    #    StructuredOutputFilter). The cut content is removed
+                    #    from the model's context too — otherwise a crammed-in
+                    #    second question would be silently skipped, because the
+                    #    participant never saw it but the model would believe
+                    #    it had already been asked.
+                    enforced, dropped = enforce_one_question_per_turn(display_text)
+                    if dropped:
+                        logger.info(
+                            f"[guide:text] {session_id}: cut {dropped} chars "
+                            "after the turn's first question"
+                        )
+                    display_text = enforced.strip()
+
+                    # 3. Re-attach the marker in the model's context only, so
+                    #    it keeps tagging later main questions while the
+                    #    context still reflects what was actually said.
+                    context_text = (
+                        f"[[Q{marker}]] {display_text}"
+                        if marker is not None
+                        else display_text
+                    )
+
+                    # 4. Count this turn against the question's budget (skips
+                    #    clarification replies) so the next turn can advance.
+                    structured_controller.register_bot_turn(user_text)
+
+                    if show_progress and marker is not None:
                         marker = min(marker, progress_total) if progress_total else marker
                         if marker > reported_progress:
                             reported_progress = marker
@@ -765,6 +820,8 @@ async def text_chat_ws(
                                 "current": reported_progress,
                                 "total": progress_total,
                             })
+
+                messages.append({"role": "assistant", "content": context_text})
 
                 # Log agent turn
                 sequence += 1
@@ -808,6 +865,11 @@ async def text_chat_ws(
     finally:
         keepalive_stop.set()
         keepalive_task.cancel()
+        if structured_controller is not None:
+            logger.info(
+                f"Chat {session_id}: structured protocol summary "
+                f"{structured_controller.stats()}"
+            )
         # ── 7. Finalise session ───────────────────────────────────
         try:
             end_time = datetime.now(timezone.utc)
