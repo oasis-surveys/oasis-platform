@@ -305,16 +305,18 @@ def build_structured_prompt(
         "closing_message",
         "Thank you for your time. This concludes our interview.",
     )
+    # How to pick probes. "ordered" walks the list top to bottom; "relevance"
+    # picks the most relevant one per answer. Same follow-up cap either way,
+    # and no extra latency since the model already has the whole list.
+    relevance = (guide.get("probe_selection") or "ordered").lower() == "relevance"
 
     if not questions:
         return base_prompt
 
-    # Build the question guide section. We describe each question with a
-    # canonical paraphrase, an explicit ordered probe list, and a hard cap
-    # on follow-ups. The model is instructed to pick probes IN ORDER from
-    # the list and NEVER reuse one — this stops the "could you tell me
-    # about your background... could you tell me about your background..."
-    # repetition we saw in production logs.
+    # Build the question guide section: each question with its probe list and
+    # a hard follow-up cap. The model is told NEVER to reuse a probe. This
+    # stops the "could you tell me about your background... could you tell me
+    # about your background..." repetition we saw in production logs.
     guide_lines = []
     for i, q in enumerate(questions, 1):
         text = q.get("text", "")
@@ -325,10 +327,17 @@ def build_structured_prompt(
         guide_lines.append(f"### Question {i} of {len(questions)}")
         guide_lines.append(f"Main question: {text}")
         if probes:
-            guide_lines.append(
-                f"Follow-up probes (use these in order, pick a different "
-                f"one each time, do NOT invent your own):"
-            )
+            if relevance:
+                guide_lines.append(
+                    "Follow-up probes (a menu. Each turn pick the ONE most "
+                    "relevant to what the participant just said; never reuse a "
+                    "probe you've already asked, and do NOT invent your own):"
+                )
+            else:
+                guide_lines.append(
+                    "Follow-up probes (use these in order, pick a different "
+                    "one each time, do NOT invent your own):"
+                )
             for j, p in enumerate(probes, 1):
                 guide_lines.append(f"  {j}. {p}")
         guide_lines.append(
@@ -341,6 +350,21 @@ def build_structured_prompt(
         guide_lines.append("")
 
     question_guide = "\n".join(guide_lines)
+
+    if relevance:
+        probe_rule = (
+            "- Pick each follow-up probe from that question's list by how "
+            "relevant it is to the participant's last answer, NOT in a fixed "
+            "order. Never reuse a probe you've already asked, and do NOT "
+            "invent additional probes of your own."
+        )
+        unused_probe_phrase = "the most relevant unused probe"
+    else:
+        probe_rule = (
+            "- Ask probes from the list in order, picking a different one each "
+            "turn.\n  Do NOT invent additional probes of your own."
+        )
+        unused_probe_phrase = "the next unused probe"
 
     structured_section = f"""
 
@@ -357,8 +381,7 @@ follow this turn pattern:
 Hard rules:
 - NEVER ask the same question twice. Once you've asked the main question,
   do not ask it again, even rephrased — move to the probes.
-- Ask probes from the list in order, picking a different one each turn.
-  Do NOT invent additional probes of your own.
+{probe_rule}
 - Ask exactly ONE question per turn, then STOP and wait for the
   participant's answer. Never combine a probe with the next main question,
   and never move to the next main question in the same turn in which you
@@ -398,11 +421,11 @@ Before each turn, look at the conversation history and figure out:
 2. Which probes from this question's list have I already asked? Count
    follow-ups by matching the probes you actually asked, not by counting
    your own messages. Clarification answers do not count.
-3. Therefore, what comes next: the next unused probe, or — only once the
+3. Therefore, what comes next: {unused_probe_phrase}, or — only once the
    participant has answered and the follow-up budget is used — the next
    main question?
 
-If unsure which probe you already asked, ask the next unused probe rather
+If unsure which probe you already asked, ask {unused_probe_phrase} rather
 than repeating one. Do not skip ahead to the next main question while
 unused probes remain, unless the participant has already clearly covered
 them or the protocol tells you to advance.
@@ -564,9 +587,103 @@ class StructuredOutputFilter(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
-# ── Stateful nudge processor ────────────────────────────────────────────────
+# ── Shared protocol helpers ─────────────────────────────────────────────────
 
 DEFAULT_MAX_FOLLOW_UPS = 3
+
+DEFAULT_CLOSING = "Thank you for your time. This concludes our interview."
+
+
+def question_max_follow_ups(question: dict) -> int:
+    """Per-question follow-up cap, with a fallback for bad/missing values."""
+    try:
+        return int(question.get("max_follow_ups", DEFAULT_MAX_FOLLOW_UPS))
+    except (TypeError, ValueError):
+        return DEFAULT_MAX_FOLLOW_UPS
+
+
+def build_protocol_guidance(
+    questions: list[dict],
+    closing: str,
+    current_index: int,
+) -> tuple[Optional[dict], bool]:
+    """Build the nudge that moves the agent on (or wraps up on the last one).
+
+    Returns (message, is_closing). The message is a user-role note; see
+    guidance_message for why it is not a system message. Used by both the
+    voice processor and the text controller.
+    """
+    from app.engagement.adaptive import guidance_message
+
+    next_idx = current_index + 1
+    if next_idx >= len(questions):
+        return (
+            guidance_message(
+                "[Interview protocol] You have completed all the questions "
+                "in the guide. If the participant's last message was a "
+                "question, answer it briefly first. Then acknowledge their "
+                "answer briefly and deliver the closing message: "
+                f'"{closing}". Do not ask any new interview questions, '
+                "and never combine a question with the closing message in "
+                "the same turn."
+            ),
+            True,
+        )
+
+    current_q = questions[current_index]
+    next_q = questions[next_idx]
+    transition = (current_q.get("transition") or "").strip()
+    next_text = next_q.get("text", "")
+    transition_hint = (
+        f' Use this transition if it fits: "{transition}".' if transition else ""
+    )
+    return (
+        guidance_message(
+            f"[Interview protocol] You have explored question "
+            f"{current_index + 1} of {len(questions)} sufficiently. If the "
+            f"participant's last message was a question, answer it briefly "
+            f"first. Then acknowledge their answer in one short sentence and "
+            f'move on to question {next_idx + 1}: "{next_text}". Ask only '
+            f"that question and wait for their answer."
+            f"{transition_hint}"
+        ),
+        False,
+    )
+
+
+def enforce_one_question_per_turn(text: str) -> tuple[str, int]:
+    """Cut a complete reply after its first question and unwrap leaked
+    "(Transition: ...)" labels. Returns (cleaned_text, dropped_chars).
+
+    This is the StructuredOutputFilter logic for callers that hold the whole
+    message at once (text chat). Strip progress markers before calling.
+    """
+    sentences: list[str] = []
+    pos = 0
+    for m in _SENTENCE_RE.finditer(text):
+        if m.start() != pos:
+            break
+        sentences.append(m.group(0))
+        pos = m.end()
+    tail = text[pos:]
+    if tail:
+        sentences.append(tail)
+
+    out: list[str] = []
+    dropped = 0
+    question_done = False
+    for sentence in sentences:
+        if question_done:
+            dropped += len(sentence)
+            continue
+        cleaned = _TRANSITION_LABEL_RE.sub(r"\1", sentence)
+        out.append(cleaned)
+        if any(q in cleaned for q in _QUESTION_MARKS):
+            question_done = True
+    return "".join(out), dropped
+
+
+# ── Stateful nudge processor (voice) ────────────────────────────────────────
 
 
 class InterviewGuideProcessor(FrameProcessor):
@@ -603,14 +720,15 @@ class InterviewGuideProcessor(FrameProcessor):
         self._guide = guide or {}
         self._language = language or "en"
         self._questions = list(self._guide.get("questions") or [])
-        self._closing = self._guide.get(
-            "closing_message",
-            "Thank you for your time. This concludes our interview.",
-        )
+        self._closing = self._guide.get("closing_message", DEFAULT_CLOSING)
         self.current_question_index = 0
         self._bot_turns_on_question = 0
         self._nudge_pending = False
         self._closed = False
+        # Counters for the end-of-interview stats() summary.
+        self._advances = 0
+        self._nudges_injected = 0
+        self._counted_bot_turns = 0
         # Bot turns that happen *before* the participant has spoken (the
         # spoken welcome message in particular) used to be counted against
         # question 1's follow-up budget, which made the agent advance after
@@ -635,55 +753,16 @@ class InterviewGuideProcessor(FrameProcessor):
     def _current_max_follow_ups(self) -> int:
         if self.current_question_index >= len(self._questions):
             return DEFAULT_MAX_FOLLOW_UPS
-        q = self._questions[self.current_question_index]
-        try:
-            return int(q.get("max_follow_ups", DEFAULT_MAX_FOLLOW_UPS))
-        except (TypeError, ValueError):
-            return DEFAULT_MAX_FOLLOW_UPS
+        return question_max_follow_ups(self._questions[self.current_question_index])
 
     def _build_advance_message(self) -> Optional[dict]:
-        """Build the nudge message asking the LLM to move on.
-
-        Injected with the "user" role and an explicit marker: several chat
-        APIs (OpenAI gpt-5.x among them) reject a "system" message appearing
-        after an assistant message with a 400 error, which would silence the
-        agent for the rest of the session.
-        """
-        from app.engagement.adaptive import guidance_message
-
-        next_idx = self.current_question_index + 1
-        if next_idx >= len(self._questions):
+        """Nudge asking the LLM to move on, flipping _closed on the last one."""
+        msg, is_closing = build_protocol_guidance(
+            self._questions, self._closing, self.current_question_index
+        )
+        if is_closing:
             self._closed = True
-            return guidance_message(
-                "[Interview protocol] You have completed all the questions "
-                "in the guide. If the participant's last message was a "
-                "question, answer it briefly first. Then acknowledge their "
-                "answer briefly and deliver the closing message: "
-                f'"{self._closing}". Do not ask any new interview questions, '
-                "and never combine a question with the closing message in "
-                "the same turn."
-            )
-
-        current_q = self._questions[self.current_question_index]
-        next_q = self._questions[next_idx]
-        transition = (current_q.get("transition") or "").strip()
-        next_text = next_q.get("text", "")
-
-        transition_hint = (
-            f' Use this transition if it fits: "{transition}".'
-            if transition
-            else ""
-        )
-        return guidance_message(
-            f"[Interview protocol] You have explored question "
-            f"{self.current_question_index + 1} of "
-            f"{len(self._questions)} sufficiently. If the participant's "
-            f"last message was a question, answer it briefly first. Then "
-            f"acknowledge their answer in one short sentence and move "
-            f"on to question {next_idx + 1}: \"{next_text}\". Ask only "
-            f"that question and wait for their answer."
-            f"{transition_hint}"
-        )
+        return msg
 
     # ── Frame handling ──────────────────────────────────────────────────
 
@@ -742,6 +821,7 @@ class InterviewGuideProcessor(FrameProcessor):
                 )
             else:
                 self._bot_turns_on_question += 1
+                self._counted_bot_turns += 1
                 budget = 1 + self._current_max_follow_ups()
                 logger.debug(
                     "[guide] q={} agent_turn={}/{}",
@@ -774,6 +854,7 @@ class InterviewGuideProcessor(FrameProcessor):
                     return
                 msg = self._build_advance_message()
                 if msg is not None:
+                    self._nudges_injected += 1
                     logger.info(
                         "[guide] advancing from q={} -> q={}",
                         self.current_question_index + 1,
@@ -786,6 +867,11 @@ class InterviewGuideProcessor(FrameProcessor):
                     if not self._closed:
                         self.current_question_index += 1
                         self._bot_turns_on_question = 0
+                        self._advances += 1
+                    else:
+                        logger.info(
+                            "[guide] protocol summary: {}", self.stats()
+                        )
                 self._nudge_pending = False
 
         await self.push_frame(frame, direction)
@@ -802,12 +888,196 @@ class InterviewGuideProcessor(FrameProcessor):
             "user_has_spoken": self._user_has_spoken,
         }
 
+    def stats(self) -> dict:
+        """End-of-interview summary. High forced_advances/nudges_injected
+        relative to total_questions means the model needed a lot of pushing."""
+        reached = (
+            self.total_questions
+            if self._closed
+            else min(self.current_question_index + 1, self.total_questions)
+        )
+        return {
+            "channel": "voice",
+            "total_questions": self.total_questions,
+            "questions_reached": reached,
+            "completed": self._closed,
+            "forced_advances": self._advances,
+            "nudges_injected": self._nudges_injected,
+            "counted_bot_turns": self._counted_bot_turns,
+        }
+
+
+# ── Stateful controller (text chat) ─────────────────────────────────────────
+
+
+class TextStructuredController:
+    """The InterviewGuideProcessor + StructuredOutputFilter guardrails, for
+    text chat. The text loop only fed the structured prompt to the model and
+    hoped it complied, so looping, never advancing, and cramming several
+    questions into one reply all went unchecked. This fixes that.
+
+    The text loop alternates assistant/user with no silence prompts or split
+    STT, so counting is simpler than the voice processor (no user_has_spoken
+    gate). The welcome message is appended by the loop, not run through
+    register_bot_turn, so it stays free like in voice.
+
+    Position comes from the turn-budget counter and from sync_to_marker, which
+    trusts the model's hidden [[Qn]] tag when it's there. The tag wins: it's
+    the model saying which question it just asked, so the counting and the
+    clarification regex defer to it.
+    """
+
+    def __init__(self, guide: dict, language: str = "en"):
+        self._questions = list((guide or {}).get("questions") or [])
+        self._closing = (guide or {}).get("closing_message", DEFAULT_CLOSING)
+        self._language = language or "en"
+        self.current_question_index = 0
+        self._bot_turns_on_question = 0
+        self._nudge_pending = False
+        self._closed = False
+        self._advances = 0
+        self._nudges_injected = 0
+        self._counted_bot_turns = 0
+        self._max_index_reached = 0
+
+    @property
+    def total_questions(self) -> int:
+        return len(self._questions)
+
+    @property
+    def is_finished(self) -> bool:
+        return self._closed or self.current_question_index >= len(self._questions)
+
+    def _current_max_follow_ups(self) -> int:
+        if self.current_question_index >= len(self._questions):
+            return DEFAULT_MAX_FOLLOW_UPS
+        return question_max_follow_ups(self._questions[self.current_question_index])
+
+    def maybe_advance_message(self, user_text: str) -> Optional[dict]:
+        """Call when a new participant message arrives, before the LLM call.
+        If the last bot turn used up the question's budget and this answer is
+        substantive, advance and return the guidance note to append to the
+        context. A clarification holds the nudge; otherwise returns None.
+        """
+        if not self._nudge_pending or self._closed:
+            return None
+        if looks_like_clarification(user_text, self._language):
+            logger.info(
+                "[guide:text] q={} holding nudge, participant asked a "
+                "clarification: {!r}",
+                self.current_question_index + 1,
+                (user_text or "")[:80],
+            )
+            return None
+        msg, is_closing = build_protocol_guidance(
+            self._questions, self._closing, self.current_question_index
+        )
+        self._nudge_pending = False
+        if msg is None:
+            return None
+        self._nudges_injected += 1
+        if is_closing:
+            self._closed = True
+            logger.info("[guide:text] protocol summary: {}", self.stats())
+        else:
+            logger.info(
+                "[guide:text] advancing from q={} -> q={}",
+                self.current_question_index + 1,
+                self.current_question_index + 2,
+            )
+            self.current_question_index += 1
+            self._max_index_reached = max(
+                self._max_index_reached, self.current_question_index
+            )
+            self._bot_turns_on_question = 0
+            self._advances += 1
+        return msg
+
+    def sync_to_marker(self, marker: Optional[int]) -> None:
+        """Move position to the model's [[Qn]] tag (1-based), forward only.
+        A marker at or behind the current question is ignored. If the model
+        moved on by itself, drop the pending nudge so we don't fight it.
+        """
+        if marker is None:
+            return
+        idx = marker - 1
+        if 0 <= idx < len(self._questions) and idx > self.current_question_index:
+            logger.debug(
+                "[guide:text] marker sync q={} -> q={}",
+                self.current_question_index + 1,
+                idx + 1,
+            )
+            self.current_question_index = idx
+            self._max_index_reached = max(self._max_index_reached, idx)
+            self._bot_turns_on_question = 0
+            self._nudge_pending = False
+
+    def register_bot_turn(self, prompting_user_text: str) -> None:
+        """Count one agent reply against the question's budget. Call after each
+        LLM reply with the message that prompted it; replies to a clarification
+        don't count, so those exchanges don't burn the budget.
+        """
+        if self._closed:
+            return
+        if looks_like_clarification(prompting_user_text, self._language):
+            logger.debug(
+                "[guide:text] q={} bot turn not counted (reply to "
+                "clarification: {!r})",
+                self.current_question_index + 1,
+                (prompting_user_text or "")[:80],
+            )
+            return
+        self._bot_turns_on_question += 1
+        self._counted_bot_turns += 1
+        budget = 1 + self._current_max_follow_ups()
+        logger.debug(
+            "[guide:text] q={} agent_turn={}/{}",
+            self.current_question_index + 1,
+            self._bot_turns_on_question,
+            budget,
+        )
+        if self._bot_turns_on_question >= budget:
+            self._nudge_pending = True
+
+    def stats(self) -> dict:
+        reached = (
+            self.total_questions
+            if self._closed
+            else min(
+                max(self.current_question_index, self._max_index_reached) + 1,
+                self.total_questions,
+            )
+        )
+        return {
+            "channel": "text",
+            "total_questions": self.total_questions,
+            "questions_reached": reached,
+            "completed": self._closed,
+            "forced_advances": self._advances,
+            "nudges_injected": self._nudges_injected,
+            "counted_bot_turns": self._counted_bot_turns,
+        }
+
+    def snapshot(self) -> dict:
+        return {
+            "current_question_index": self.current_question_index,
+            "bot_turns_on_question": self._bot_turns_on_question,
+            "nudge_pending": self._nudge_pending,
+            "closed": self._closed,
+            "total_questions": self.total_questions,
+        }
+
 
 __all__ = [
     "build_structured_prompt",
     "looks_like_clarification",
     "strip_progress_marker",
+    "enforce_one_question_per_turn",
+    "build_protocol_guidance",
+    "question_max_follow_ups",
     "InterviewGuideProcessor",
     "StructuredOutputFilter",
+    "TextStructuredController",
     "DEFAULT_MAX_FOLLOW_UPS",
+    "DEFAULT_CLOSING",
 ]

@@ -590,12 +590,23 @@ async def text_chat_ws(
         else 0
     )
     reported_progress = 0
+    structured_controller = None
     if is_structured:
-        from app.pipeline.interview_guide import build_structured_prompt
+        from app.pipeline.interview_guide import (
+            build_structured_prompt,
+            TextStructuredController,
+        )
+        # Emit the hidden [[Qn]] marker even when the progress bar is off: the
+        # controller uses it to track which question we're on. It's stripped
+        # before the participant and transcript see anything.
         system_prompt = build_structured_prompt(
             system_prompt,
             agent_cfg["interview_guide"],
-            emit_progress=show_progress,
+            emit_progress=True,
+        )
+        structured_controller = TextStructuredController(
+            agent_cfg["interview_guide"],
+            language=agent_cfg["language"] or "en",
         )
 
     # Add text-chat specific instructions
@@ -733,6 +744,12 @@ async def text_chat_ws(
 
             messages.append({"role": "user", "content": user_text})
 
+            # Nudge the model to advance/close once a question's budget is up.
+            if structured_controller is not None:
+                nudge = structured_controller.maybe_advance_message(user_text)
+                if nudge is not None:
+                    messages.append(nudge)
+
             # Call LLM
             try:
                 # Send typing indicator
@@ -745,18 +762,42 @@ async def text_chat_ws(
                 )
                 agent_text = llm_result["content"]
 
-                # Keep the raw reply (tag included) in the model's own context
-                # so it keeps tagging later main questions. The tag is removed
-                # from everything the participant and the transcript see below.
-                messages.append({"role": "assistant", "content": agent_text})
-
                 display_text = agent_text
-                if show_progress:
-                    from app.pipeline.interview_guide import strip_progress_marker
+                context_text = agent_text
 
+                if structured_controller is not None:
+                    from app.pipeline.interview_guide import (
+                        enforce_one_question_per_turn,
+                        strip_progress_marker,
+                    )
+
+                    # Pull the hidden tag out and let it drive our position.
                     display_text, marker = strip_progress_marker(agent_text)
-                    display_text = display_text.lstrip()
-                    if marker is not None:
+                    structured_controller.sync_to_marker(marker)
+
+                    # One question per turn, like the voice filter. We cut the
+                    # extra from the context too, otherwise a crammed-in second
+                    # question gets skipped: the participant never saw it but
+                    # the model thinks it asked it.
+                    enforced, dropped = enforce_one_question_per_turn(display_text)
+                    if dropped:
+                        logger.info(
+                            f"[guide:text] {session_id}: cut {dropped} chars "
+                            "after the turn's first question"
+                        )
+                    display_text = enforced.strip()
+
+                    # Keep the tag in the context (not the transcript) so the
+                    # model keeps tagging later questions.
+                    context_text = (
+                        f"[[Q{marker}]] {display_text}"
+                        if marker is not None
+                        else display_text
+                    )
+
+                    structured_controller.register_bot_turn(user_text)
+
+                    if show_progress and marker is not None:
                         marker = min(marker, progress_total) if progress_total else marker
                         if marker > reported_progress:
                             reported_progress = marker
@@ -765,6 +806,8 @@ async def text_chat_ws(
                                 "current": reported_progress,
                                 "total": progress_total,
                             })
+
+                messages.append({"role": "assistant", "content": context_text})
 
                 # Log agent turn
                 sequence += 1
@@ -808,6 +851,11 @@ async def text_chat_ws(
     finally:
         keepalive_stop.set()
         keepalive_task.cancel()
+        if structured_controller is not None:
+            logger.info(
+                f"Chat {session_id}: structured protocol summary "
+                f"{structured_controller.stats()}"
+            )
         # ── 7. Finalise session ───────────────────────────────────
         try:
             end_time = datetime.now(timezone.utc)

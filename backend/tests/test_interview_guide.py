@@ -28,7 +28,9 @@ from app.pipeline.interview_guide import (
     DEFAULT_MAX_FOLLOW_UPS,
     InterviewGuideProcessor,
     StructuredOutputFilter,
+    TextStructuredController,
     build_structured_prompt,
+    enforce_one_question_per_turn,
     looks_like_clarification,
     strip_progress_marker,
 )
@@ -133,6 +135,23 @@ class TestBuildStructuredPrompt:
         out = build_structured_prompt("Hi.", two_question_guide)
         assert "the participant has given\ntheir final answer" in out
         assert "Never deliver the closing message in the same turn as a question" in out
+
+    def test_ordered_probe_selection_is_default(self, two_question_guide):
+        # No probe_selection key → ordered wording.
+        out = build_structured_prompt("Hi.", two_question_guide)
+        assert "use these in order" in out
+        assert "Ask probes from the list in order" in out
+
+    def test_relevance_probe_selection_changes_wording(self, two_question_guide):
+        relevance_guide = {**two_question_guide, "probe_selection": "relevance"}
+        out = build_structured_prompt("Hi.", relevance_guide)
+        # Ordered-specific wording is gone; relevance menu wording is present.
+        assert "use these in order" not in out
+        assert "a menu" in out
+        assert "most relevant" in out
+        # The numbered probe list and follow-up cap are unchanged.
+        assert "1. Walk me through this morning." in out
+        assert "Maximum follow-ups for this question: 2" in out
 
 
 def _llm_response(*chunks: str) -> List[Frame]:
@@ -664,3 +683,168 @@ class TestInterviewGuideProcessor:
         assert snap["current_question_index"] == 1
         assert snap["bot_turns_on_question"] == 2
         assert snap["total_questions"] == 2
+
+    def test_stats_reports_adherence(self, two_question_guide):
+        proc = InterviewGuideProcessor(two_question_guide)
+        stats = proc.stats()
+        assert stats["channel"] == "voice"
+        assert stats["total_questions"] == 2
+        assert stats["completed"] is False
+        assert stats["forced_advances"] == 0
+
+
+# ── enforce_one_question_per_turn (non-streaming twin of the filter) ────────
+
+
+class TestEnforceOneQuestion:
+    def test_text_after_first_question_is_cut(self):
+        cleaned, dropped = enforce_one_question_per_turn(
+            "What was that experience like for you at the time?\n\n"
+            "(Transition: Thanks, that's really helpful background.)\n\n"
+            "Thinking about a specific recent moment, could you walk me "
+            "through what happened?"
+        )
+        assert "What was that experience like for you at the time?" in cleaned
+        assert "Transition" not in cleaned
+        assert "helpful background" not in cleaned
+        assert "specific recent moment" not in cleaned
+        assert dropped > 0
+
+    def test_leading_transition_label_is_unwrapped(self):
+        cleaned, _ = enforce_one_question_per_turn(
+            "(Transition: Thanks, that's useful.) "
+            "Stepping back, what would have made a difference?"
+        )
+        assert "Thanks, that's useful." in cleaned
+        assert "(Transition" not in cleaned
+        assert "Stepping back, what would have made a difference?" in cleaned
+
+    def test_statement_only_passes_through(self):
+        cleaned, dropped = enforce_one_question_per_turn(
+            "Thank you for your time. This concludes our interview."
+        )
+        assert "Thank you for your time." in cleaned
+        assert "This concludes our interview." in cleaned
+        assert dropped == 0
+
+    def test_preamble_before_question_is_kept(self):
+        cleaned, _ = enforce_one_question_per_turn(
+            "I mean a specific instance from your own life. "
+            "Could you share one? Also, what first got you started?"
+        )
+        assert "I mean a specific instance from your own life." in cleaned
+        assert "Could you share one?" in cleaned
+        assert "what first got you started" not in cleaned
+
+    def test_no_trailing_punctuation(self):
+        cleaned, dropped = enforce_one_question_per_turn(
+            "What do you think about that"
+        )
+        assert cleaned == "What do you think about that"
+        assert dropped == 0
+
+
+# ── TextStructuredController (text-chat guardrail parity) ───────────────────
+
+
+class TestTextStructuredController:
+    def test_initial_state(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        assert c.total_questions == 2
+        assert c.is_finished is False
+        snap = c.snapshot()
+        assert snap["current_question_index"] == 0
+        assert snap["nudge_pending"] is False
+
+    def test_no_nudge_within_budget(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        # Q1 budget = 1 + max_follow_ups(2) = 3. Two counted turns is fine.
+        for t in ("I work in research.", "Mostly data analysis."):
+            assert c.maybe_advance_message(t) is None
+            c.register_bot_turn(t)
+        assert c.snapshot()["nudge_pending"] is False
+        assert c.current_question_index == 0
+
+    def test_advances_after_budget_exhausted(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        for t in ("answer one", "answer two", "answer three"):
+            assert c.maybe_advance_message(t) is None
+            c.register_bot_turn(t)
+        assert c.snapshot()["nudge_pending"] is True
+        msg = c.maybe_advance_message("answer four")
+        assert msg is not None
+        # Provider-safe user-role guidance note.
+        assert msg["role"] == "user"
+        assert "question 2" in msg["content"]
+        assert "biggest pain point" in msg["content"]
+        assert "Great, let's switch gears." in msg["content"]
+        assert c.current_question_index == 1
+
+    def test_clarification_reply_does_not_burn_budget(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        c.register_bot_turn("I work in research.")  # counted
+        c.register_bot_turn("What do you mean by a concrete example?")  # skipped
+        c.register_bot_turn("Sorry, I didn't get the whole question.")  # skipped
+        assert c.snapshot()["bot_turns_on_question"] == 1
+        assert c.snapshot()["nudge_pending"] is False
+
+    def test_nudge_is_held_while_participant_asks_to_repeat(
+        self, two_question_guide
+    ):
+        c = TextStructuredController(two_question_guide)
+        for t in ("answer one", "answer two", "answer three"):
+            c.register_bot_turn(t)
+        assert c.snapshot()["nudge_pending"] is True
+        # A clarification must not trigger the advance.
+        assert c.maybe_advance_message("Sorry, could you repeat that?") is None
+        assert c.current_question_index == 0
+        assert c.snapshot()["nudge_pending"] is True
+        # The next substantive turn advances.
+        assert c.maybe_advance_message("Here is my real answer.") is not None
+        assert c.current_question_index == 1
+
+    def test_closes_after_final_question(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        for t in ("a1", "a2", "a3"):
+            c.register_bot_turn(t)
+        assert c.maybe_advance_message("real answer") is not None  # → Q2
+        c.register_bot_turn("real answer")  # Q2 turn 1
+        c.register_bot_turn("more detail")  # Q2 turn 2 → budget hit
+        assert c.snapshot()["nudge_pending"] is True
+        msg = c.maybe_advance_message("final answer")
+        assert msg is not None
+        assert "completed all the questions" in msg["content"]
+        assert "Thanks for your time." in msg["content"]
+        assert c.is_finished is True
+        # A closed controller no longer counts turns.
+        c.register_bot_turn("anything")
+        assert c.snapshot()["bot_turns_on_question"] == 2
+
+    def test_marker_sync_is_forward_only(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        c.sync_to_marker(2)
+        assert c.current_question_index == 1
+        c.sync_to_marker(1)  # backward, ignored
+        assert c.current_question_index == 1
+        c.sync_to_marker(None)  # no marker, ignored
+        assert c.current_question_index == 1
+        c.sync_to_marker(99)  # out of range, ignored
+        assert c.current_question_index == 1
+
+    def test_marker_sync_clears_pending_nudge(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        for t in ("a1", "a2", "a3"):
+            c.register_bot_turn(t)
+        assert c.snapshot()["nudge_pending"] is True
+        # The model advanced on its own (declared Q2), so trust it.
+        c.sync_to_marker(2)
+        assert c.current_question_index == 1
+        assert c.snapshot()["nudge_pending"] is False
+
+    def test_stats_reports_text_channel(self, two_question_guide):
+        c = TextStructuredController(two_question_guide)
+        stats = c.stats()
+        assert stats["channel"] == "text"
+        assert stats["total_questions"] == 2
+        assert stats["completed"] is False
+        assert stats["forced_advances"] == 0

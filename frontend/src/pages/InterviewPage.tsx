@@ -137,6 +137,15 @@ export default function InterviewPage() {
   const [chatInput, setChatInput] = useState("");
   const [agentTyping, setAgentTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the chat input with its content up to a cap, then scroll inside it.
+  const MAX_INPUT_HEIGHT = 160; // px, matches max-h-40
+  const resizeChatInput = useCallback((el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  }, []);
 
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicCapture | null>(null);
@@ -492,6 +501,10 @@ export default function InterviewPage() {
       { id: crypto.randomUUID(), role: "user", text, timestamp: new Date() },
     ]);
     setChatInput("");
+    // Collapse the (possibly multi-line) input back to one row.
+    if (chatInputRef.current) {
+      chatInputRef.current.style.height = "auto";
+    }
 
     // Send to server
     wsRef.current.send(JSON.stringify({ type: "message", text }));
@@ -663,13 +676,24 @@ export default function InterviewPage() {
                     e.preventDefault();
                     handleSendMessage();
                   }}
-                  className="flex items-center gap-2"
+                  className="flex items-end gap-2"
                 >
-                  <input
-                    type="text"
+                  <textarea
+                    ref={chatInputRef}
+                    rows={1}
                     value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all placeholder:text-gray-400"
+                    onChange={(e) => {
+                      setChatInput(e.target.value);
+                      resizeChatInput(e.target);
+                    }}
+                    onKeyDown={(e) => {
+                      // Enter sends; Shift+Enter inserts a newline.
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    className="flex-1 resize-none max-h-40 overflow-y-auto rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent transition-all placeholder:text-gray-400"
                     placeholder="Type your response…"
                     autoFocus
                     disabled={status !== "active"}
