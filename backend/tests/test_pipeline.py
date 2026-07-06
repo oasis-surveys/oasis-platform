@@ -447,28 +447,37 @@ class TestV2VSystemPromptWithWelcome:
         assert "wait for the participant" in lower
 
 
-# ── V2V silence idle processor ───────────────────────────────────
+# ── Turn detection (pipecat 1.x smart-turn) ──────────────────────
 
-class TestV2VIdleProcessor:
-    """The V2V pipelines now opt-in to silence handling via _build_v2v_idle_processor."""
+class TestTurnDetection:
+    """VAD, turn strategies and idle now hang off LLMUserAggregatorParams."""
 
-    def test_returns_none_when_disabled(self):
-        from app.pipeline.runner import _build_v2v_idle_processor
-        assert _build_v2v_idle_processor(None, "irrelevant") is None
-        assert _build_v2v_idle_processor(0, "irrelevant") is None
+    def test_local_analyzer_is_default(self):
+        from app.pipeline.runner import _build_turn_analyzer
+        from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
+            LocalSmartTurnAnalyzerV3,
+        )
+        assert isinstance(_build_turn_analyzer(None), LocalSmartTurnAnalyzerV3)
+        assert isinstance(_build_turn_analyzer("local"), LocalSmartTurnAnalyzerV3)
 
-    def test_returns_processor_when_enabled(self):
-        from app.pipeline.runner import _build_v2v_idle_processor
-        from pipecat.processors.user_idle_processor import UserIdleProcessor
+    def test_remote_without_url_falls_back_to_local(self):
+        from app.pipeline.runner import _build_turn_analyzer
+        from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
+            LocalSmartTurnAnalyzerV3,
+        )
+        # No SMART_TURN_REMOTE_URL configured in the test env, so remote should
+        # degrade gracefully to the bundled model rather than crash.
+        assert isinstance(_build_turn_analyzer("remote"), LocalSmartTurnAnalyzerV3)
 
-        proc = _build_v2v_idle_processor(15, "Take your time.")
-        assert proc is not None
-        assert isinstance(proc, UserIdleProcessor)
+    def test_user_params_wire_vad_and_idle(self):
+        from app.pipeline.runner import _build_user_params
+        p = _build_user_params("local", 12)
+        assert p.vad_analyzer is not None
+        assert p.user_idle_timeout == 12
+        stop = [type(s).__name__ for s in p.user_turn_strategies.stop]
+        assert "TurnAnalyzerUserTurnStopStrategy" in stop
 
-    def test_falls_back_to_default_prompt(self):
-        # We don't poke the internal callback (Pipecat may evolve), but we do
-        # want to be sure the helper accepts a None prompt and still returns a
-        # processor instead of crashing.
-        from app.pipeline.runner import _build_v2v_idle_processor
-        proc = _build_v2v_idle_processor(20, None)
-        assert proc is not None
+    def test_user_params_idle_zero_when_disabled(self):
+        from app.pipeline.runner import _build_user_params
+        assert _build_user_params("local", None).user_idle_timeout == 0
+        assert _build_user_params("local", 0).user_idle_timeout == 0

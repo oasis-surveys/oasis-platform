@@ -21,6 +21,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: oasis-frontend
     restart: unless-stopped
     expose:
       - "80"
@@ -32,6 +33,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: oasis-backend
     restart: unless-stopped
     expose:
       - "8000"

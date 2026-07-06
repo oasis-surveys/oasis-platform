@@ -227,6 +227,7 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             "tts_provider": agent.tts_provider,
             "tts_model": agent.tts_model,
             "tts_voice": agent.tts_voice,
+            "turn_detection": getattr(agent, "turn_detection", "local"),
             "language": agent.language,
             "max_duration_seconds": agent.max_duration_seconds,
             "interview_mode": (
@@ -283,6 +284,7 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             notify_callback=_notify,
             interview_mode=agent_cfg.get("interview_mode"),
             interview_guide=agent_cfg.get("interview_guide"),
+            turn_detection=agent_cfg.get("turn_detection", "local"),
             stream_sid=stream_sid,
             call_sid=call_sid,
             study_id=agent_cfg["study_id"],
