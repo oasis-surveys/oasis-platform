@@ -121,6 +121,7 @@ export interface Agent {
   tts_provider: string;
   tts_model: string | null;
   tts_voice: string | null;
+  turn_detection: "local" | "remote";
   language: string;
   max_duration_seconds: number | null;
   participant_id_mode: "random" | "predefined" | "input";

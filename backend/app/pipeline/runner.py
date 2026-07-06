@@ -1,5 +1,5 @@
 """
-OASIS — Pipecat pipeline builder (pipecat 0.0.105).
+OASIS — Pipecat pipeline builder (pipecat 1.x).
 
 Supports two pipeline types:
 
@@ -10,10 +10,10 @@ Supports two pipeline types:
     OpenAI Realtime:   Transport(in) → RealtimeLLM → UserCapture → TranscriptLogger → Transport(out)
     Gemini Live:       Transport(in) → GeminiLiveLLM → UserCapture → TranscriptLogger → Transport(out)
 
-Uses the *modern* pipecat 0.0.105 API:
-  - LLMContext  (not the deprecated OpenAILLMContext)
-  - LLMContextAggregatorPair  (not llm.create_context_aggregator)
-  - Settings dataclasses  (not deprecated keyword args)
+Pipecat 1.x notes:
+  - VAD and turn detection live on LLMUserAggregatorParams, not the transport.
+  - Silence handling uses the aggregator's on_user_turn_idle event, not the
+    removed UserIdleProcessor.
 """
 
 import uuid
@@ -31,15 +31,13 @@ from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.frames.frames import (
     EndFrame,
     LLMContextFrame,
-    LLMMessagesAppendFrame,
-    LLMMessagesFrame,
     TTSSpeakFrame,
 )
 
-# Modern context API — NOT the deprecated OpenAILLMContext
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
 )
 
 from app.config import settings
@@ -182,6 +180,7 @@ async def build_twilio_pipeline(
     study_id: Optional[uuid.UUID] = None,
     interview_mode: Optional[str] = None,
     interview_guide: Optional[dict] = None,
+    turn_detection: Optional[str] = None,
 ) -> PipelineTask:
     """
     Build a Pipecat pipeline for Twilio telephony.
@@ -221,9 +220,6 @@ async def build_twilio_pipeline(
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_enabled=True,
-            vad_analyzer=_get_vad(),
-            vad_audio_passthrough=True,
             serializer=serializer,
             session_timeout=max_duration_seconds,
         ),
@@ -272,6 +268,7 @@ async def build_twilio_pipeline(
             study_id=study_id,
             interview_mode=interview_mode,
             interview_guide=interview_guide,
+            turn_detection=turn_detection,
         )
 
     return task
@@ -306,6 +303,7 @@ async def build_pipeline(
     adaptive_enabled: bool = False,
     adaptive_policy: Optional[dict] = None,
     widget_show_progress: bool = False,
+    turn_detection: Optional[str] = None,
 ) -> tuple[PipelineTask, Optional[AudioRecordingManager]]:
     """
     Build and return a ready-to-run PipelineTask plus optional audio manager.
@@ -357,9 +355,6 @@ async def build_pipeline(
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_enabled=True,
-            vad_analyzer=_get_vad(),
-            vad_audio_passthrough=True,
             serializer=serializer,
             session_timeout=max_duration_seconds,
         ),
@@ -461,6 +456,7 @@ async def build_pipeline(
             silence_prompt=silence_prompt,
             interview_mode=interview_mode,
             interview_guide=interview_guide,
+            turn_detection=turn_detection,
             engagement_processor=engagement_processor,
             adaptive_processor=adaptive_processor,
             progress_callback=_progress_callback,
@@ -599,7 +595,8 @@ async def _build_llm(llm_model: str):
       - ``custom/<model>``     → OPENAI_COMPATIBLE_LLM_URL (LiteLLM proxy, vLLM)
       - everything else        → OpenAI (with optional ``openai/`` prefix stripped)
     """
-    from pipecat.services.openai.llm import OpenAILLMService, OpenAILLMSettings
+    from pipecat.services.openai.llm import OpenAILLMService
+    from pipecat.services.openai.base_llm import OpenAILLMSettings
 
     if llm_model.startswith("scaleway/"):
         model_name = llm_model[len("scaleway/"):]
@@ -734,6 +731,7 @@ async def _build_modular_pipeline(
     silence_prompt: Optional[str] = None,
     interview_mode: Optional[str] = None,
     interview_guide: Optional[dict] = None,
+    turn_detection: Optional[str] = None,
     engagement_processor=None,
     adaptive_processor=None,
     progress_callback=None,
@@ -752,35 +750,36 @@ async def _build_modular_pipeline(
         _register_rag_tool(llm, study_id)
         tools = _get_rag_tools_schema()
 
-    # Modern context API
+    # Modern context API. VAD, turn detection and idle handling all hang off
+    # the user aggregator now (pipecat 1.x).
     messages = [{"role": "system", "content": system_prompt}]
     if tools:
         context = LLMContext(messages=messages, tools=tools)
     else:
         context = LLMContext(messages=messages)
-    context_aggregator = LLMContextAggregatorPair(context=context)
+    context_aggregator = LLMContextAggregatorPair(
+        context,
+        user_params=_build_user_params(turn_detection, silence_timeout_seconds),
+    )
 
     # ── TTS ───────────────────────────────────────────────────
     tts = await _build_tts(tts_provider, tts_voice, language, tts_model)
 
-    # ── Silence handling (UserIdleProcessor) ─────────────────
-    idle_processor = None
+    # ── Silence handling ──────────────────────────────────────
+    # The user aggregator fires on_user_turn_idle once per idle window (the
+    # window is set via user_idle_timeout in _build_user_params). It re-arms
+    # after the bot speaks again, so we cap the nudges to avoid pestering.
     if silence_timeout_seconds and silence_timeout_seconds > 0:
-        from pipecat.processors.user_idle_processor import UserIdleProcessor
-        import warnings
-        warnings.filterwarnings("ignore", category=DeprecationWarning, module="pipecat.processors.user_idle_processor")
-
         _silence_msg = silence_prompt or "Take your time. Let me know when you're ready to continue."
+        _idle_nudges = {"count": 0}
 
-        async def _handle_user_idle(processor: "UserIdleProcessor", retry_count: int) -> bool:
-            logger.info(f"User idle (retry #{retry_count}), sending silence prompt")
+        @context_aggregator.user().event_handler("on_user_turn_idle")
+        async def _on_user_idle(aggregator):
+            if _idle_nudges["count"] >= 3:
+                return
+            _idle_nudges["count"] += 1
+            logger.info(f"User idle (nudge #{_idle_nudges['count']}), sending silence prompt")
             await task.queue_frames([TTSSpeakFrame(text=_silence_msg)])
-            return retry_count < 3  # stop after 3 retries
-
-        idle_processor = UserIdleProcessor(
-            callback=_handle_user_idle,
-            timeout=float(silence_timeout_seconds),
-        )
 
     # ── Structured interview guide processor (optional) ──────
     guide_processor = None
@@ -828,15 +827,10 @@ async def _build_modular_pipeline(
         context_aggregator.assistant(),  # accumulate bot turns
     ]
 
-    # Insert idle processor after user_capture (before user context aggregator)
-    if idle_processor:
-        pipeline_nodes.insert(3, idle_processor)  # after user_capture, before context_aggregator.user()
-
     # Insert guide processor right after user_capture so it observes
     # UserStoppedSpeakingFrame and pushes LLMMessagesAppendFrame *before*
     # the user context aggregator triggers the next LLM run.
     if guide_processor:
-        # Find user_capture's position dynamically (idle_processor may have shifted it)
         insert_at = pipeline_nodes.index(user_capture) + 1
         pipeline_nodes.insert(insert_at, guide_processor)
 
@@ -863,10 +857,7 @@ async def _build_modular_pipeline(
 
     task = PipelineTask(
         pipeline,
-        params=PipelineParams(
-            allow_interruptions=True,
-            enable_metrics=True,
-        ),
+        params=PipelineParams(enable_metrics=True),
     )
 
     # ── Welcome message (spoken by TTS on connect) ────────────
@@ -879,10 +870,10 @@ async def _build_modular_pipeline(
                 [TTSSpeakFrame(text=welcome_message)]
             )
         else:
-            # No explicit welcome message — trigger the LLM to generate
-            # a greeting from the system prompt.
+            # No explicit welcome message — push the context to trigger the
+            # LLM to generate a greeting from the system prompt.
             await task.queue_frames(
-                [LLMMessagesFrame(messages=messages)]
+                [LLMContextFrame(context=context)]
             )
 
     # ── Client disconnect → shut down pipeline ────────────────
@@ -954,56 +945,6 @@ async def _build_v2v_pipeline(
         study_id=study_id,
         silence_timeout_seconds=silence_timeout_seconds,
         silence_prompt=silence_prompt,
-    )
-
-
-def _build_v2v_idle_processor(
-    silence_timeout_seconds: Optional[int],
-    silence_prompt: Optional[str],
-):
-    """Create a UserIdleProcessor for V2V pipelines, or ``None`` if disabled.
-
-    V2V backends don't have an explicit TTS stage, so we can't queue a
-    ``TTSSpeakFrame`` like the modular pipeline does. Instead we push an
-    ``LLMMessagesAppendFrame`` with ``run_llm=True``: the realtime model
-    sees the system nudge and responds in its own voice.
-    """
-    if not silence_timeout_seconds or silence_timeout_seconds <= 0:
-        return None
-
-    from pipecat.processors.user_idle_processor import UserIdleProcessor
-    import warnings
-    warnings.filterwarnings(
-        "ignore",
-        category=DeprecationWarning,
-        module="pipecat.processors.user_idle_processor",
-    )
-
-    msg = silence_prompt or "Take your time. Let me know when you're ready to continue."
-
-    async def _on_idle(processor: "UserIdleProcessor", retry_count: int) -> bool:
-        from app.engagement.adaptive import guidance_message
-
-        logger.info(f"User idle (retry #{retry_count}) — nudging via LLM")
-        # User-role note: mid-conversation system messages are rejected by
-        # some chat APIs (OpenAI gpt-5.x) with a 400 error.
-        await processor.push_frame(
-            LLMMessagesAppendFrame(
-                messages=[
-                    guidance_message(
-                        f"[silence detected] The participant has been "
-                        f"quiet for a while. Gently check in with: "
-                        f'"{msg}"'
-                    )
-                ],
-                run_llm=True,
-            )
-        )
-        return retry_count < 3
-
-    return UserIdleProcessor(
-        callback=_on_idle,
-        timeout=float(silence_timeout_seconds),
     )
 
 
@@ -1107,15 +1048,11 @@ async def _build_openai_realtime_pipeline(
         transport.output(),
     ]
 
-    idle_processor = _build_v2v_idle_processor(silence_timeout_seconds, silence_prompt)
-    if idle_processor:
-        nodes.insert(nodes.index(transcript_logger), idle_processor)
-
     pipeline = Pipeline(nodes)
 
     task = PipelineTask(
         pipeline,
-        params=PipelineParams(allow_interruptions=True, enable_metrics=True),
+        params=PipelineParams(enable_metrics=True),
     )
 
     # ── Initial context + greeting on connect ─────────────────
@@ -1219,15 +1156,11 @@ async def _build_gemini_live_pipeline(
         transport.output(),
     ]
 
-    idle_processor = _build_v2v_idle_processor(silence_timeout_seconds, silence_prompt)
-    if idle_processor:
-        nodes.insert(nodes.index(transcript_logger), idle_processor)
-
     pipeline = Pipeline(nodes)
 
     task = PipelineTask(
         pipeline,
-        params=PipelineParams(allow_interruptions=True, enable_metrics=True),
+        params=PipelineParams(enable_metrics=True),
     )
 
     # ── Initial context + greeting on connect ─────────────────
@@ -1299,6 +1232,85 @@ def _get_vad():
     """Return a Silero VAD analyzer instance."""
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     return SileroVADAnalyzer()
+
+
+def _build_turn_analyzer(turn_detection: Optional[str]):
+    """Return the smart-turn analyzer for the modular pipeline.
+
+    "local" (default) runs the bundled smart-turn-v3 ONNX model on-device.
+    "remote" sends audio to the HTTP endpoint in SMART_TURN_REMOTE_URL; if that
+    isn't set we fall back to local so a misconfigured agent still works.
+    """
+    from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
+        LocalSmartTurnAnalyzerV3,
+    )
+
+    if (turn_detection or "local").lower() == "remote":
+        url = (settings.smart_turn_remote_url or "").strip()
+        if url:
+            import aiohttp
+            from pipecat.audio.turn.smart_turn.http_smart_turn import (
+                HttpSmartTurnAnalyzer,
+            )
+
+            headers = {}
+            if settings.smart_turn_remote_api_key:
+                headers["Authorization"] = f"Bearer {settings.smart_turn_remote_api_key}"
+            # The session lives for the pipeline's lifetime; pipecat closes it
+            # on shutdown along with the analyzer.
+            session = aiohttp.ClientSession()
+            logger.info(f"Turn detection: remote smart-turn ({url})")
+            return HttpSmartTurnAnalyzer(
+                url=url,
+                aiohttp_session=session,
+                headers=headers or None,
+            )
+        logger.warning(
+            "turn_detection=remote but SMART_TURN_REMOTE_URL is empty; "
+            "using the local smart-turn model instead"
+        )
+
+    logger.info("Turn detection: local smart-turn model")
+    return LocalSmartTurnAnalyzerV3()
+
+
+def _build_user_params(
+    turn_detection: Optional[str],
+    user_idle_timeout_seconds: Optional[int],
+) -> LLMUserAggregatorParams:
+    """Build the user-aggregator params (VAD + turn strategies + idle).
+
+    Pipecat 1.x moved all of this off the transport and onto the user
+    aggregator. VAD detects speech; the turn analyzer decides when the user is
+    actually done talking.
+    """
+    from pipecat.turns.user_turn_strategies import UserTurnStrategies
+    from pipecat.turns.user_start import (
+        VADUserTurnStartStrategy,
+        TranscriptionUserTurnStartStrategy,
+    )
+    from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+
+    idle = (
+        float(user_idle_timeout_seconds)
+        if user_idle_timeout_seconds and user_idle_timeout_seconds > 0
+        else 0
+    )
+    return LLMUserAggregatorParams(
+        vad_analyzer=_get_vad(),
+        user_turn_strategies=UserTurnStrategies(
+            start=[
+                VADUserTurnStartStrategy(),
+                TranscriptionUserTurnStartStrategy(),
+            ],
+            stop=[
+                TurnAnalyzerUserTurnStopStrategy(
+                    turn_analyzer=_build_turn_analyzer(turn_detection)
+                ),
+            ],
+        ),
+        user_idle_timeout=idle,
+    )
 
 
 async def _build_stt(provider: str, language: str, model: Optional[str] = None):

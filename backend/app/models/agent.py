@@ -120,6 +120,13 @@ class Agent(Base):
     tts_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tts_voice: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # ── Turn detection (modular voice only) ──
+    # "local" uses the bundled on-device smart-turn model; "remote" routes to
+    # the HTTP endpoint configured in SMART_TURN_REMOTE_URL.
+    turn_detection: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="local", server_default="local"
+    )
+
     # ── Interview settings ──
     language: Mapped[str] = mapped_column(String(10), default="en", server_default="en")
     max_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)

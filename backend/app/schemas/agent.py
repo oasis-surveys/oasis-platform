@@ -148,6 +148,16 @@ class AgentCreate(BaseModel):
     tts_model: str | None = None
     tts_voice: str | None = None
 
+    turn_detection: str = Field(
+        "local",
+        pattern="^(local|remote)$",
+        description=(
+            "Turn-detection model for modular voice. 'local' runs the bundled "
+            "on-device smart-turn model; 'remote' uses the configured HTTP "
+            "smart-turn endpoint (falls back to local if none is set)."
+        ),
+    )
+
     language: str = Field("en", max_length=10)
     max_duration_seconds: int | None = Field(None, ge=60, le=7200)
 
@@ -204,6 +214,8 @@ class AgentUpdate(BaseModel):
     tts_model: str | None = None
     tts_voice: str | None = None
 
+    turn_detection: str | None = Field(None, pattern="^(local|remote)$")
+
     language: str | None = Field(None, max_length=10)
     max_duration_seconds: int | None = Field(None, ge=60, le=7200)
 
@@ -259,6 +271,8 @@ class AgentRead(BaseModel):
     tts_provider: str
     tts_model: str | None
     tts_voice: str | None
+
+    turn_detection: str
 
     language: str
     max_duration_seconds: int | None

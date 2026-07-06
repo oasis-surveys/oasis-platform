@@ -432,6 +432,7 @@ function buildAgentConfigJSON(form: FormData): string {
     tts_provider: form.tts_provider,
     tts_model: form.tts_model || null,
     tts_voice: form.tts_voice || null,
+    turn_detection: form.turn_detection,
     language: form.language === "__custom__" ? form.language_custom : form.language,
     max_duration_seconds: maxDur,
     status: form.status,
@@ -501,6 +502,7 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     tts_provider: (obj.tts_provider as string) || "openai",
     tts_model: (obj.tts_model as string) || "gpt-4o-mini-tts",
     tts_voice: (obj.tts_voice as string) || "alloy",
+    turn_detection: (obj.turn_detection as string) === "remote" ? "remote" : "local",
     language: (() => {
       const lang = (obj.language as string) || "en";
       return LANGUAGES.some((l) => l.value === lang) ? lang : "__custom__";
@@ -607,6 +609,7 @@ interface FormData {
   tts_provider: string;
   tts_model: string;
   tts_voice: string;
+  turn_detection: "local" | "remote";
   language: string;
   language_custom: string;
   max_duration_seconds: string;
@@ -657,6 +660,7 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   tts_provider: "openai",
   tts_model: "gpt-4o-mini-tts",
   tts_voice: "alloy",
+  turn_detection: "local",
   language: "en",
   language_custom: "",
   max_duration_seconds: "1800",
@@ -934,6 +938,7 @@ export default function AgentFormPage() {
           tts_provider: a.tts_provider,
           tts_model: a.tts_model || "gpt-4o-mini-tts",
           tts_voice: a.tts_voice || "alloy",
+          turn_detection: a.turn_detection === "remote" ? "remote" : "local",
           language: (() => {
             const known = LANGUAGES.some((l) => l.value === a.language);
             return known ? a.language : "__custom__";
@@ -1061,6 +1066,7 @@ export default function AgentFormPage() {
       tts_provider: form.tts_provider,
       tts_model: form.tts_model || null,
       tts_voice: form.tts_voice || null,
+      turn_detection: form.turn_detection,
       language: form.language === "__custom__" ? form.language_custom : form.language,
       max_duration_seconds: maxDurationParsed,
       status: form.status,
@@ -2324,6 +2330,45 @@ export default function AgentFormPage() {
                     <strong>Azure Speech:</strong> Set <code>AZURE_SPEECH_KEY</code> and <code>AZURE_SPEECH_REGION</code> in your <code>.env</code> file. The voice / model are read from those environment variables, not from per-agent config.
                   </InfoBanner>
                 )}
+
+                {/* ── Turn detection (local vs remote) ── */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-medium text-gray-700">Turn detection</span>
+                    <HelpTooltip text="Decides when the participant has finished speaking so the agent can reply. Local runs the built-in smart-turn model on the server, no setup needed. Remote sends audio to an external smart-turn endpoint (set SMART_TURN_REMOTE_URL in Settings); if that isn't configured it falls back to local. Applies to modular voice only." />
+                  </div>
+                  <div className="flex gap-3">
+                    {([
+                      {
+                        value: "local" as const,
+                        title: "Local model",
+                        desc: "On-device, no setup",
+                      },
+                      {
+                        value: "remote" as const,
+                        title: "Remote endpoint",
+                        desc: "Uses SMART_TURN_REMOTE_URL",
+                      },
+                    ]).map((opt) => {
+                      const active = form.turn_detection === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, turn_detection: opt.value }))}
+                          className={`flex-1 rounded-lg border-2 px-3 py-2 text-left transition-all ${
+                            active
+                              ? "border-gray-900 bg-gray-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <div className="font-medium text-xs text-gray-900">{opt.title}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">{opt.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </>
             )}
           </div>

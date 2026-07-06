@@ -4,6 +4,34 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-07-06
+
+### Changed
+
+- Upgraded Pipecat from 0.0.105 to 1.4.0. The big shift in 1.x is that VAD and
+  turn detection moved off the transport and onto the user aggregator, so the
+  pipeline builder was reworked to match. Most of our code was already on the
+  modern APIs (universal LLMContext, submodule imports), so the blast radius was
+  smaller than expected, but a few things had to change: silence handling no
+  longer uses the removed UserIdleProcessor (the modular pipeline now listens
+  for the aggregator's idle event instead), and a couple of removed frame and
+  settings imports were repointed. Ran the full backend suite green after.
+
+### Added
+
+- Per-agent turn-detection setting for modular voice. "Local" runs the smart-turn
+  model that now ships with Pipecat on the server itself, which is the default
+  and needs no setup. "Remote" sends audio to an external smart-turn endpoint
+  (set SMART_TURN_REMOTE_URL, plus an optional API key, in your env); if that
+  URL is empty it just falls back to local so nothing breaks. The toggle sits in
+  the STT/TTS block of the agent form and only applies to modular voice.
+
+### Removed
+
+- The silence nudge no longer runs on voice-to-voice pipelines. It only ever
+  worked well on the modular pipeline, and 1.x has no aggregator to hang it off
+  for V2V, so we dropped it there rather than fake it. Modular voice keeps it.
+
 ## 2026-06-25
 
 ### Added

@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     gcp_location: str = "us-central1"
     gcp_api_key: str = ""  # alternative to Application Default Credentials
 
+    # ── Smart-turn detection (remote endpoint) ──
+    # Leave empty to use the bundled on-device model. Set a URL to route
+    # agents configured for "remote" turn detection to an HTTP smart-turn
+    # service (e.g. a self-hosted smart-turn server).
+    smart_turn_remote_url: str = ""     # e.g. http://my-server:8300/predict
+    smart_turn_remote_api_key: str = ""  # optional bearer token
+
     # ── Self-Hosted STT/TTS (OpenAI-compatible endpoints) ──
     self_hosted_stt_url: str = ""       # e.g. http://my-server:8000/v1
     self_hosted_stt_api_key: str = ""   # optional, many local servers ignore this
