@@ -727,6 +727,13 @@ export default function SettingsPage() {
             defaultOpen={idx === 0}
             dataTour={idx === 0 ? "settings-keys" : undefined}
           >
+            {category === "Custom / Self-Hosted" && (
+              <p className="border-b border-gray-100 px-5 py-4 text-xs text-gray-500">
+                For a fully self-hosted voice pipeline, configure the LLM, STT,
+                and TTS URLs below. API keys are optional when your local
+                endpoints do not require them.
+              </p>
+            )}
             <div className="divide-y divide-gray-50">
               {categoryKeys.map((key) => {
                 const info = KEY_INFO[key.field];

@@ -60,9 +60,9 @@ OASIS has first-class integrations for the providers below. Each one has a dedic
 | GCP Vertex AI | `GCP_API_KEY` + `GCP_PROJECT_ID` + `GCP_LOCATION` | `gcp/gemini-2.5-pro`, `gcp/gemini-2.5-flash`, ... | Vertex AI's OpenAI-compatible shim. |
 | **Anything OpenAI-compatible (incl. OpenRouter)** | `OPENAI_COMPATIBLE_LLM_URL` + `OPENAI_COMPATIBLE_LLM_API_KEY` | `custom/<model>` | See below. |
 
-**STT (speech-to-text):** OpenAI GPT Realtime Whisper / Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), and Scaleway Whisper. Azure Speech and self-hosted STT stay hidden until their settings are fully wired.
+**STT (speech-to-text):** OpenAI GPT Realtime Whisper / Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), Scaleway Whisper, and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_STT_URL` to show the self-hosted option.
 
-**TTS (text-to-speech):** OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), and Cartesia (`CARTESIA_API_KEY`). Azure Speech and self-hosted TTS stay hidden until their settings are fully wired.
+**TTS (text-to-speech):** OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), Cartesia (`CARTESIA_API_KEY`), and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_TTS_URL` to show the self-hosted option.
 
 **Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2.1`, `gpt-realtime-2.1-mini`, `gpt-realtime-2`, `gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`) and Google Gemini Live.
 
@@ -84,7 +84,7 @@ custom/meta-llama/llama-3.3-70b-instruct
 
 (For OpenRouter, the model ID after `custom/` is whatever OpenRouter calls it, see [openrouter.ai/models](https://openrouter.ai/models). Same idea for Groq, Mistral, etc.)
 
-The `custom/` route only covers the **LLM** step. STT and TTS are configured separately, but the self-hosted STT/TTS env vars (`STT_API_URL`, `TTS_API_URL`) accept any OpenAI-compatible audio endpoint too.
+The `custom/` route only covers the **LLM** step. STT and TTS are configured separately through `SELF_HOSTED_STT_URL` and `SELF_HOSTED_TTS_URL`, which accept OpenAI-compatible audio endpoints.
 
 </details>
 

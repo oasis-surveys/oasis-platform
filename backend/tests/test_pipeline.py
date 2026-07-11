@@ -318,6 +318,22 @@ class TestBuildSTT:
         except ImportError:
             pytest.skip("openai pipecat service not installed")
 
+    @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
+    async def test_build_self_hosted_stt(self, mock_get_key):
+        mock_get_key.side_effect = ["http://stt.local/v1", "local-key"]
+        from app.pipeline.runner import _build_stt
+        import importlib
+
+        mod = importlib.import_module("pipecat.services.openai.stt")
+        with patch.object(mod, "OpenAISTTService") as MockSTT:
+            MockSTT.return_value = MagicMock()
+            await _build_stt("self_hosted", "en", "local-whisper")
+
+            kwargs = MockSTT.call_args.kwargs
+            assert kwargs["base_url"] == "http://stt.local/v1"
+            assert kwargs["api_key"] == "local-key"
+            assert kwargs["settings"].model == "local-whisper"
+
     @patch("app.pipeline.runner._openai_realtime_base_url", new_callable=AsyncMock)
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
     async def test_build_openai_realtime_whisper(
@@ -403,6 +419,28 @@ class TestBuildTTS:
                 MockTTS.assert_called_once()
         except ImportError:
             pytest.skip("openai pipecat service not installed")
+
+    @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
+    async def test_build_self_hosted_tts(self, mock_get_key):
+        mock_get_key.side_effect = ["http://tts.local/v1", "local-key"]
+        from app.pipeline.runner import _build_tts
+        import importlib
+
+        mod = importlib.import_module("pipecat.services.openai.tts")
+        with patch.object(mod, "OpenAITTSService") as MockTTS:
+            MockTTS.return_value = MagicMock()
+            await _build_tts(
+                "self_hosted",
+                "local-voice",
+                "en",
+                "local-tts",
+            )
+
+            kwargs = MockTTS.call_args.kwargs
+            assert kwargs["base_url"] == "http://tts.local/v1"
+            assert kwargs["api_key"] == "local-key"
+            assert kwargs["settings"].model == "local-tts"
+            assert kwargs["settings"].voice == "local-voice"
 
     @patch("app.pipeline.runner._openai_use_eu", new_callable=AsyncMock)
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)

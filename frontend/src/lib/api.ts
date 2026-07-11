@@ -905,6 +905,9 @@ export interface ProviderCatalog {
     tts_voice: string;
     v2v_voice_openai: string;
     v2v_voice_google: string;
+    self_hosted_stt_model: string;
+    self_hosted_tts_model: string;
+    self_hosted_tts_voice: string;
   };
   llm_modular: CatalogModelOption[];
   llm_text: CatalogModelOption[];
