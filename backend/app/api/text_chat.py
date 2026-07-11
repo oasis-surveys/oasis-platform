@@ -34,6 +34,8 @@ from app.models.session import (
     aggregate_session_tokens,
 )
 from app.realtime import publish_transcript_event
+from app.providers.catalog import resolve_llm_api_kind
+from app.providers.validate import validate_agent_pipeline_config
 from app.session_manager import register_session, unregister_session
 
 router = APIRouter()
@@ -76,7 +78,7 @@ _REALTIME_TO_CHAT: dict[str, str] = {
     "openai-realtime/gpt-realtime-1.5": "gpt-4.1",
     "openai-realtime/gpt-realtime-2": "gpt-4.1",
     # Gemini Live → chat equivalents
-    "google/gemini-2.5-flash-native-audio": "google/gemini-2.5-flash",
+    "google/gemini-2.5-flash-native-audio": "google/gemini-3.5-flash",
     "google/gemini-2.0-flash-live": "google/gemini-2.0-flash",
 }
 
@@ -98,7 +100,7 @@ def _resolve_chat_model(model: str) -> str:
     if "realtime" in lower or "native-audio" in lower or "live" in lower:
         # Best-effort fallback
         if "gemini" in lower:
-            return "google/gemini-2.5-flash"
+            return "google/gemini-3.5-flash"
         if "gpt" in lower:
             return "gpt-4.1"
         return "gpt-4.1"  # safe default
@@ -169,6 +171,44 @@ async def _maybe_inject_rag_context(
         return messages
 
 
+async def _call_openai_responses(
+    messages: list[dict],
+    model: str,
+    api_key: str,
+    api_base: str | None,
+) -> dict:
+    """Call a model through OpenAI's Responses API."""
+    from openai import AsyncOpenAI
+
+    client_kwargs: dict = {"api_key": api_key}
+    if api_base:
+        client_kwargs["base_url"] = api_base
+    client = AsyncOpenAI(**client_kwargs)
+
+    instructions = "\n\n".join(
+        str(message.get("content", ""))
+        for message in messages
+        if message.get("role") in ("system", "developer")
+    )
+    input_messages = [
+        message
+        for message in messages
+        if message.get("role") not in ("system", "developer")
+    ]
+    response = await client.responses.create(
+        model=model.removeprefix("openai/"),
+        instructions=instructions or None,
+        input=input_messages,
+        max_output_tokens=2048,
+    )
+    usage = response.usage
+    return {
+        "content": response.output_text or "",
+        "prompt_tokens": usage.input_tokens if usage else None,
+        "completion_tokens": usage.output_tokens if usage else None,
+    }
+
+
 async def _call_llm(
     messages: list[dict],
     model: str,
@@ -198,6 +238,17 @@ async def _call_llm(
             break
     messages = await _maybe_inject_rag_context(messages, study_id, last_user_text)
 
+    api_kind = resolve_llm_api_kind(model)
+    openai_model_id = model.removeprefix("openai/")
+    is_direct_openai = model.startswith("openai/") or "/" not in model
+    if is_direct_openai and api_kind == "responses":
+        return await _call_openai_responses(
+            messages,
+            model,
+            await _get_key("openai_api_key"),
+            await _openai_api_base(),
+        )
+
     # Resolve model to litellm format
     litellm_model = model
     if model.startswith("scaleway/"):
@@ -208,9 +259,12 @@ async def _call_llm(
     kwargs: dict = {
         "model": litellm_model,
         "messages": messages,
-        "max_tokens": 2048,
-        "temperature": 0.7,
     }
+    if openai_model_id.startswith(("gpt-5", "o1", "o3", "o4")):
+        kwargs["max_completion_tokens"] = 2048
+    else:
+        kwargs["max_tokens"] = 2048
+        kwargs["temperature"] = 0.7
 
     if model.startswith("scaleway/"):
         scw_key = await _get_key("scaleway_secret_key")
@@ -464,6 +518,36 @@ async def text_chat_ws(
         if not agent:
             await websocket.send_json({"type": "error", "text": "Agent not found or inactive"})
             await websocket.close(code=4004, reason="Agent not found or inactive")
+            return
+
+        agent_modality = (
+            agent.modality.value if hasattr(agent.modality, "value") else (agent.modality or "voice")
+        )
+        if agent_modality != "text":
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "text": "This is a voice interview agent. Please use the voice interview widget.",
+                }
+            )
+            await websocket.close(code=4005, reason="Wrong modality")
+            return
+
+        pipeline_type = (
+            agent.pipeline_type.value
+            if hasattr(agent.pipeline_type, "value")
+            else agent.pipeline_type
+        )
+        validation_errors = await validate_agent_pipeline_config(
+            modality=agent_modality,
+            pipeline_type=pipeline_type,
+            llm_model=agent.llm_model,
+        )
+        if validation_errors:
+            await websocket.send_json(
+                {"type": "error", "text": "; ".join(validation_errors)}
+            )
+            await websocket.close(code=4006, reason="Invalid agent configuration")
             return
 
         # Snapshot config

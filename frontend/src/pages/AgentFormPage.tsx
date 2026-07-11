@@ -14,6 +14,7 @@ import {
   type AdaptivePolicy,
   type ParticipantIdentifier,
   type ApiKeyStatus,
+  type ProviderCatalog,
 } from "../lib/api";
 import HelpTooltip from "../components/HelpTooltip";
 import CopyButton from "../components/CopyButton";
@@ -23,184 +24,6 @@ import EngagementConfigFields from "../components/EngagementConfigFields";
 import AdaptiveBehaviorToggle from "../components/AdaptiveBehaviorToggle";
 import AdaptivePolicyFields from "../components/AdaptivePolicyFields";
 import { useToast } from "../components/Toast";
-
-// ── Model options ─────────────────────────────────────────────
-
-const LLM_MODELS_MODULAR = [
-  // OpenAI — frontier text models (verified against developers.openai.com/api/docs/models/all, May 2026)
-  { value: "openai/gpt-5.5", label: "GPT-5.5 (newest)", group: "OpenAI" },
-  { value: "openai/gpt-5.5-pro", label: "GPT-5.5 Pro", group: "OpenAI" },
-  { value: "openai/gpt-5.4", label: "GPT-5.4", group: "OpenAI" },
-  { value: "openai/gpt-5.4-pro", label: "GPT-5.4 Pro", group: "OpenAI" },
-  { value: "openai/gpt-5.4-mini", label: "GPT-5.4 Mini", group: "OpenAI" },
-  { value: "openai/gpt-5.4-nano", label: "GPT-5.4 Nano (cheapest)", group: "OpenAI" },
-  { value: "openai/gpt-5", label: "GPT-5", group: "OpenAI" },
-  { value: "openai/gpt-5-mini", label: "GPT-5 Mini", group: "OpenAI" },
-  { value: "openai/gpt-5-nano", label: "GPT-5 Nano", group: "OpenAI" },
-  { value: "openai/gpt-4.1", label: "GPT-4.1", group: "OpenAI" },
-  { value: "openai/gpt-4.1-mini", label: "GPT-4.1 Mini", group: "OpenAI" },
-  { value: "openai/gpt-4o", label: "GPT-4o", group: "OpenAI" },
-  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini", group: "OpenAI" },
-  { value: "openai/o3", label: "o3 (reasoning)", group: "OpenAI" },
-  // Scaleway — Generative APIs (OpenAI-compatible).
-  // Verified against the live https://api.scaleway.ai/v1/models endpoint, June 2026.
-  { value: "scaleway/qwen3.5-397b-a17b", label: "Qwen 3.5 397B A17B (newest)", group: "Scaleway" },
-  { value: "scaleway/mistral-medium-3.5-128b", label: "Mistral Medium 3.5 128B", group: "Scaleway" },
-  { value: "scaleway/qwen3-235b-a22b-instruct-2507", label: "Qwen 3 235B A22B Instruct", group: "Scaleway" },
-  { value: "scaleway/qwen3.6-35b-a3b", label: "Qwen 3.6 35B A3B (fast)", group: "Scaleway" },
-  { value: "scaleway/mistral-small-3.2-24b-instruct-2506", label: "Mistral Small 3.2 24B", group: "Scaleway" },
-  { value: "scaleway/voxtral-small-24b-2507", label: "Voxtral Small 24B (audio-capable)", group: "Scaleway" },
-  { value: "scaleway/gpt-oss-120b", label: "GPT-OSS 120B", group: "Scaleway" },
-  { value: "scaleway/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct", group: "Scaleway" },
-  { value: "scaleway/gemma-4-26b-a4b-it", label: "Gemma 4 26B A4B IT", group: "Scaleway" },
-  { value: "scaleway/gemma-3-27b-it", label: "Gemma 3 27B IT", group: "Scaleway" },
-  { value: "scaleway/devstral-2-123b-instruct-2512", label: "Devstral 2 123B Instruct", group: "Scaleway" },
-  { value: "scaleway/pixtral-12b-2409", label: "Pixtral 12B (vision)", group: "Scaleway" },
-  // Azure OpenAI (self-hosted)
-  { value: "azure/gpt-4o", label: "Azure GPT-4o", group: "Azure" },
-  { value: "azure/gpt-4o-mini", label: "Azure GPT-4o Mini", group: "Azure" },
-  // GCP Vertex AI (self-hosted)
-  { value: "gcp/gemini-2.5-flash", label: "GCP Gemini 2.5 Flash", group: "GCP (Vertex AI)" },
-  { value: "gcp/gemini-2.5-pro", label: "GCP Gemini 2.5 Pro", group: "GCP (Vertex AI)" },
-  { value: "gcp/gemini-2.0-flash", label: "GCP Gemini 2.0 Flash", group: "GCP (Vertex AI)" },
-  // Anthropic — Claude (text only). Verified against platform.claude.com/docs/en/about-claude/models/overview, May 2026.
-  { value: "anthropic/claude-opus-4-7", label: "Claude Opus 4.7 (most capable)", group: "Anthropic" },
-  { value: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6 (balanced)", group: "Anthropic" },
-  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5 (fast)", group: "Anthropic" },
-  { value: "anthropic/claude-opus-4-6", label: "Claude Opus 4.6 (legacy)", group: "Anthropic" },
-  { value: "anthropic/claude-sonnet-4-5", label: "Claude Sonnet 4.5 (legacy)", group: "Anthropic" },
-  { value: "anthropic/claude-opus-4-5", label: "Claude Opus 4.5 (legacy)", group: "Anthropic" },
-  // Google Gemini — text models (uses GOOGLE_API_KEY directly, no GCP project).
-  // Verified against the live generativelanguage.googleapis.com models endpoint, June 2026.
-  { value: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash (newest stable)", group: "Google AI" },
-  { value: "google/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (preview)", group: "Google AI" },
-  { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (preview)", group: "Google AI" },
-  { value: "google/gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", group: "Google AI" },
-  { value: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (stable)", group: "Google AI" },
-  { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (stable)", group: "Google AI" },
-  { value: "google/gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite (stable)", group: "Google AI" },
-];
-
-const LLM_MODELS_V2V = [
-  // OpenAI Realtime — speech-to-speech. Verified against the live
-  // api.openai.com/v1/models endpoint, June 2026. gpt-4o-realtime-preview was
-  // removed from the API and is no longer listed.
-  // gpt-realtime-2 supports a `reasoning_effort` param that we don't expose
-  // yet. Pipecat's SessionProperties doesn't have the field, so we use
-  // OpenAI's default until upstream adds it.
-  { value: "openai/gpt-realtime-2", label: "GPT Realtime 2 (newest)", group: "OpenAI" },
-  { value: "openai/gpt-realtime-1.5", label: "GPT Realtime 1.5", group: "OpenAI" },
-  { value: "openai/gpt-realtime", label: "GPT Realtime", group: "OpenAI" },
-  { value: "openai/gpt-realtime-mini", label: "GPT Realtime Mini (cost-efficient)", group: "OpenAI" },
-  // Google Gemini — native audio (Live API, bidiGenerateContent). Verified June 2026.
-  { value: "google/gemini-3.1-flash-live-preview", label: "Gemini 3.1 Flash Live (newest preview)", group: "Google" },
-  { value: "google/gemini-2.5-flash-native-audio-latest", label: "Gemini 2.5 Flash Native Audio (latest)", group: "Google" },
-];
-
-// ── V2V voice options ──────────────────────────────────────────
-const OPENAI_REALTIME_VOICES = [
-  { value: "coral", label: "Coral (default)" },
-  { value: "alloy", label: "Alloy" },
-  { value: "ash", label: "Ash" },
-  { value: "ballad", label: "Ballad" },
-  { value: "echo", label: "Echo" },
-  { value: "fable", label: "Fable" },
-  { value: "onyx", label: "Onyx" },
-  { value: "nova", label: "Nova" },
-  { value: "sage", label: "Sage" },
-  { value: "shimmer", label: "Shimmer" },
-  { value: "verse", label: "Verse" },
-];
-
-const GEMINI_LIVE_VOICES = [
-  { value: "Charon", label: "Charon (default)" },
-  { value: "Kore", label: "Kore" },
-  { value: "Puck", label: "Puck" },
-  { value: "Aoede", label: "Aoede" },
-  { value: "Fenrir", label: "Fenrir" },
-  { value: "Leda", label: "Leda" },
-  { value: "Orus", label: "Orus" },
-  { value: "Zephyr", label: "Zephyr" },
-];
-
-const STT_PROVIDERS = [
-  { value: "openai", label: "OpenAI Whisper (default)" },
-  { value: "deepgram", label: "Deepgram" },
-  { value: "scaleway", label: "Scaleway Whisper" },
-  { value: "azure", label: "Azure Speech" },
-  { value: "self_hosted", label: "Custom / Self-Hosted (LiteLLM, OpenAI-compatible)" },
-];
-
-// Verified against the live api.deepgram.com/v1/models endpoint, June 2026.
-const DEEPGRAM_MODELS = [
-  { value: "nova-3", label: "Nova 3 (default)" },
-  { value: "nova-3-medical", label: "Nova 3 Medical" },
-  { value: "nova-2", label: "Nova 2" },
-  { value: "nova-2-general", label: "Nova 2 General" },
-  { value: "nova-2-meeting", label: "Nova 2 Meeting" },
-  { value: "nova-2-phonecall", label: "Nova 2 Phone Call" },
-  { value: "enhanced", label: "Enhanced" },
-];
-
-const OPENAI_STT_MODELS = [
-  { value: "whisper-1", label: "Whisper 1 (default)" },
-  { value: "gpt-4o-transcribe", label: "GPT-4o Transcribe" },
-  { value: "gpt-4o-mini-transcribe", label: "GPT-4o Mini Transcribe" },
-  { value: "gpt-4o-transcribe-diarize", label: "GPT-4o Transcribe Diarize (multi-speaker)" },
-];
-
-const SCALEWAY_STT_MODELS = [
-  { value: "whisper-large-v3", label: "Whisper Large V3" },
-];
-
-const TTS_PROVIDERS = [
-  { value: "openai", label: "OpenAI TTS" },
-  { value: "elevenlabs", label: "ElevenLabs" },
-  { value: "cartesia", label: "Cartesia (Sonic)" },
-  { value: "azure", label: "Azure Speech" },
-  { value: "self_hosted", label: "Custom / Self-Hosted (LiteLLM, OpenAI-compatible)" },
-];
-
-// Cartesia ships with a small set of named "Sonic" voices. Users can also paste any
-// voice ID from the Cartesia dashboard (https://play.cartesia.ai/voices).
-const CARTESIA_VOICES = [
-  { value: "a0e99841-438c-4a64-b679-ae501e7d6091", label: "Barbershop Man (default)" },
-  { value: "729651dc-c6c3-4ee5-97fa-350da1f88600", label: "Storyteller (Female)" },
-  { value: "5345cf08-6f37-424d-a5d9-8ae1101b9377", label: "British Reading Lady" },
-  { value: "421b3369-f63f-4b03-8980-37a44df1d4e8", label: "Friendly Brit" },
-  { value: "00a77add-48d5-4ef6-8157-71e5437b282d", label: "Calm Lady" },
-];
-
-const OPENAI_TTS_VOICES = [
-  { value: "alloy", label: "Alloy (Neutral)" },
-  { value: "echo", label: "Echo (Male)" },
-  { value: "fable", label: "Fable (Male)" },
-  { value: "onyx", label: "Onyx (Male)" },
-  { value: "nova", label: "Nova (Female)" },
-  { value: "shimmer", label: "Shimmer (Female)" },
-];
-
-const ELEVENLABS_VOICES = [
-  { value: "rachel", label: "Rachel (Female)" },
-  { value: "alice", label: "Alice (Female)" },
-  { value: "lily", label: "Lily (Female)" },
-  { value: "emily", label: "Emily (Female)" },
-  { value: "bella", label: "Bella (Female)" },
-  { value: "elli", label: "Elli (Female)" },
-  { value: "josh", label: "Josh (Male)" },
-  { value: "adam", label: "Adam (Male)" },
-  { value: "arnold", label: "Arnold (Male)" },
-  { value: "sam", label: "Sam (Male)" },
-  { value: "charlie", label: "Charlie (Male)" },
-  { value: "bill", label: "Bill (Male)" },
-  { value: "george", label: "George (Male)" },
-];
-
-const OPENAI_TTS_MODELS = [
-  { value: "gpt-4o-mini-tts", label: "GPT-4o Mini TTS (default)" },
-  { value: "tts-1", label: "TTS-1 (fast)" },
-  { value: "tts-1-hd", label: "TTS-1 HD (quality)" },
-];
 
 const LANGUAGES = [
   { value: "en", label: "English" },
@@ -462,7 +285,10 @@ function buildAgentConfigJSON(form: FormData): string {
   return JSON.stringify(config, null, 2);
 }
 
-function importAgentConfigToForm(content: string): Partial<FormData> {
+function importAgentConfigToForm(
+  content: string,
+  catalog: ProviderCatalog | null,
+): Partial<FormData> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -478,11 +304,9 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
   if (typeof obj.system_prompt !== "string")
     throw new Error("Config must have a 'system_prompt' field.");
 
-  const v2vModels = LLM_MODELS_V2V.map((m) => m.value);
-  const modularModels = LLM_MODELS_MODULAR.map((m) => m.value);
-  const allKnown = [...v2vModels, ...modularModels];
-  const storedModel = (obj.llm_model as string) || "openai/gpt-5.5";
-  const isKnown = allKnown.includes(storedModel);
+  const storedModel = (obj.llm_model as string) || "openai/gpt-5.6-luna";
+  const isCustom = storedModel.startsWith("custom/");
+  const isKnown = !catalog || catalogModelValues(catalog).includes(storedModel);
 
   const presets = ["300", "600", "900", "1200", "1800", "2700", "3600", "5400", "7200"];
   const durStr = obj.max_duration_seconds != null ? String(obj.max_duration_seconds) : "";
@@ -495,10 +319,10 @@ function importAgentConfigToForm(content: string): Partial<FormData> {
     system_prompt: obj.system_prompt as string,
     welcome_message: (obj.welcome_message as string) || "",
     pipeline_type: (obj.pipeline_type as "modular" | "voice_to_voice") || "modular",
-    llm_model: isKnown ? storedModel : "__custom__",
-    llm_model_custom: isKnown ? "" : storedModel,
+    llm_model: isCustom || !isKnown ? "__custom__" : storedModel,
+    llm_model_custom: isCustom || !isKnown ? storedModel : "",
     stt_provider: (obj.stt_provider as string) || "openai",
-    stt_model: (obj.stt_model as string) || "gpt-4o-transcribe",
+    stt_model: (obj.stt_model as string) || "gpt-realtime-whisper",
     tts_provider: (obj.tts_provider as string) || "openai",
     tts_model: (obj.tts_model as string) || "gpt-4o-mini-tts",
     tts_voice: (obj.tts_voice as string) || "alloy",
@@ -653,10 +477,10 @@ Guidelines:
 Important: Adapt your style to the communication channel. For voice interviews, keep responses concise and natural-sounding — avoid bullet points, numbered lists, or formatting that doesn't translate to speech. For text-based interviews, you may use light formatting but still keep messages short and conversational to maintain engagement.`,
   welcome_message: "Hello, thank you for participating in this study.",
   pipeline_type: "modular",
-  llm_model: "openai/gpt-4o",
+  llm_model: "openai/gpt-5.6-luna",
   llm_model_custom: "",
   stt_provider: "openai",
-  stt_model: "gpt-4o-transcribe",
+  stt_model: "gpt-realtime-whisper",
   tts_provider: "openai",
   tts_model: "gpt-4o-mini-tts",
   tts_voice: "alloy",
@@ -716,6 +540,44 @@ function GroupedSelect({
   );
 }
 
+function catalogModelValues(catalog: ProviderCatalog | null): string[] {
+  if (!catalog) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of [...catalog.llm_modular, ...catalog.llm_text, ...catalog.llm_v2v]) {
+    if (!seen.has(m.value)) {
+      seen.add(m.value);
+      out.push(m.value);
+    }
+  }
+  return out;
+}
+
+export function withUnavailableSaved(
+  options: { value: string; label: string; group: string }[],
+  saved: string,
+): { value: string; label: string; group: string }[] {
+  if (!saved || saved === "__custom__" || options.some((o) => o.value === saved)) {
+    return options;
+  }
+  return [
+    {
+      value: saved,
+      label: `${saved} (unavailable)`,
+      group: "Unavailable",
+    },
+    ...options,
+  ];
+}
+
+function withUnavailableSimple(
+  options: { value: string; label: string }[],
+  saved: string,
+): { value: string; label: string }[] {
+  if (!saved || options.some((o) => o.value === saved)) return options;
+  return [{ value: saved, label: `${saved} (unavailable)` }, ...options];
+}
+
 export default function AgentFormPage() {
   const { studyId, agentId } = useParams<{
     studyId: string;
@@ -734,6 +596,8 @@ export default function AgentFormPage() {
 
   // API key status (for missing key warnings)
   const [apiKeys, setApiKeys] = useState<ApiKeyStatus[]>([]);
+  const [catalog, setCatalog] = useState<ProviderCatalog | null>(null);
+  const [catalogError, setCatalogError] = useState(false);
   const isKeySet = useCallback(
     (field: string) => apiKeys.find((k) => k.field === field)?.is_set ?? true,
     [apiKeys]
@@ -788,7 +652,7 @@ export default function AgentFormPage() {
     reader.onload = () => {
       try {
         const text = reader.result as string;
-        const imported = importAgentConfigToForm(text);
+        const imported = importAgentConfigToForm(text, catalog);
         setForm((f) => ({ ...f, ...imported }));
         showToast("Agent config imported successfully");
       } catch (err) {
@@ -798,43 +662,125 @@ export default function AgentFormPage() {
     reader.readAsText(file);
   };
 
-  // Text agents always use chat models, never V2V
+  const catalogDefaults = catalog?.defaults;
   const llmModels =
     form.modality === "text"
-      ? LLM_MODELS_MODULAR
+      ? catalog?.llm_text ?? []
       : form.pipeline_type === "voice_to_voice"
-        ? LLM_MODELS_V2V
-        : LLM_MODELS_MODULAR;
+        ? catalog?.llm_v2v ?? []
+        : catalog?.llm_modular ?? [];
+  const llmModelOptions = withUnavailableSaved(
+    llmModels.map((m) => ({ value: m.value, label: m.label, group: m.group })),
+    form.llm_model,
+  );
   const isCustomModel = form.llm_model === "__custom__";
 
-  // STT model options based on provider
-  const sttModelOptions =
-    form.stt_provider === "deepgram"
-      ? DEEPGRAM_MODELS
-      : form.stt_provider === "scaleway"
-        ? SCALEWAY_STT_MODELS
-        : form.stt_provider === "self_hosted" || form.stt_provider === "azure"
-          ? []
-          : OPENAI_STT_MODELS;
+  const sttProviderOptions = withUnavailableSimple(
+    (catalog?.stt_providers ?? []).map(({ value, label }) => ({ value, label })),
+    form.stt_provider,
+  );
 
-  // V2V voice options based on selected model
-  const isGoogleV2V = form.llm_model.startsWith("google/");
-  const v2vVoiceOptions = isGoogleV2V ? GEMINI_LIVE_VOICES : OPENAI_REALTIME_VOICES;
+  const sttModelOptions = (() => {
+    const provider = catalog?.stt_providers.find((p) => p.value === form.stt_provider);
+    if (provider) return withUnavailableSimple(provider.models, form.stt_model);
+    return form.stt_model
+      ? [{ value: form.stt_model, label: `${form.stt_model} (unavailable)` }]
+      : [];
+  })();
 
-  // TTS voice options based on provider
-  const ttsVoiceOptions =
+  const ttsProviderOptions = withUnavailableSimple(
+    (catalog?.tts_providers ?? []).map(({ value, label }) => ({ value, label })),
+    form.tts_provider,
+  );
+  const ttsModelOptions = withUnavailableSimple(
+    catalog?.tts_providers.find((p) => p.value === form.tts_provider)?.models ?? [],
+    form.tts_model,
+  );
+
+  const resolvedLlmForVoices =
+    form.llm_model === "__custom__" ? form.llm_model_custom : form.llm_model;
+  const isGoogleV2V = resolvedLlmForVoices.startsWith("google/");
+  const v2vVoiceOptions = withUnavailableSimple(
+    isGoogleV2V
+      ? catalog?.voices.gemini_live ?? []
+      : catalog?.voices.openai_realtime ?? [],
+    form.tts_voice,
+  );
+
+  const ttsVoiceOptions = withUnavailableSimple(
     form.tts_provider === "openai"
-      ? OPENAI_TTS_VOICES
-      : form.tts_provider === "self_hosted"
-        ? OPENAI_TTS_VOICES
-        : form.tts_provider === "cartesia"
-          ? CARTESIA_VOICES
-          : ELEVENLABS_VOICES;
+      ? catalog?.voices.openai_tts ?? []
+      : form.tts_provider === "cartesia"
+        ? catalog?.voices.cartesia ?? []
+        : catalog?.voices.elevenlabs ?? [],
+    form.tts_voice,
+  );
 
-  // Fetch API key status on mount for missing-key warnings
   useEffect(() => {
     settingsApi.getKeys().then((res) => setApiKeys(res.keys)).catch(() => {});
+    settingsApi
+      .getCatalog()
+      .then((value) => {
+        setCatalog(value);
+        setCatalogError(false);
+      })
+      .catch(() => setCatalogError(true));
   }, []);
+
+  useEffect(() => {
+    if (!catalog || !isNew) return;
+    setForm((current) => {
+      const llmOptions =
+        current.modality === "text"
+          ? catalog.llm_text
+          : current.pipeline_type === "voice_to_voice"
+            ? catalog.llm_v2v
+            : catalog.llm_modular;
+      const defaultLlm =
+        current.modality === "text"
+          ? catalog.defaults.text_llm
+          : current.pipeline_type === "voice_to_voice"
+            ? catalog.defaults.v2v_llm
+            : catalog.defaults.modular_llm;
+      const stt = catalog.stt_providers.find(
+        (provider) => provider.value === current.stt_provider,
+      ) ?? catalog.stt_providers.find(
+        (provider) => provider.value === catalog.defaults.stt_provider,
+      ) ?? catalog.stt_providers[0];
+      const tts = catalog.tts_providers.find(
+        (provider) => provider.value === current.tts_provider,
+      ) ?? catalog.tts_providers.find(
+        (provider) => provider.value === catalog.defaults.tts_provider,
+      ) ?? catalog.tts_providers[0];
+      const sttModel = stt?.models.some(
+        (model) => model.value === current.stt_model,
+      )
+        ? current.stt_model
+        : stt?.models.find(
+            (model) => model.value === catalog.defaults.stt_model,
+          )?.value ?? stt?.models[0]?.value ?? current.stt_model;
+      const ttsModel = tts?.models.some(
+        (model) => model.value === current.tts_model,
+      )
+        ? current.tts_model
+        : tts?.models.find(
+            (model) => model.value === catalog.defaults.tts_model,
+          )?.value ?? tts?.models[0]?.value ?? current.tts_model;
+
+      return {
+        ...current,
+        llm_model: llmOptions.some((model) => model.value === current.llm_model)
+          ? current.llm_model
+          : llmOptions.find((model) => model.value === defaultLlm)?.value ??
+            llmOptions[0]?.value ??
+            current.llm_model,
+        stt_provider: stt?.value ?? current.stt_provider,
+        stt_model: sttModel,
+        tts_provider: tts?.value ?? current.tts_provider,
+        tts_model: ttsModel,
+      };
+    });
+  }, [catalog, isNew]);
 
   // Determine which API keys are required for current config
   // (computed here; isModularPipeline is inline since the full isModular is defined later)
@@ -918,11 +864,8 @@ export default function AgentFormPage() {
       .get(studyId, agentId)
       .then((a) => {
         setExisting(a);
-        const v2vModels = LLM_MODELS_V2V.map((m) => m.value);
-        const modularModels = LLM_MODELS_MODULAR.map((m) => m.value);
-        const allKnown = [...v2vModels, ...modularModels];
         const storedModel = a.llm_model;
-        const isKnown = allKnown.includes(storedModel);
+        const isCustom = storedModel.startsWith("custom/");
 
         setForm({
           name: a.name,
@@ -931,10 +874,10 @@ export default function AgentFormPage() {
           system_prompt: a.system_prompt,
           welcome_message: a.welcome_message || "",
           pipeline_type: a.pipeline_type,
-          llm_model: isKnown ? storedModel : "__custom__",
-          llm_model_custom: isKnown ? "" : storedModel,
+          llm_model: isCustom ? "__custom__" : storedModel,
+          llm_model_custom: isCustom ? storedModel : "",
           stt_provider: a.stt_provider,
-          stt_model: a.stt_model || "gpt-4o-transcribe",
+          stt_model: a.stt_model || "gpt-realtime-whisper",
           tts_provider: a.tts_provider,
           tts_model: a.tts_model || "gpt-4o-mini-tts",
           tts_voice: a.tts_voice || "alloy",
@@ -1006,7 +949,7 @@ export default function AgentFormPage() {
 
     const resolvedModel =
       form.llm_model === "__custom__" ? form.llm_model_custom.trim() : form.llm_model;
-    if (!resolvedModel || form.llm_model === "__custom__") {
+    if (!resolvedModel) {
       setError("Please enter a custom model ID or choose a model from the list.");
       return;
     }
@@ -1219,6 +1162,11 @@ export default function AgentFormPage() {
   return (
     <div className="max-w-3xl">
       {toast}
+      {catalogError && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Provider options could not be loaded. Refresh the page to try again.
+        </div>
+      )}
 
       {/* Breadcrumb */}
       <nav className="mb-6 text-sm text-gray-400 flex items-center gap-2">
@@ -1406,13 +1354,24 @@ export default function AgentFormPage() {
                   role="radio"
                   aria-checked={form.modality === "text"}
                   onClick={() => setForm((f) => {
-                    const v2vModels = LLM_MODELS_V2V.map((m) => m.value);
-                    const needsModelReset = v2vModels.includes(f.llm_model);
+                    const needsModelReset =
+                      catalog?.llm_v2v.some((model) => model.value === f.llm_model) ??
+                      /realtime|native-audio|live/i.test(f.llm_model);
+                    const textDefault =
+                      catalog?.llm_text.find(
+                        (model) => model.value === catalogDefaults?.text_llm,
+                      )?.value ??
+                      catalog?.llm_text[0]?.value ??
+                      f.llm_model;
                     return {
                       ...f,
                       modality: "text",
                       pipeline_type: "modular",
-                      ...(needsModelReset ? { llm_model: "openai/gpt-4.1" } : {}),
+                      ...(needsModelReset
+                        ? {
+                            llm_model: textDefault,
+                          }
+                        : {}),
                       engagement_config: f.track_engagement
                         ? f.engagement_config
                         : DEFAULT_ENGAGEMENT_CONFIG_TEXT,
@@ -1978,16 +1937,31 @@ export default function AgentFormPage() {
                   value={form.pipeline_type}
                   onChange={(e) => {
                     const pt = e.target.value as "modular" | "voice_to_voice";
-                    setForm((f) => ({
-                      ...f,
-                      pipeline_type: pt,
-                      llm_model:
+                    setForm((current) => {
+                      const options =
                         pt === "voice_to_voice"
-                          ? "openai/gpt-realtime-1.5"
-                          : "openai/gpt-5.5",
-                      tts_voice:
-                        pt === "voice_to_voice" ? "coral" : f.tts_voice,
-                    }));
+                          ? catalog?.llm_v2v ?? []
+                          : catalog?.llm_modular ?? [];
+                      const preferred =
+                        pt === "voice_to_voice"
+                          ? catalogDefaults?.v2v_llm
+                          : catalogDefaults?.modular_llm;
+                      const model =
+                        options.find((option) => option.value === preferred)?.value ??
+                        options[0]?.value ??
+                        current.llm_model;
+                      return {
+                        ...current,
+                        pipeline_type: pt,
+                        llm_model: model,
+                        tts_voice:
+                          pt === "voice_to_voice"
+                            ? model.startsWith("google/")
+                              ? catalogDefaults?.v2v_voice_google ?? "Charon"
+                              : catalogDefaults?.v2v_voice_openai ?? "coral"
+                            : current.tts_voice,
+                      };
+                    });
                   }}
                   className="select-styled"
                 >
@@ -2008,10 +1982,26 @@ export default function AgentFormPage() {
                 </label>
                 <GroupedSelect
                   value={form.llm_model}
-                  onChange={set("llm_model")}
+                  onChange={(event) => {
+                    const model = event.target.value;
+                    setForm((current) => ({
+                      ...current,
+                      llm_model: model,
+                      ...(current.pipeline_type === "voice_to_voice" &&
+                      model !== "__custom__"
+                        ? {
+                            tts_voice: model.startsWith("google/")
+                              ? catalogDefaults?.v2v_voice_google ?? "Charon"
+                              : catalogDefaults?.v2v_voice_openai ?? "coral",
+                          }
+                        : {}),
+                    }));
+                  }}
                   options={[
-                    ...llmModels,
-                    { value: "__custom__", label: "Custom (LiteLLM format)", group: "Custom" },
+                    ...llmModelOptions,
+                    ...(catalog?.supports_custom_llm || isCustomModel
+                      ? [{ value: "__custom__", label: "Custom (LiteLLM format)", group: "Custom" }]
+                      : []),
                   ]}
                   className="select-styled"
                 />
@@ -2029,7 +2019,7 @@ export default function AgentFormPage() {
                   value={form.llm_model_custom}
                   onChange={set("llm_model_custom")}
                   className="input-styled font-mono"
-                  placeholder="e.g. anthropic/claude-sonnet-4-6, google/gemini-2.5-flash, custom/openrouter/anthropic/claude-sonnet-4-6"
+                  placeholder="e.g. anthropic/claude-sonnet-4-6, google/gemini-3.5-flash, custom/openrouter/anthropic/claude-sonnet-4-6"
                 />
                 <p className="text-xs text-gray-400 mt-1.5">
                   Built-in prefixes: <code className="bg-gray-100 px-1 rounded text-xs">openai/</code>,{" "}
@@ -2076,7 +2066,7 @@ export default function AgentFormPage() {
             )}
 
             {/* Provider hints */}
-            {form.llm_model.startsWith("google/") && (
+            {resolvedModel.startsWith("google/") && (
               <InfoBanner color="emerald">
                 <strong>Google Gemini:</strong> Requires <code>GOOGLE_API_KEY</code> (from{" "}
                 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline">AI Studio</a>
@@ -2122,30 +2112,28 @@ export default function AgentFormPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
                       Speech-to-Text
-                      <HelpTooltip text="The STT provider converts participant audio into text for the LLM. Deepgram offers real-time streaming; Whisper models work for batch processing. Self-Hosted uses any OpenAI-compatible STT server." />
+                      <HelpTooltip text="The STT provider converts participant audio into text for the LLM. GPT Realtime Whisper and Deepgram stream live audio; other Whisper models process completed speech turns. Self-Hosted uses any OpenAI-compatible STT server." />
                     </label>
                     <select
                       value={form.stt_provider}
                       onChange={(e) => {
                         const p = e.target.value;
-                        setForm((f) => ({
-                          ...f,
-                          stt_provider: p,
-                          stt_model:
-                            p === "deepgram"
-                              ? "nova-3"
-                              : p === "scaleway"
-                                ? "whisper-large-v3"
-                                : p === "self_hosted"
-                                  ? "whisper-1"
-                                  : p === "azure"
-                                    ? ""
-                                    : "gpt-4o-transcribe",
-                        }));
+                        setForm((f) => {
+                          const provider = catalog?.stt_providers.find((sp) => sp.value === p);
+                          const defaultModel =
+                            provider?.models.find(
+                              (model) => model.value === catalogDefaults?.stt_model,
+                            )?.value ?? provider?.models[0]?.value;
+                          return {
+                            ...f,
+                            stt_provider: p,
+                            stt_model: defaultModel ?? f.stt_model,
+                          };
+                        });
                       }}
                       className="select-styled"
                     >
-                      {STT_PROVIDERS.map((p) => (
+                      {sttProviderOptions.map((p) => (
                         <option key={p.value} value={p.value}>{p.label}</option>
                       ))}
                     </select>
@@ -2201,23 +2189,37 @@ export default function AgentFormPage() {
                       value={form.tts_provider}
                       onChange={(e) => {
                         const p = e.target.value;
-                        setForm((f) => ({
-                          ...f,
-                          tts_provider: p,
-                          tts_voice:
-                            p === "elevenlabs"
-                              ? "rachel"
+                        const provider = catalog?.tts_providers.find(
+                          (option) => option.value === p,
+                        );
+                        const voices =
+                          p === "openai"
+                            ? catalog?.voices.openai_tts
+                            : p === "elevenlabs"
+                              ? catalog?.voices.elevenlabs
                               : p === "cartesia"
-                                ? "a0e99841-438c-4a64-b679-ae501e7d6091"
-                                : p === "azure"
-                                  ? ""
-                                  : "alloy",
-                          tts_model: p === "openai" ? "gpt-4o-mini-tts" : p === "self_hosted" ? "tts-1" : "",
+                                ? catalog?.voices.cartesia
+                                : [];
+                        setForm((current) => ({
+                          ...current,
+                          tts_provider: p,
+                          tts_model:
+                            provider?.models.find(
+                              (model) => model.value === catalogDefaults?.tts_model,
+                            )?.value ??
+                            provider?.models[0]?.value ??
+                            "",
+                          tts_voice:
+                            voices?.find(
+                              (voice) => voice.value === catalogDefaults?.tts_voice,
+                            )?.value ??
+                            voices?.[0]?.value ??
+                            "",
                         }));
                       }}
                       className="select-styled"
                     >
-                      {TTS_PROVIDERS.map((p) => (
+                      {ttsProviderOptions.map((p) => (
                         <option key={p.value} value={p.value}>{p.label}</option>
                       ))}
                     </select>
@@ -2232,7 +2234,7 @@ export default function AgentFormPage() {
                         onChange={set("tts_model")}
                         className="select-styled"
                       >
-                        {OPENAI_TTS_MODELS.map((m) => (
+                        {ttsModelOptions.map((m) => (
                           <option key={m.value} value={m.value}>{m.label}</option>
                         ))}
                       </select>
@@ -2281,7 +2283,7 @@ export default function AgentFormPage() {
                           onChange={set("tts_voice")}
                           className="select-styled"
                         >
-                          {CARTESIA_VOICES.map((v) => (
+                          {ttsVoiceOptions.map((v) => (
                             <option key={v.value} value={v.value}>{v.label}</option>
                           ))}
                         </select>

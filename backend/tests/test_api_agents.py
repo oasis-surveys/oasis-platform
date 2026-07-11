@@ -33,9 +33,12 @@ class TestAgentsCRUD:
         assert data["name"] == "Survey Bot"
         assert data["study_id"] == study_id
         assert data["pipeline_type"] == "modular"
-        assert data["llm_model"] == "openai/gpt-4o"
-        assert data["stt_provider"] == "deepgram"
-        assert data["tts_provider"] == "elevenlabs"
+        assert data["llm_model"] == "openai/gpt-5.6-luna"
+        assert data["stt_provider"] == "openai"
+        assert data["stt_model"] == "gpt-realtime-whisper"
+        assert data["tts_provider"] == "openai"
+        assert data["tts_model"] == "gpt-4o-mini-tts"
+        assert data["tts_voice"] == "alloy"
         assert "widget_key" in data
 
     async def test_create_agent_full(self, client: AsyncClient, study_id: str):
@@ -46,7 +49,7 @@ class TestAgentsCRUD:
                 "system_prompt": "You are an interviewer.",
                 "welcome_message": "Welcome!",
                 "pipeline_type": "voice_to_voice",
-                "llm_model": "openai/gpt-4o-realtime-preview",
+                "llm_model": "openai/gpt-realtime-2.1-mini",
                 "language": "en",
                 "max_duration_seconds": 600,
                 "status": "active",
@@ -61,7 +64,7 @@ class TestAgentsCRUD:
         assert resp.status_code == 201
         data = resp.json()
         assert data["pipeline_type"] == "voice_to_voice"
-        assert data["llm_model"] == "openai/gpt-4o-realtime-preview"
+        assert data["llm_model"] == "openai/gpt-realtime-2.1-mini"
         assert data["max_duration_seconds"] == 600
         assert data["silence_timeout_seconds"] == 10
         assert data["silence_prompt"] == "Take your time."
@@ -141,6 +144,29 @@ class TestAgentsCRUD:
         )
         assert resp.status_code == 422
 
+    async def test_create_agent_invalid_v2v_model_fails(self, client: AsyncClient, study_id: str):
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Bad V2V",
+                "pipeline_type": "voice_to_voice",
+                "llm_model": "openai/gpt-5.6-luna",
+            },
+        )
+        assert resp.status_code == 400
+        assert "voice-to-voice" in resp.json()["detail"].lower()
+
+    async def test_create_text_agent_with_v2v_pipeline_fails(self, client: AsyncClient, study_id: str):
+        resp = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={
+                "name": "Bad Text",
+                "modality": "text",
+                "pipeline_type": "voice_to_voice",
+            },
+        )
+        assert resp.status_code == 422
+
     async def test_create_agent_nonexistent_study(self, client: AsyncClient):
         fake_id = str(uuid.uuid4())
         resp = await client.post(
@@ -195,6 +221,31 @@ class TestAgentsCRUD:
         assert resp.status_code == 200
         assert resp.json()["name"] == "Partial"
         assert resp.json()["system_prompt"] == "Updated prompt"
+
+    async def test_update_agent_with_unchanged_config(self, client: AsyncClient, study_id: str):
+        created = await client.post(
+            f"/api/studies/{study_id}/agents",
+            json={"name": "Before"},
+        )
+        agent = created.json()
+
+        resp = await client.patch(
+            f"/api/studies/{study_id}/agents/{agent['id']}",
+            json={
+                "name": "After",
+                "modality": agent["modality"],
+                "pipeline_type": agent["pipeline_type"],
+                "llm_model": agent["llm_model"],
+                "stt_provider": agent["stt_provider"],
+                "stt_model": agent["stt_model"],
+                "tts_provider": agent["tts_provider"],
+                "tts_model": agent["tts_model"],
+                "tts_voice": agent["tts_voice"],
+            },
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "After"
 
     async def test_delete_agent(self, client: AsyncClient, study_id: str):
         create_resp = await client.post(

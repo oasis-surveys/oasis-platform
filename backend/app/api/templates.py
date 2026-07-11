@@ -38,6 +38,7 @@ from app.models.agent import (
     PipelineType,
 )
 from app.models.study import Study
+from app.providers.validate import validate_agent_pipeline_config
 from app.schemas.agent import AgentRead
 
 
@@ -107,9 +108,9 @@ TEMPLATES: dict[str, dict[str, Any]] = {
                 "ready, could you start by telling me a bit about "
                 "yourself?"
             ),
-            "llm_model": "openai/gpt-4o",
+            "llm_model": "openai/gpt-5.6-luna",
             "stt_provider": "openai",
-            "stt_model": "whisper-1",
+            "stt_model": "gpt-realtime-whisper",
             "tts_provider": "openai",
             "tts_model": "gpt-4o-mini-tts",
             "tts_voice": "alloy",
@@ -201,9 +202,9 @@ TEMPLATES: dict[str, dict[str, Any]] = {
                 "interested in how the questions come across. Ready "
                 "when you are."
             ),
-            "llm_model": "openai/gpt-4o",
+            "llm_model": "openai/gpt-5.6-luna",
             "stt_provider": "openai",
-            "stt_model": "whisper-1",
+            "stt_model": "gpt-realtime-whisper",
             "tts_provider": "openai",
             "tts_model": "gpt-4o-mini-tts",
             "tts_voice": "shimmer",
@@ -266,9 +267,9 @@ TEMPLATES: dict[str, dict[str, Any]] = {
                 "and you can end the interview at any time. Whenever "
                 "you're ready, just let me know and we can start."
             ),
-            "llm_model": "openai/gpt-4o",
+            "llm_model": "openai/gpt-5.6-luna",
             "stt_provider": "openai",
-            "stt_model": "whisper-1",
+            "stt_model": "gpt-realtime-whisper",
             "tts_provider": "openai",
             "tts_model": "gpt-4o-mini-tts",
             "tts_voice": "nova",
@@ -385,7 +386,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
                 "answers. To start, could you tell me in your own "
                 "words what was on your mind as you went through it?"
             ),
-            "llm_model": "openai/gpt-4o-mini",
+            "llm_model": "openai/gpt-5.6-luna",
             "stt_provider": "openai",
             "stt_model": None,
             "tts_provider": "openai",
@@ -472,7 +473,7 @@ TEMPLATES: dict[str, dict[str, Any]] = {
                 "study you signed up for. The call should take "
                 "about ten minutes."
             ),
-            "llm_model": "openai/gpt-realtime",
+            "llm_model": "openai/gpt-realtime-2.1-mini",
             "stt_provider": "openai",
             "stt_model": None,
             "tts_provider": "openai",
@@ -523,12 +524,27 @@ class TemplateInstantiateRequest(BaseModel):
 router = APIRouter(tags=["templates"])
 
 
+async def _template_errors(config: dict[str, Any]) -> list[str]:
+    return await validate_agent_pipeline_config(
+        modality=config["modality"],
+        pipeline_type=config["pipeline_type"],
+        llm_model=config["llm_model"],
+        stt_provider=config["stt_provider"],
+        stt_model=config["stt_model"],
+        tts_provider=config["tts_provider"],
+        tts_model=config["tts_model"],
+        tts_voice=config["tts_voice"],
+    )
+
+
 @router.get("/templates", response_model=list[TemplateSummary])
 async def list_templates() -> list[TemplateSummary]:
     """Return all available agent templates."""
     out: list[TemplateSummary] = []
     for tid, tmpl in TEMPLATES.items():
         cfg = tmpl["config"]
+        if await _template_errors(cfg):
+            continue
         out.append(
             TemplateSummary(
                 id=tid,
@@ -576,6 +592,10 @@ async def instantiate_template(
         cfg.setdefault("name", tmpl["name"])
 
     cfg["status"] = AgentStatus.ACTIVE
+
+    errors = await _template_errors(cfg)
+    if errors:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
 
     agent = Agent(study_id=study_id, **cfg)
     db.add(agent)

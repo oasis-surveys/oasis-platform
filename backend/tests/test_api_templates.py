@@ -95,6 +95,8 @@ class TestInstantiateTemplate:
         assert resp.status_code == 201
         agent = resp.json()
         assert agent["interview_mode"] == "structured"
+        assert agent["llm_model"] == "openai/gpt-5.6-luna"
+        assert agent["stt_model"] == "gpt-realtime-whisper"
         guide = agent["interview_guide"]
         assert guide is not None
         assert len(guide["questions"]) >= 2
@@ -155,7 +157,7 @@ class TestInstantiateTemplate:
         assert resp.status_code == 201
         agent = resp.json()
         assert agent["pipeline_type"] == "voice_to_voice"
-        assert agent["llm_model"].startswith("openai/gpt-realtime")
+        assert agent["llm_model"] == "openai/gpt-realtime-2.1-mini"
 
     async def test_creating_two_templates_yields_distinct_widget_keys(
         self, client: AsyncClient, study_id: str

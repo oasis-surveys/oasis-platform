@@ -25,6 +25,7 @@ from app.database import async_session_factory
 from app.models.agent import Agent, AgentModality, AgentStatus, ParticipantIdMode, ParticipantIdentifier
 from app.models.session import Session, SessionStatus, aggregate_session_tokens
 from app.audio.storage import recording_enabled_for_agent
+from app.providers.validate import validate_agent_pipeline_config
 from app.realtime import publish_transcript_event
 from app.session_manager import register_session, unregister_session
 
@@ -71,6 +72,25 @@ async def interview_ws(
         if agent_modality == "text":
             await websocket.send_json({"error": "This is a text chat agent. Please use the chat endpoint."})
             await websocket.close(code=4005, reason="Wrong modality")
+            return
+
+        validation_errors = await validate_agent_pipeline_config(
+            modality=agent_modality,
+            pipeline_type=(
+                agent.pipeline_type.value
+                if hasattr(agent.pipeline_type, "value")
+                else agent.pipeline_type
+            ),
+            llm_model=agent.llm_model,
+            stt_provider=agent.stt_provider,
+            stt_model=agent.stt_model,
+            tts_provider=agent.tts_provider,
+            tts_model=agent.tts_model,
+            tts_voice=agent.tts_voice,
+        )
+        if validation_errors:
+            await websocket.send_json({"error": "; ".join(validation_errors)})
+            await websocket.close(code=4006, reason="Invalid agent configuration")
             return
 
         # Snapshot config before leaving the DB session

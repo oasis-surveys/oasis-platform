@@ -4,6 +4,23 @@ All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
 sections — versions are added retroactively when a release is cut.
 
+## 2026-07-11
+
+### Added
+
+- Provider-aware model, speech, and voice options in the agent form.
+- Manual provider checks in Settings and from the command line.
+
+### Changed
+
+- New agents and templates use GPT-5.6 Luna and GPT Realtime Whisper.
+- Saved provider choices stay visible when their credentials are unavailable.
+
+### Fixed
+
+- GPT-5.6 text calls now use the Responses API.
+- Invalid pipeline and model combinations are rejected before an interview starts.
+
 ## 2026-07-06
 
 ### Changed

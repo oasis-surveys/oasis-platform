@@ -29,7 +29,7 @@ class TestResolveModelName:
         assert _resolve_model_name("gpt-4o-mini") == "gpt-4o-mini"
 
     def test_google_prefix(self):
-        assert _resolve_model_name("google/gemini-2.5-flash") == "gemini-2.5-flash"
+        assert _resolve_model_name("google/gemini-3.5-flash") == "gemini-3.5-flash"
 
     def test_scaleway_prefix(self):
         assert _resolve_model_name("scaleway/llama-3.3-70b") == "llama-3.3-70b"
@@ -115,6 +115,28 @@ class TestBuildLLM:
             MockLLM.assert_called_once()
 
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
+    async def test_build_gpt_5_6_uses_responses_api(self, mock_get_key):
+        mock_get_key.return_value = "sk-test-key"
+        from app.pipeline.runner import _build_llm
+        import importlib
+
+        try:
+            mod = importlib.import_module("pipecat.services.openai.responses.llm")
+        except ImportError:
+            pytest.skip("OpenAI Responses pipecat service not installed")
+
+        with patch.object(mod, "OpenAIResponsesHttpLLMService") as MockLLM:
+            MockLLM.return_value = MagicMock()
+            await _build_llm("openai/gpt-5.6-luna")
+
+            kwargs = MockLLM.call_args.kwargs
+            assert kwargs["api_key"] == "sk-test-key"
+            MockLLM.Settings.assert_called_once_with(
+                model="gpt-5.6-luna",
+                max_completion_tokens=2048,
+            )
+
+    @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
     async def test_build_scaleway_llm(self, mock_get_key):
         mock_get_key.return_value = "scw-test-key"
         from app.pipeline.runner import _build_llm
@@ -170,11 +192,11 @@ class TestBuildLLM:
 
         with patch.object(mod, "GoogleLLMService") as MockLLM:
             MockLLM.return_value = MagicMock()
-            await _build_llm("google/gemini-2.5-flash")
+            await _build_llm("google/gemini-3.5-flash")
             MockLLM.assert_called_once()
             call_kwargs = MockLLM.call_args.kwargs
             assert call_kwargs["api_key"] == "google-test"
-            assert getattr(call_kwargs["settings"], "model") == "gemini-2.5-flash"
+            assert getattr(call_kwargs["settings"], "model") == "gemini-3.5-flash"
 
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
     async def test_build_google_text_llm_missing_key_raises(self, mock_get_key):
@@ -182,7 +204,7 @@ class TestBuildLLM:
         from app.pipeline.runner import _build_llm
 
         with pytest.raises(ValueError, match="GOOGLE_API_KEY"):
-            await _build_llm("google/gemini-2.5-flash")
+            await _build_llm("google/gemini-3.5-flash")
 
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
     async def test_build_custom_llm(self, mock_get_key):
@@ -295,6 +317,32 @@ class TestBuildSTT:
                 MockSTT.assert_called_once()
         except ImportError:
             pytest.skip("openai pipecat service not installed")
+
+    @patch("app.pipeline.runner._openai_realtime_base_url", new_callable=AsyncMock)
+    @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
+    async def test_build_openai_realtime_whisper(
+        self, mock_get_key, mock_realtime_base
+    ):
+        mock_get_key.return_value = "sk-test-key"
+        mock_realtime_base.return_value = "wss://eu.api.openai.com/v1/realtime"
+        from app.pipeline.runner import _build_stt
+        import importlib
+
+        mod = importlib.import_module("pipecat.services.openai.stt")
+        with patch.object(
+            mod, "OpenAIRealtimeSTTService", create=True
+        ) as MockRealtimeSTT:
+            MockRealtimeSTT.return_value = MagicMock()
+            await _build_stt("openai", "en", "gpt-realtime-whisper")
+
+            kwargs = MockRealtimeSTT.call_args.kwargs
+            assert kwargs["api_key"] == "sk-test-key"
+            assert kwargs["base_url"] == "wss://eu.api.openai.com/v1/realtime"
+            assert kwargs["turn_detection"] is False
+            MockRealtimeSTT.Settings.assert_called_once_with(
+                model="gpt-realtime-whisper",
+                language="en",
+            )
 
     @patch("app.pipeline.runner._openai_use_eu", new_callable=AsyncMock)
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)

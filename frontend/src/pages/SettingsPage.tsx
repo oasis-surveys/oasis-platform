@@ -11,6 +11,7 @@ import {
   type ApiKeyStatus,
   type AudioStorageSettingStatus,
   type FlagStatus,
+  type SmokeTestResponse,
 } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import HelpTooltip from "../components/HelpTooltip";
@@ -231,6 +232,8 @@ export default function SettingsPage() {
   const [editingAudioFields, setEditingAudioFields] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [flagSaving, setFlagSaving] = useState<string | null>(null);
+  const [smokeRunning, setSmokeRunning] = useState(false);
+  const [smokeResult, setSmokeResult] = useState<SmokeTestResponse | null>(null);
 
   const loadKeys = useCallback(async () => {
     setLoadError(null);
@@ -375,6 +378,27 @@ export default function SettingsPage() {
       showToast(`Error: ${err.message}`, "warning");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleVerifyProviders = async () => {
+    setSmokeRunning(true);
+    setSmokeResult(null);
+    try {
+      const result = await settingsApi.smokeTest(true);
+      setSmokeResult(result);
+      if (result.failed === 0) {
+        showToast(`All ${result.passed} provider probes passed`, "success");
+      } else {
+        showToast(`${result.failed} of ${result.total} probes failed`, "warning");
+      }
+    } catch (err: unknown) {
+      showToast(
+        err instanceof Error ? `Verification failed: ${err.message}` : "Verification failed",
+        "warning",
+      );
+    } finally {
+      setSmokeRunning(false);
     }
   };
 
@@ -530,6 +554,48 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Provider verification */}
+      <div className="card p-5">
+        <h2 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-1.5">
+          Provider Verification
+          <HelpTooltip text="Runs minimal live API probes for every model in the configured provider catalog. Results never include secrets. Rate-limited to one run per minute." />
+        </h2>
+        <p className="text-xs text-gray-500 mb-4">
+          Verify that each configured LLM, STT, TTS, and voice-to-voice model can reach its API
+          endpoint. This may incur small API charges.
+        </p>
+        <button
+          type="button"
+          onClick={handleVerifyProviders}
+          disabled={smokeRunning || loading}
+          className="btn-primary !text-sm disabled:opacity-50"
+        >
+          {smokeRunning ? "Verifying…" : "Verify configured providers"}
+        </button>
+        {smokeResult && (
+          <div className="mt-4 space-y-2">
+            <p className="text-sm text-gray-700">
+              <strong>{smokeResult.passed}</strong> passed,{" "}
+              <strong className={smokeResult.failed ? "text-amber-700" : ""}>
+                {smokeResult.failed}
+              </strong>{" "}
+              failed ({smokeResult.total} total)
+            </p>
+            {smokeResult.results
+              .filter((r) => !r.ok)
+              .slice(0, 8)
+              .map((r) => (
+                <div
+                  key={`${r.category}-${r.provider}-${r.model}-${r.endpoint}`}
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                >
+                  <span className="font-medium">{r.category}</span> {r.model}: {r.error || "failed"}
+                </div>
+              ))}
+          </div>
+        )}
       </div>
 
       {/* OpenAI data residency toggle */}

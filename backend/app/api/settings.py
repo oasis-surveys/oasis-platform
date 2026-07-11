@@ -6,16 +6,20 @@ PUT  /api/settings/keys       — Update API key overrides (stored in Redis)
 GET  /api/settings/flags      — List boolean feature flags (data residency, etc.)
 PUT  /api/settings/flags      — Update boolean flag overrides (stored in Redis)
 GET  /api/settings/auth       — Get auth configuration status
+GET  /api/settings/catalog      Configured provider/model catalog
+POST /api/settings/smoke-test   Verify configured providers
 """
 
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from loguru import logger
 
 from app.config import settings
+from app.providers.catalog import get_configured_catalog
+from app.providers.smoke import run_configured_smoke_tests
 from app.redis import get_redis
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
@@ -412,3 +416,52 @@ async def update_audio_storage_settings(data: AudioStorageUpdate):
             logger.info(f"Set audio storage override: {field}")
 
     return await list_audio_storage_settings()
+
+
+# ── Provider capability catalog ──────────────────────────────────────────
+
+_SMOKE_RATE_LIMIT_SECONDS = 300
+_SMOKE_LOCK_KEY = "oasis:settings:smoke_lock"
+
+
+@router.get("/catalog")
+async def get_provider_catalog() -> dict[str, Any]:
+    """Return only providers/models whose credentials are fully configured."""
+    return await get_configured_catalog()
+
+
+class SmokeTestRequest(BaseModel):
+    live: bool = True
+
+
+@router.post("/smoke-test")
+async def smoke_test_providers(data: SmokeTestRequest | None = None):
+    """
+    Run minimal live probes for every model in the configured catalog.
+
+    The endpoint is rate limited and does not return secrets.
+    """
+    live = data.live if data else True
+    if live:
+        redis = await get_redis()
+        acquired = await redis.set(
+            _SMOKE_LOCK_KEY,
+            "1",
+            ex=_SMOKE_RATE_LIMIT_SECONDS,
+            nx=True,
+        )
+        if not acquired:
+            raise HTTPException(
+                status_code=429,
+                detail="Please wait before running another provider verification.",
+            )
+
+    result = await run_configured_smoke_tests(live=live)
+    logger.info(
+        "Provider smoke-test: live={} total={} passed={} failed={}",
+        result["live"],
+        result["total"],
+        result["passed"],
+        result["failed"],
+    )
+    return result

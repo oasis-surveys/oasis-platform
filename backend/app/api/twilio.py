@@ -32,6 +32,7 @@ from app.config import settings
 from app.database import async_session_factory
 from app.models.agent import Agent, AgentStatus, ParticipantIdMode
 from app.models.session import Session, SessionStatus, aggregate_session_tokens
+from app.providers.validate import validate_agent_pipeline_config
 from app.realtime import publish_transcript_event
 
 router = APIRouter()
@@ -85,6 +86,27 @@ async def _resolve_twilio_agent(
     return result.scalar_one_or_none()
 
 
+async def _agent_config_errors(agent: Agent) -> list[str]:
+    modality = (
+        agent.modality.value if hasattr(agent.modality, "value") else agent.modality
+    )
+    pipeline_type = (
+        agent.pipeline_type.value
+        if hasattr(agent.pipeline_type, "value")
+        else agent.pipeline_type
+    )
+    return await validate_agent_pipeline_config(
+        modality=modality,
+        pipeline_type=pipeline_type,
+        llm_model=agent.llm_model,
+        stt_provider=agent.stt_provider,
+        stt_model=agent.stt_model,
+        tts_provider=agent.tts_provider,
+        tts_model=agent.tts_model,
+        tts_voice=agent.tts_voice,
+    )
+
+
 @router.post("/api/twilio/voice/{agent_id}")
 async def twilio_voice_webhook(agent_id: str, request: Request):
     """
@@ -104,8 +126,12 @@ async def twilio_voice_webhook(agent_id: str, request: Request):
     async with async_session_factory() as db:
         agent = await _resolve_twilio_agent(db, agent_id, called_number)
 
-    if not agent:
-        # Return TwiML that says the agent is unavailable
+    modality = (
+        agent.modality.value
+        if agent and hasattr(agent.modality, "value")
+        else agent.modality if agent else None
+    )
+    if not agent or modality != "voice" or await _agent_config_errors(agent):
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say>Sorry, this interview agent is not currently available. Please try again later.</Say>
@@ -210,17 +236,30 @@ async def twilio_media_stream(websocket: WebSocket, agent_id: str):
             await websocket.close(code=4004)
             return
 
+        modality = (
+            agent.modality.value if hasattr(agent.modality, "value") else agent.modality
+        )
+        if modality != "voice":
+            await websocket.close(code=4005, reason="Wrong modality")
+            return
+
+        pipeline_type = (
+            agent.pipeline_type.value
+            if hasattr(agent.pipeline_type, "value")
+            else agent.pipeline_type
+        )
+        errors = await _agent_config_errors(agent)
+        if errors:
+            await websocket.close(code=4006, reason="Invalid agent configuration")
+            return
+
         # Snapshot agent config
         agent_cfg = {
             "id": agent.id,
             "study_id": agent.study_id,
             "system_prompt": agent.system_prompt,
             "welcome_message": agent.welcome_message,
-            "pipeline_type": (
-                agent.pipeline_type.value
-                if hasattr(agent.pipeline_type, "value")
-                else agent.pipeline_type
-            ),
+            "pipeline_type": pipeline_type,
             "llm_model": agent.llm_model,
             "stt_provider": agent.stt_provider,
             "stt_model": agent.stt_model,

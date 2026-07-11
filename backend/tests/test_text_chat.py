@@ -102,6 +102,35 @@ class TestCallLlm:
         assert "api_base" not in kwargs
 
     @pytest.mark.asyncio
+    @patch("app.api.text_chat._call_openai_responses", new_callable=AsyncMock)
+    @patch("app.api.text_chat._openai_api_base", new_callable=AsyncMock)
+    @patch("app.api.text_chat._get_key", new_callable=AsyncMock)
+    async def test_gpt_5_6_uses_responses_api(
+        self, mock_get_key, mock_eu_base, mock_responses
+    ):
+        mock_get_key.return_value = "sk-openai-test"
+        mock_eu_base.return_value = "https://eu.api.openai.com/v1"
+        mock_responses.return_value = {
+            "content": "Hello",
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+        }
+
+        from app.api.text_chat import _call_llm
+
+        await _call_llm(
+            [{"role": "user", "content": "Hi"}],
+            model="openai/gpt-5.6-luna",
+        )
+
+        mock_responses.assert_awaited_once_with(
+            [{"role": "user", "content": "Hi"}],
+            "openai/gpt-5.6-luna",
+            "sk-openai-test",
+            "https://eu.api.openai.com/v1",
+        )
+
+    @pytest.mark.asyncio
     @patch("litellm.acompletion", new_callable=AsyncMock)
     @patch("app.api.text_chat._openai_api_base", new_callable=AsyncMock)
     @patch("app.api.text_chat._get_key", new_callable=AsyncMock)

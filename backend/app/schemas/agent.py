@@ -5,7 +5,7 @@ OASIS — Pydantic schemas for Agent CRUD.
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.agent import AgentModality, AgentStatus, InterviewMode, ParticipantIdMode, PipelineType
 
@@ -139,14 +139,14 @@ class AgentCreate(BaseModel):
 
     pipeline_type: PipelineType = PipelineType.MODULAR
 
-    llm_model: str = Field("openai/gpt-4o", max_length=255)
+    llm_model: str = Field("openai/gpt-5.6-luna", max_length=255)
 
-    stt_provider: str = Field("deepgram", max_length=100)
-    stt_model: str | None = None
+    stt_provider: str = Field("openai", max_length=100)
+    stt_model: str | None = "gpt-realtime-whisper"
 
-    tts_provider: str = Field("elevenlabs", max_length=100)
-    tts_model: str | None = None
-    tts_voice: str | None = None
+    tts_provider: str = Field("openai", max_length=100)
+    tts_model: str | None = "gpt-4o-mini-tts"
+    tts_voice: str | None = "alloy"
 
     turn_detection: str = Field(
         "local",
@@ -194,6 +194,12 @@ class AgentCreate(BaseModel):
     # Adaptive behavior (requires engagement; defaults to shadow mode)
     adaptive_enabled: bool = False
     adaptive_policy: AdaptivePolicy | None = None
+
+    @model_validator(mode="after")
+    def _text_requires_modular(self) -> "AgentCreate":
+        if self.modality == AgentModality.TEXT and self.pipeline_type != PipelineType.MODULAR:
+            raise ValueError("Text agents must use the modular pipeline.")
+        return self
 
 
 class AgentUpdate(BaseModel):

@@ -58,9 +58,12 @@ class TestAgentSchemas:
         a = AgentCreate(name="Agent 1")
         assert a.name == "Agent 1"
         assert a.pipeline_type == PipelineType.MODULAR
-        assert a.llm_model == "openai/gpt-4o"
-        assert a.stt_provider == "deepgram"
-        assert a.tts_provider == "elevenlabs"
+        assert a.llm_model == "openai/gpt-5.6-luna"
+        assert a.stt_provider == "openai"
+        assert a.stt_model == "gpt-realtime-whisper"
+        assert a.tts_provider == "openai"
+        assert a.tts_model == "gpt-4o-mini-tts"
+        assert a.tts_voice == "alloy"
         assert a.language == "en"
         assert a.status == AgentStatus.ACTIVE
 

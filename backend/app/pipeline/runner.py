@@ -41,6 +41,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 
 from app.config import settings
+from app.providers.catalog import resolve_llm_api_kind
 from app.database import async_session_factory
 from app.pipeline.transcript_logger import (
     TranscriptLoggerState,
@@ -700,6 +701,22 @@ async def _build_llm(llm_model: str):
     model_name = _resolve_model_name(llm_model)
     api_key = await _get_key("openai_api_key")
     eu_base_url = await _openai_base_url()
+    if resolve_llm_api_kind(llm_model) == "responses":
+        from pipecat.services.openai.responses.llm import (
+            OpenAIResponsesHttpLLMService,
+        )
+
+        kwargs: dict = {
+            "api_key": api_key,
+            "settings": OpenAIResponsesHttpLLMService.Settings(
+                model=model_name,
+                max_completion_tokens=2048,
+            ),
+        }
+        if eu_base_url:
+            kwargs["base_url"] = eu_base_url
+        return OpenAIResponsesHttpLLMService(**kwargs)
+
     kwargs: dict = {
         "api_key": api_key,
         "settings": OpenAILLMSettings(model=model_name),
@@ -1342,8 +1359,23 @@ async def _build_stt(provider: str, language: str, model: Optional[str] = None):
         return DeepgramSTTService(**kwargs)
 
     if provider in ("whisper", "openai"):
-        from pipecat.services.openai.stt import OpenAISTTService, OpenAISTTSettings
         api_key = await _get_key("openai_api_key")
+        if model == "gpt-realtime-whisper":
+            from pipecat.services.openai.stt import OpenAIRealtimeSTTService
+
+            # Local VAD commits turns for realtime transcription.
+            return OpenAIRealtimeSTTService(
+                api_key=api_key,
+                base_url=await _openai_realtime_base_url(),
+                turn_detection=False,
+                settings=OpenAIRealtimeSTTService.Settings(
+                    model=model,
+                    language=language,
+                ),
+            )
+
+        from pipecat.services.openai.stt import OpenAISTTService, OpenAISTTSettings
+
         kwargs = {"api_key": api_key, "language": language}
         if model:
             kwargs["settings"] = OpenAISTTSettings(model=model)

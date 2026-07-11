@@ -104,18 +104,18 @@ class Agent(Base):
 
     # ── LLM ──
     llm_model: Mapped[str] = mapped_column(
-        String(255), nullable=False, default="openai/gpt-4o"
+        String(255), nullable=False, default="openai/gpt-5.6-luna"
     )
 
     # ── STT (Speech-to-Text) ──
     stt_provider: Mapped[str] = mapped_column(
-        String(100), nullable=False, default="deepgram"
+        String(100), nullable=False, default="openai"
     )
     stt_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # ── TTS (Text-to-Speech) ──
     tts_provider: Mapped[str] = mapped_column(
-        String(100), nullable=False, default="elevenlabs"
+        String(100), nullable=False, default="openai"
     )
     tts_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tts_voice: Mapped[str | None] = mapped_column(String(255), nullable=True)
