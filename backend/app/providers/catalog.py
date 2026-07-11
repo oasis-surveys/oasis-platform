@@ -9,7 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from app.providers.availability import is_provider_configured_async
+from app.providers.availability import (
+    get_effective_provider_setting,
+    is_provider_configured_async,
+)
 
 ApiKind = Literal[
     "chat_completions",
@@ -126,12 +129,24 @@ STT_PROVIDERS: tuple[ProviderOption, ...] = (
         "nova-2-meeting", "nova-2-phonecall", "enhanced",
     )),
     ProviderOption("scaleway", "Scaleway Whisper", "scaleway", ("whisper-large-v3",)),
+    ProviderOption(
+        "self_hosted",
+        "Custom / Self-Hosted",
+        "self_hosted_stt",
+        None,
+    ),
 )
 
 TTS_PROVIDERS: tuple[ProviderOption, ...] = (
     ProviderOption("openai", "OpenAI TTS", "openai", ("gpt-4o-mini-tts", "tts-1", "tts-1-hd")),
     ProviderOption("elevenlabs", "ElevenLabs", "elevenlabs", None),
     ProviderOption("cartesia", "Cartesia (Sonic)", "cartesia", None),
+    ProviderOption(
+        "self_hosted",
+        "Custom / Self-Hosted",
+        "self_hosted_tts",
+        None,
+    ),
 )
 
 OPENAI_REALTIME_VOICES: tuple[VoiceOption, ...] = (
@@ -225,6 +240,9 @@ DEFAULTS = {
     "tts_voice": "alloy",
     "v2v_voice_openai": "coral",
     "v2v_voice_google": "Charon",
+    "self_hosted_stt_model": "whisper-1",
+    "self_hosted_tts_model": "tts-1",
+    "self_hosted_tts_voice": "alloy",
 }
 
 _LLM_BY_VALUE: dict[str, ModelOption] = {
@@ -322,21 +340,41 @@ async def get_configured_catalog() -> dict:
     stt_providers = []
     for p in STT_PROVIDERS:
         if await is_provider_configured_async(p.provider):
+            models = list_stt_models(p.value)
+            if p.value == "self_hosted":
+                model = (
+                    await get_effective_provider_setting("self_hosted_stt_model")
+                    or DEFAULTS["self_hosted_stt_model"]
+                )
+                models = [{
+                    "value": model,
+                    "label": model,
+                }]
             stt_providers.append({
                 "value": p.value,
                 "label": p.label,
                 "provider": p.provider,
-                "models": list_stt_models(p.value),
+                "models": models,
             })
 
     tts_providers = []
     for p in TTS_PROVIDERS:
         if await is_provider_configured_async(p.provider):
+            models = list_tts_models(p.value)
+            if p.value == "self_hosted":
+                model = (
+                    await get_effective_provider_setting("self_hosted_tts_model")
+                    or DEFAULTS["self_hosted_tts_model"]
+                )
+                models = [{
+                    "value": model,
+                    "label": model,
+                }]
             tts_providers.append({
                 "value": p.value,
                 "label": p.label,
                 "provider": p.provider,
-                "models": list_tts_models(p.value),
+                "models": models,
             })
 
     voices = {

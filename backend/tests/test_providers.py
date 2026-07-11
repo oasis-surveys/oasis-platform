@@ -5,6 +5,7 @@ Tests for the provider capability catalog, validation, and settings endpoints.
 import pytest
 from httpx import AsyncClient
 
+from app.config import settings
 from app.providers.catalog import (
     DEFAULTS,
     LLM_MODULAR_MODELS,
@@ -87,6 +88,23 @@ class TestProviderValidation:
         )
         assert any("STT model" in e for e in errors)
 
+    async def test_self_hosted_models_accept_free_form_ids(self, monkeypatch):
+        monkeypatch.setattr(settings, "self_hosted_stt_url", "http://stt.local/v1")
+        monkeypatch.setattr(settings, "self_hosted_tts_url", "http://tts.local/v1")
+
+        errors = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="modular",
+            llm_model="openai/gpt-4o-mini",
+            stt_provider="self_hosted",
+            stt_model="my-whisper",
+            tts_provider="self_hosted",
+            tts_model="my-tts",
+            tts_voice="my-voice",
+        )
+
+        assert errors == []
+
 
 class TestCatalogAPI:
     async def test_get_catalog(self, client: AsyncClient):
@@ -109,9 +127,36 @@ class TestCatalogAPI:
         assert data["total"] > 0
         assert data["failed"] == 0
 
+    async def test_catalog_includes_configured_self_hosted_speech(
+        self,
+        client: AsyncClient,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(settings, "self_hosted_stt_url", "http://stt.local/v1")
+        monkeypatch.setattr(settings, "self_hosted_tts_url", "http://tts.local/v1")
+
+        resp = await client.get("/api/settings/catalog")
+        data = resp.json()
+
+        assert any(p["value"] == "self_hosted" for p in data["stt_providers"])
+        assert any(p["value"] == "self_hosted" for p in data["tts_providers"])
+
 
 class TestSmokeContract:
     async def test_dry_run_covers_catalog(self):
         result = await run_configured_smoke_tests(live=False)
         assert result["total"] > 0
         assert result["passed"] == result["total"]
+
+    async def test_dry_run_covers_self_hosted_speech(self, monkeypatch):
+        monkeypatch.setattr(settings, "self_hosted_stt_url", "http://stt.local/v1")
+        monkeypatch.setattr(settings, "self_hosted_tts_url", "http://tts.local/v1")
+
+        result = await run_configured_smoke_tests(live=False)
+        probes = {
+            (probe["category"], probe["provider"])
+            for probe in result["results"]
+        }
+
+        assert ("stt", "self_hosted") in probes
+        assert ("tts", "self_hosted") in probes

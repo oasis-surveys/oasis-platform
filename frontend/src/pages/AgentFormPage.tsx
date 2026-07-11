@@ -2103,6 +2103,15 @@ export default function AgentFormPage() {
                 <strong>Custom TTS:</strong> Point this at a LiteLLM proxy or any OpenAI-compatible text-to-speech server (e.g. Kokoro, Piper, LocalAI). Configure <code>SELF_HOSTED_TTS_URL</code> and <code>SELF_HOSTED_TTS_API_KEY</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
               </InfoBanner>
             )}
+            {isModular &&
+              resolvedModel.startsWith("custom/") &&
+              form.stt_provider === "self_hosted" &&
+              form.tts_provider === "self_hosted" && (
+                <InfoBanner color="emerald">
+                  <strong>Fully self-hosted:</strong> LLM, transcription, and speech
+                  requests use your configured endpoints.
+                </InfoBanner>
+              )}
 
             {/* STT / TTS — only visible for voice modular pipeline */}
             {form.modality === "voice" && isModular && (
@@ -2214,7 +2223,9 @@ export default function AgentFormPage() {
                               (voice) => voice.value === catalogDefaults?.tts_voice,
                             )?.value ??
                             voices?.[0]?.value ??
-                            "",
+                            (p === "self_hosted"
+                              ? catalogDefaults?.self_hosted_tts_voice ?? "alloy"
+                              : ""),
                         }));
                       }}
                       className="select-styled"

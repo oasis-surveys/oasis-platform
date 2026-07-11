@@ -12,6 +12,7 @@ from typing import Any
 from loguru import logger
 
 from app.config import settings
+from app.providers.availability import get_effective_provider_setting
 from app.providers.catalog import (
     DEFAULTS,
     get_catalog_entry,
@@ -82,9 +83,7 @@ class SmokeProbeResult:
 
 
 async def _get_key(field: str) -> str:
-    from app.api.settings import get_effective_key
-
-    return await get_effective_key(field)
+    return await get_effective_provider_setting(field)
 
 
 async def _openai_api_base() -> str | None:
@@ -105,6 +104,10 @@ async def _openai_realtime_url() -> str:
         if await get_effective_flag("openai_use_eu")
         else "wss://api.openai.com/v1/realtime"
     )
+
+
+def _openai_compatible_endpoint(base_url: str, path: str) -> str:
+    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
 async def _probe_llm(model: str) -> SmokeProbeResult:
@@ -265,6 +268,23 @@ async def _probe_stt(provider: str, model: str) -> SmokeProbeResult:
                     data={"model": model or "whisper-large-v3"},
                 )
                 resp.raise_for_status()
+        elif provider == "self_hosted":
+            import httpx
+
+            base_url = await _get_key("self_hosted_stt_url")
+            api_key = await _get_key("self_hosted_stt_api_key") or "not-needed"
+            endpoint = _openai_compatible_endpoint(
+                base_url,
+                "audio/transcriptions",
+            )
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    files={"file": ("probe.wav", wav, "audio/wav")},
+                    data={"model": model, "language": "en"},
+                )
+                resp.raise_for_status()
         else:
             raise ValueError(f"Unsupported STT provider: {provider}")
 
@@ -330,6 +350,23 @@ async def _probe_tts(provider: str, model: str | None, voice: str) -> SmokeProbe
                         "transcript": "ok",
                         "voice": {"mode": "id", "id": voice},
                         "output_format": {"container": "wav", "encoding": "pcm_f32le", "sample_rate": 44100},
+                    },
+                )
+                resp.raise_for_status()
+        elif provider == "self_hosted":
+            import httpx
+
+            base_url = await _get_key("self_hosted_tts_url")
+            api_key = await _get_key("self_hosted_tts_api_key") or "not-needed"
+            endpoint = _openai_compatible_endpoint(base_url, "audio/speech")
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={
+                        "model": model or DEFAULTS["self_hosted_tts_model"],
+                        "input": "ok",
+                        "voice": voice,
                     },
                 )
                 resp.raise_for_status()
@@ -412,10 +449,10 @@ async def run_configured_smoke_tests(*, live: bool = True) -> dict[str, Any]:
             probes.append(SmokeProbeResult("v2v", m["provider"], m["value"], m["api_kind"], True, 0))
         for sp in catalog["stt_providers"]:
             for sm in sp["models"]:
-                probes.append(SmokeProbeResult("stt", sp["provider"], sm["value"], sp["value"], True, 0))
+                probes.append(SmokeProbeResult("stt", sp["value"], sm["value"], sp["value"], True, 0))
         for tp in catalog["tts_providers"]:
             model, voice = _tts_probe_config(tp, catalog)
-            probes.append(SmokeProbeResult("tts", tp["provider"], model or voice, tp["value"], True, 0))
+            probes.append(SmokeProbeResult("tts", tp["value"], model or voice, tp["value"], True, 0))
         return {
             "live": False,
             "total": len(probes),

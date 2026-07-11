@@ -23,7 +23,17 @@ _PROVIDER_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "self_hosted_tts": ("self_hosted_tts_url",),
 }
 
-_DISABLED_PROVIDERS = frozenset({"azure", "gcp", "self_hosted_stt", "self_hosted_tts"})
+_DISABLED_PROVIDERS = frozenset({"azure", "gcp"})
+
+
+async def get_effective_provider_setting(field: str) -> str:
+    from app.api.settings import get_effective_key
+
+    try:
+        return (await get_effective_key(field)).strip()
+    except RedisError:
+        return str(getattr(settings, field, "") or "").strip()
+
 
 async def is_provider_configured_async(provider: str) -> bool:
     """Check using dashboard Redis overrides when available."""
@@ -32,12 +42,7 @@ async def is_provider_configured_async(provider: str) -> bool:
     required = _PROVIDER_REQUIREMENTS.get(provider)
     if not required:
         return False
-    from app.api.settings import get_effective_key
-
-    try:
-        for field in required:
-            if not (await get_effective_key(field)).strip():
-                return False
-        return True
-    except RedisError:
-        return all(str(getattr(settings, field, "") or "").strip() for field in required)
+    for field in required:
+        if not await get_effective_provider_setting(field):
+            return False
+    return True

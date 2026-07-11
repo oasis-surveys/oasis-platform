@@ -2,7 +2,7 @@
 
 All notable changes to OASIS are tracked here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with date-based
-sections — versions are added retroactively when a release is cut.
+sections, versions are added retroactively when a release is cut.
 
 ## 2026-07-11
 
@@ -10,6 +10,7 @@ sections — versions are added retroactively when a release is cut.
 
 - Provider-aware model, speech, and voice options in the agent form.
 - Manual provider checks in Settings and from the command line.
+- Configured self-hosted STT and TTS endpoints in the provider catalog.
 
 ### Changed
 
