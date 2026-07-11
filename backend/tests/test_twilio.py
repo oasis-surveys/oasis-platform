@@ -71,6 +71,21 @@ class TestTwilioEndpoints:
         assert resp.status_code == 200
         assert "unavailable" in resp.text or "Sorry" in resp.text
 
+    async def test_voice_webhook_rejects_text_agent(self, client: AsyncClient):
+        study = await client.post("/api/studies", json={"title": "Twilio Text"})
+        agent = await client.post(
+            f"/api/studies/{study.json()['id']}/agents",
+            json={"name": "Text Agent", "modality": "text"},
+        )
+
+        resp = await client.post(
+            f"/api/twilio/voice/{agent.json()['id']}",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+        assert resp.status_code == 200
+        assert "not currently available" in resp.text
+
     async def test_voice_webhook_routes_by_to_number(self, client: AsyncClient):
         """When the To number matches another agent, that agent's id is used."""
         resp = await client.post("/api/studies", json={"title": "Twilio To Routing"})

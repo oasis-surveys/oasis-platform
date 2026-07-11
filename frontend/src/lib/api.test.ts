@@ -22,6 +22,17 @@ import {
 // ── Mock fetch ──────────────────────────────────────────────────
 
 const originalFetch = globalThis.fetch;
+const storage = new Map<string, string>();
+
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: {
+    clear: () => storage.clear(),
+    getItem: (key: string) => storage.get(key) ?? null,
+    removeItem: (key: string) => storage.delete(key),
+    setItem: (key: string, value: string) => storage.set(key, value),
+  },
+});
 
 function mockFetch(response: unknown, status = 200, contentType = "application/json") {
   return vi.fn().mockResolvedValue({
@@ -334,6 +345,48 @@ describe("Settings API", () => {
       openai_api_key: "sk-new-key",
     });
     expect(result).toBeDefined();
+  });
+
+  it("gets provider catalog", async () => {
+    const data = {
+      defaults: { modular_llm: "openai/gpt-5.6-luna" },
+      llm_modular: [{ value: "openai/gpt-5.6-luna", label: "Luna", group: "OpenAI", provider: "openai", api_kind: "responses" }],
+      llm_text: [],
+      llm_v2v: [],
+      stt_providers: [],
+      tts_providers: [],
+      voices: {
+        openai_realtime: [],
+        gemini_live: [],
+        openai_tts: [],
+        elevenlabs: [],
+        cartesia: [],
+      },
+      supports_custom_llm: false,
+    };
+    globalThis.fetch = mockFetch(data);
+
+    const result = await settingsApi.getCatalog();
+    expect(result.defaults.modular_llm).toBe("openai/gpt-5.6-luna");
+    expect(result.llm_modular[0].value).toBe("openai/gpt-5.6-luna");
+  });
+
+  it("starts provider verification", async () => {
+    const data = {
+      live: true,
+      total: 2,
+      passed: 2,
+      failed: 0,
+      results: [],
+    };
+    globalThis.fetch = mockFetch(data);
+
+    const result = await settingsApi.smokeTest();
+    expect(result.failed).toBe(0);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/settings/smoke-test",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });
 

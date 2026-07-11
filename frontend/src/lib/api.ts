@@ -873,6 +873,72 @@ export interface AudioStorageResponse {
   settings: AudioStorageSettingStatus[];
 }
 
+export interface CatalogModelOption {
+  value: string;
+  label: string;
+  group: string;
+  provider: string;
+  api_kind: string;
+}
+
+export interface CatalogProviderOption {
+  value: string;
+  label: string;
+  provider: string;
+  models: { value: string; label: string }[];
+}
+
+export interface CatalogVoiceOption {
+  value: string;
+  label: string;
+}
+
+export interface ProviderCatalog {
+  defaults: {
+    modular_llm: string;
+    text_llm: string;
+    v2v_llm: string;
+    stt_provider: string;
+    stt_model: string;
+    tts_provider: string;
+    tts_model: string;
+    tts_voice: string;
+    v2v_voice_openai: string;
+    v2v_voice_google: string;
+  };
+  llm_modular: CatalogModelOption[];
+  llm_text: CatalogModelOption[];
+  llm_v2v: CatalogModelOption[];
+  stt_providers: CatalogProviderOption[];
+  tts_providers: CatalogProviderOption[];
+  voices: {
+    openai_realtime: CatalogVoiceOption[];
+    gemini_live: CatalogVoiceOption[];
+    openai_tts: CatalogVoiceOption[];
+    elevenlabs: CatalogVoiceOption[];
+    cartesia: CatalogVoiceOption[];
+  };
+  supports_custom_llm: boolean;
+}
+
+export interface SmokeProbeResult {
+  category: string;
+  provider: string;
+  model: string;
+  endpoint: string;
+  ok: boolean;
+  latency_ms: number | null;
+  error: string | null;
+}
+
+export interface SmokeTestResponse {
+  live: boolean;
+  total: number;
+  passed: number;
+  failed: number;
+  results: SmokeProbeResult[];
+}
+
 export const settingsApi = {
   getKeys: () => request<ApiKeysResponse>("/settings/keys"),
 
@@ -901,4 +967,12 @@ export const settingsApi = {
 
   getAuthConfig: () =>
     request<{ auth_enabled: boolean; username: string }>("/settings/auth"),
+
+  getCatalog: () => request<ProviderCatalog>("/settings/catalog"),
+
+  smokeTest: (live = true) =>
+    request<SmokeTestResponse>("/settings/smoke-test", {
+      method: "POST",
+      body: JSON.stringify({ live }),
+    }),
 };

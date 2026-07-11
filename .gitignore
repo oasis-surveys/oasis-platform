@@ -49,3 +49,6 @@ data/recordings/
 # Redis
 dump.rdb
 GOVERNANCE.md
+
+# Paper draft (private, not for publication in repo yet)
+draft/

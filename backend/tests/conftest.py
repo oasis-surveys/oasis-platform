@@ -41,6 +41,8 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-test-fake-key")
 os.environ.setdefault("DEEPGRAM_API_KEY", "dg-test-fake-key")
 os.environ.setdefault("ELEVENLABS_API_KEY", "el-test-fake-key")
 os.environ.setdefault("GOOGLE_API_KEY", "goog-test-fake-key")
+os.environ.setdefault("ANTHROPIC_API_KEY", "ant-test-fake-key")
+os.environ.setdefault("SCALEWAY_SECRET_KEY", "scw-test-fake-key")
 
 # ---------------------------------------------------------------------------
 # Patch pgvector's Vector type BEFORE importing models

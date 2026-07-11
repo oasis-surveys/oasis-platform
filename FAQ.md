@@ -52,19 +52,19 @@ OASIS has first-class integrations for the providers below. Each one has a dedic
 
 | Provider | Env var | Model ID format | Notes |
 |---|---|---|---|
-| OpenAI | `OPENAI_API_KEY` | `openai/gpt-5.5`, `openai/gpt-4o`, `openai/o3`, ... | Set `OPENAI_USE_EU=true` to route through `eu.api.openai.com`. |
+| OpenAI | `OPENAI_API_KEY` | `openai/gpt-5.6-sol`, `openai/gpt-5.6-terra`, `openai/gpt-5.6-luna`, ... | Set `OPENAI_USE_EU=true` to route through `eu.api.openai.com`. |
 | Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-opus-4-7`, `anthropic/claude-sonnet-4-6`, `anthropic/claude-haiku-4-5` | Text only. No native voice-to-voice. |
-| Google AI | `GOOGLE_API_KEY` | `google/gemini-2.5-pro`, `google/gemini-2.5-flash`, `google/gemini-3.1-pro-preview` | Same key works for Gemini Live voice-to-voice. |
+| Google AI | `GOOGLE_API_KEY` | `google/gemini-3.5-flash`, `google/gemini-2.5-pro`, `google/gemini-3.1-pro-preview` | Same key works for Gemini Live voice-to-voice. |
 | Scaleway | `SCALEWAY_SECRET_KEY` | `scaleway/qwen3-235b-...`, `scaleway/llama-3.3-70b-instruct`, ... | EU-hosted Generative APIs (Paris). |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_API_VERSION` | `azure/<your-deployment-name>` | Use your Azure deployment name, not the OpenAI model name. |
 | GCP Vertex AI | `GCP_API_KEY` + `GCP_PROJECT_ID` + `GCP_LOCATION` | `gcp/gemini-2.5-pro`, `gcp/gemini-2.5-flash`, ... | Vertex AI's OpenAI-compatible shim. |
 | **Anything OpenAI-compatible (incl. OpenRouter)** | `OPENAI_COMPATIBLE_LLM_URL` + `OPENAI_COMPATIBLE_LLM_API_KEY` | `custom/<model>` | See below. |
 
-**STT (speech-to-text):** OpenAI Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), Scaleway Whisper, Azure Speech, plus any self-hosted endpoint that implements `/v1/audio/transcriptions` (Speaches, faster-whisper, etc. via `STT_API_URL`).
+**STT (speech-to-text):** OpenAI GPT Realtime Whisper / Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), and Scaleway Whisper. Azure Speech and self-hosted STT stay hidden until their settings are fully wired.
 
-**TTS (text-to-speech):** OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), Cartesia (`CARTESIA_API_KEY`), Azure Speech, plus any self-hosted endpoint that implements `/v1/audio/speech` (Kokoro, Piper, etc. via `TTS_API_URL`).
+**TTS (text-to-speech):** OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), and Cartesia (`CARTESIA_API_KEY`). Azure Speech and self-hosted TTS stay hidden until their settings are fully wired.
 
-**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2`, `gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`) and Google Gemini Live.
+**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2.1`, `gpt-realtime-2.1-mini`, `gpt-realtime-2`, `gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`) and Google Gemini Live.
 
 **Yes, OpenRouter works.** And so does Groq, Mistral La Plateforme, DeepInfra, Together AI, Fireworks, your own LiteLLM proxy, vLLM, Ollama, anything that speaks the OpenAI Chat Completions protocol. Use the `custom/` prefix:
 
@@ -91,12 +91,16 @@ The `custom/` route only covers the **LLM** step. STT and TTS are configured sep
 <details>
 <summary><strong>Which model IDs work today?</strong></summary>
 
-The dashboard ships with curated dropdowns of model IDs that we've verified against each provider's docs. For "I want to type a model ID directly" workflows, here are the currently supported families (May 2026):
+The agent form loads its model and voice lists from `GET /api/settings/catalog`. It shows configured providers only. Saved unavailable choices remain visible.
 
-**OpenAI** ([source](https://developers.openai.com/api/docs/models/all)):
-- Frontier text: `openai/gpt-5.5`, `openai/gpt-5.5-pro`, `openai/gpt-5.4`, `openai/gpt-5.4-pro`, `openai/gpt-5.4-mini`, `openai/gpt-5.4-nano`, `openai/gpt-5`, `openai/gpt-5-mini`, `openai/gpt-5-nano`, `openai/gpt-4.1`, `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/o3`
-- Realtime (voice-to-voice): `openai/gpt-realtime-2`, `openai/gpt-realtime-1.5`, `openai/gpt-realtime`, `openai/gpt-realtime-mini`. Note: `gpt-realtime-2` supports a `reasoning_effort` knob that OASIS doesn't expose yet (pipecat upstream has to add it first), so it runs at the default effort.
-- STT: `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`
+Use **Settings → Verify configured providers** or `python scripts/verify_providers.py` to check the configured models. Results include the endpoint, model, and latency, but not credentials.
+
+For "I want to type a model ID directly" workflows, here are the currently supported families (July 2026):
+
+**OpenAI** ([source](https://developers.openai.com/api/docs/models)):
+- Frontier text: `openai/gpt-5.6-sol`, `openai/gpt-5.6-terra`, `openai/gpt-5.6-luna`, `openai/gpt-5.5`, `openai/gpt-5.5-pro`, `openai/gpt-5.4`, `openai/gpt-5.4-pro`, `openai/gpt-5.4-mini`, `openai/gpt-5.4-nano`, `openai/gpt-5`, `openai/gpt-5-mini`, `openai/gpt-5-nano`, `openai/gpt-4.1`, `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/o3`
+- Realtime (voice-to-voice): `openai/gpt-realtime-2.1`, `openai/gpt-realtime-2.1-mini`, `openai/gpt-realtime-2`, `openai/gpt-realtime-1.5`, `openai/gpt-realtime`, `openai/gpt-realtime-mini`. Note: GPT Realtime 2.x supports a `reasoning_effort` knob that OASIS doesn't expose yet (pipecat upstream has to add it first), so it runs at the default effort.
+- STT: `gpt-realtime-whisper` (streaming Realtime transcription), `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`
 - TTS: `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`
 
 **Anthropic** ([source](https://platform.claude.com/docs/en/about-claude/models/overview)):
@@ -104,9 +108,8 @@ The dashboard ships with curated dropdowns of model IDs that we've verified agai
 - Legacy (still works): `anthropic/claude-opus-4-6`, `anthropic/claude-sonnet-4-5`, `anthropic/claude-opus-4-5`
 
 **Google Gemini** ([source](https://ai.google.dev/gemini-api/docs/models)):
-- Stable text: `google/gemini-2.5-pro`, `google/gemini-2.5-flash`, `google/gemini-2.5-flash-lite`
+- Stable text: `google/gemini-3.5-flash`, `google/gemini-2.5-pro`, `google/gemini-3.1-flash-lite`
 - Preview text (Gemini 3 family): `google/gemini-3.1-pro-preview`, `google/gemini-3-flash-preview`
-- GA (Gemini 3 family): `google/gemini-3.1-flash-lite`
 - Voice-to-voice (Live API): `google/gemini-3.1-flash-live-preview`, `google/gemini-2.5-flash-native-audio-latest`
 
 If a provider releases a new model after this list was written, you can usually just type its ID into the **Custom model** field of the agent form. The prefix routing (`openai/`, `anthropic/`, `google/`, etc.) passes the model name straight through to the provider's SDK.
@@ -172,7 +175,7 @@ Confirm with whoever manages your OpenAI org before flipping the toggle. If your
 
 OpenAI also notes a 10% pricing uplift for some models when used through a data residency endpoint. Mention this to your billing person if budgets are tight.
 
-For Realtime voice-to-voice specifically, the EU endpoint supports `gpt-realtime`, `gpt-realtime-1.5`, `gpt-realtime-2`, and `gpt-realtime-mini`. The older `gpt-4o-realtime-preview` snapshots have been removed from the OpenAI API.
+For Realtime voice-to-voice specifically, the EU endpoint supports `gpt-realtime`, `gpt-realtime-1.5`, `gpt-realtime-2`, `gpt-realtime-2.1`, `gpt-realtime-2.1-mini`, and `gpt-realtime-mini`. The older `gpt-4o-realtime-preview` snapshots have been removed from the OpenAI API.
 
 </details>
 

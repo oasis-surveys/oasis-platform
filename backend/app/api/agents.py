@@ -13,9 +13,35 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.agent import Agent, AgentStatus, ParticipantIdMode
+from app.models.agent import Agent, AgentModality, AgentStatus, ParticipantIdMode, PipelineType
 from app.models.study import Study
+from app.providers.validate import validate_agent_pipeline_config
 from app.schemas.agent import AgentCreate, AgentList, AgentRead, AgentUpdate
+
+
+async def _validate_agent_fields(
+    *,
+    modality: AgentModality | str,
+    pipeline_type: PipelineType | str,
+    llm_model: str,
+    stt_provider: str | None = None,
+    stt_model: str | None = None,
+    tts_provider: str | None = None,
+    tts_model: str | None = None,
+    tts_voice: str | None = None,
+) -> None:
+    errors = await validate_agent_pipeline_config(
+        modality=modality,
+        pipeline_type=pipeline_type,
+        llm_model=llm_model,
+        stt_provider=stt_provider,
+        stt_model=stt_model,
+        tts_provider=tts_provider,
+        tts_model=tts_model,
+        tts_voice=tts_voice,
+    )
+    if errors:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
 
 
 # ── Public widget config schema (minimal — no secrets) ────────
@@ -65,6 +91,16 @@ async def create_agent(
 ):
     """Create a new agent within a study."""
     await _get_study_or_404(study_id, db)
+    await _validate_agent_fields(
+        modality=payload.modality,
+        pipeline_type=payload.pipeline_type,
+        llm_model=payload.llm_model,
+        stt_provider=payload.stt_provider,
+        stt_model=payload.stt_model,
+        tts_provider=payload.tts_provider,
+        tts_model=payload.tts_model,
+        tts_voice=payload.tts_voice,
+    )
     agent = Agent(study_id=study_id, **payload.model_dump())
     db.add(agent)
     await db.flush()
@@ -98,6 +134,25 @@ async def update_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+    config_fields = (
+        "modality",
+        "pipeline_type",
+        "llm_model",
+        "stt_provider",
+        "stt_model",
+        "tts_provider",
+        "tts_model",
+        "tts_voice",
+    )
+    if any(
+        field in update_data and update_data[field] != getattr(agent, field)
+        for field in config_fields
+    ):
+        merged = {
+            field: update_data.get(field, getattr(agent, field))
+            for field in config_fields
+        }
+        await _validate_agent_fields(**merged)
     for field, value in update_data.items():
         setattr(agent, field, value)
 
