@@ -92,7 +92,7 @@ The `custom/` route only covers the **LLM** step. STT and TTS are configured sep
 <details>
 <summary><strong>How do I configure Azure OpenAI?</strong></summary>
 
-Azure uses deployment names, not just model names. The person who manages the Azure resource needs to create the deployments first and give you the resource endpoint, an API key, the API version, and the exact deployment names.
+Azure uses deployment names. The person who manages the Azure resource needs to create the deployments first and give you the resource endpoint, an API key, the API version, and the exact deployment names.
 
 Add them to `.env` on the OASIS server:
 
@@ -119,7 +119,7 @@ You can also enter these values under **Settings → Custom / Self-Hosted** in t
 
 For a normal modular voice agent, choose **Azure OpenAI** for STT and TTS. The backend uses the same Azure endpoint and key and sends audio requests to the configured deployments. The participant's browser never receives the Azure key.
 
-OASIS does not try to discover deployments through Azure's management API. That is deliberate: the IT team does not need to give OASIS Azure management permissions. They only need to provide the inference endpoint, key, and deployment names.
+OASIS does not try to discover deployments through Azure's management API. That is deliberate, so that the IT team does not need to give OASIS Azure management permissions but only need to provide the inference endpoint, key, and deployment names.
 
 If Azure models do not appear, check the endpoint, key, API version, and deployment spelling first. Then use **Settings → Verify configured providers**. The dry-run check does not contact Azure; the live check does.
 
