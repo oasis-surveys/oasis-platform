@@ -163,6 +163,18 @@ async def _probe_llm(model: str) -> SmokeProbeResult:
                 api_key=await _get_key("google_api_key"),
                 max_tokens=_MIN_COMPLETION_TOKENS,
             )
+        elif model.startswith("azure/"):
+            import litellm
+
+            endpoint = await _get_key("azure_openai_endpoint")
+            await litellm.acompletion(
+                model=model,
+                messages=[{"role": "user", "content": "Reply with exactly: ok"}],
+                api_key=await _get_key("azure_openai_api_key"),
+                api_base=endpoint,
+                api_version=await _get_key("azure_openai_api_version") or "2024-08-01-preview",
+                max_tokens=_MIN_COMPLETION_TOKENS,
+            )
         elif model.startswith("custom/"):
             import litellm
 
@@ -268,6 +280,23 @@ async def _probe_stt(provider: str, model: str) -> SmokeProbeResult:
                     data={"model": model or "whisper-large-v3"},
                 )
                 resp.raise_for_status()
+        elif provider == "azure_openai":
+            import httpx
+
+            endpoint_base = (await _get_key("azure_openai_endpoint")).rstrip("/")
+            api_version = await _get_key("azure_openai_api_version") or "2024-08-01-preview"
+            endpoint = (
+                f"{endpoint_base}/openai/deployments/{model}/audio/transcriptions"
+                f"?api-version={api_version}"
+            )
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    endpoint,
+                    headers={"api-key": await _get_key("azure_openai_api_key")},
+                    files={"file": ("probe.wav", wav, "audio/wav")},
+                    data={"model": model},
+                )
+                resp.raise_for_status()
         elif provider == "self_hosted":
             import httpx
 
@@ -315,6 +344,26 @@ async def _probe_tts(provider: str, model: str | None, voice: str) -> SmokeProbe
                         "input": "ok",
                         "voice": voice,
                     },
+                )
+                resp.raise_for_status()
+        elif provider == "azure_openai":
+            import httpx
+
+            endpoint_base = (await _get_key("azure_openai_endpoint")).rstrip("/")
+            api_version = await _get_key("azure_openai_api_version") or "2024-08-01-preview"
+            deployment = model or await _get_key("azure_openai_tts_deployment")
+            endpoint = (
+                f"{endpoint_base}/openai/deployments/{deployment}/audio/speech"
+                f"?api-version={api_version}"
+            )
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    endpoint,
+                    headers={
+                        "api-key": await _get_key("azure_openai_api_key"),
+                        "Content-Type": "application/json",
+                    },
+                    json={"model": deployment, "input": "ok", "voice": voice or "alloy"},
                 )
                 resp.raise_for_status()
         elif provider == "elevenlabs":
@@ -388,7 +437,25 @@ async def _probe_v2v(model: str) -> SmokeProbeResult:
     endpoint = ""
 
     try:
-        if api_kind == "realtime":
+        if model.startswith("azure/"):
+            import websockets
+
+            from app.pipeline.runner import azure_realtime_websocket_url
+
+            deployment = model.split("/", 1)[1]
+            endpoint = azure_realtime_websocket_url(
+                await _get_key("azure_openai_endpoint"),
+                deployment,
+                await _get_key("azure_openai_realtime_url"),
+            )
+            async with websockets.connect(
+                endpoint,
+                additional_headers={"api-key": await _get_key("azure_openai_api_key")},
+                open_timeout=15,
+                close_timeout=5,
+            ) as ws:
+                await asyncio.wait_for(ws.recv(), timeout=10)
+        elif api_kind == "realtime":
             import websockets
 
             api_key = await _get_key("openai_api_key")

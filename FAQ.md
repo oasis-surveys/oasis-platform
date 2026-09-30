@@ -6,6 +6,7 @@ Things people ask. Updated when new ones come in.
 
 - [Can I just start with OpenAI and add more providers later?](#can-i-just-start-with-openai-and-add-more-providers-later)
 - [Which AI providers does OASIS support? Can I use OpenRouter?](#which-ai-providers-does-oasis-support-can-i-use-openrouter)
+- [How do I configure Azure OpenAI?](#how-do-i-configure-azure-openai)
 - [Which model IDs work today?](#which-model-ids-work-today)
 - [Can I run OASIS entirely with open-source models?](#can-i-run-oasis-entirely-with-open-source-models)
 - [Can I run this on our institutional HPC / GPU cluster?](#can-i-run-this-on-our-institutional-hpc--gpu-cluster)
@@ -60,11 +61,11 @@ OASIS has first-class integrations for the providers below. Each one has a dedic
 | GCP Vertex AI | `GCP_API_KEY` + `GCP_PROJECT_ID` + `GCP_LOCATION` | `gcp/gemini-2.5-pro`, `gcp/gemini-2.5-flash`, ... | Vertex AI's OpenAI-compatible shim. |
 | **Anything OpenAI-compatible (incl. OpenRouter)** | `OPENAI_COMPATIBLE_LLM_URL` + `OPENAI_COMPATIBLE_LLM_API_KEY` | `custom/<model>` | See below. |
 
-**STT (speech-to-text):** OpenAI GPT Realtime Whisper / Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), Scaleway Whisper, and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_STT_URL` to show the self-hosted option.
+**STT (speech-to-text):** OpenAI GPT Realtime Whisper / Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), Scaleway Whisper, Azure OpenAI Whisper, and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_STT_URL` to show the self-hosted option.
 
-**TTS (text-to-speech):** OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), Cartesia (`CARTESIA_API_KEY`), and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_TTS_URL` to show the self-hosted option.
+**TTS (text-to-speech):** OpenAI TTS, Azure OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), Cartesia (`CARTESIA_API_KEY`), and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_TTS_URL` to show the self-hosted option.
 
-**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2.1`, `gpt-realtime-2.1-mini`, `gpt-realtime-2`, `gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`) and Google Gemini Live.
+**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2.1`, `gpt-realtime-2.1-mini`, `gpt-realtime-2`, `gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`), Google Gemini Live, and Azure OpenAI Realtime when the Azure deployment is configured.
 
 **Yes, OpenRouter works.** And so does Groq, Mistral La Plateforme, DeepInfra, Together AI, Fireworks, your own LiteLLM proxy, vLLM, Ollama, anything that speaks the OpenAI Chat Completions protocol. Use the `custom/` prefix:
 
@@ -85,6 +86,42 @@ custom/meta-llama/llama-3.3-70b-instruct
 (For OpenRouter, the model ID after `custom/` is whatever OpenRouter calls it, see [openrouter.ai/models](https://openrouter.ai/models). Same idea for Groq, Mistral, etc.)
 
 The `custom/` route only covers the **LLM** step. STT and TTS are configured separately through `SELF_HOSTED_STT_URL` and `SELF_HOSTED_TTS_URL`, which accept OpenAI-compatible audio endpoints.
+
+</details>
+
+<details>
+<summary><strong>How do I configure Azure OpenAI?</strong></summary>
+
+Azure uses deployment names. The person who manages the Azure resource needs to create the deployments first and give you the resource endpoint, an API key, the API version, and the exact deployment names.
+
+Add them to `.env` on the OASIS server:
+
+```env
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-08-01-preview
+
+# Comma-separated chat deployments. These appear in the agent form.
+AZURE_OPENAI_CHAT_DEPLOYMENTS=chat-prod,chat-small
+
+# Optional modular voice pipeline deployments
+AZURE_OPENAI_STT_DEPLOYMENT=whisper-prod
+AZURE_OPENAI_TTS_DEPLOYMENT=tts-prod
+
+# Optional voice-to-voice deployment
+AZURE_OPENAI_REALTIME_DEPLOYMENT=
+AZURE_OPENAI_REALTIME_URL=
+```
+
+The names after `AZURE_OPENAI_*_DEPLOYMENT` must be the **deployment names from Azure**, including any custom names. They are not necessarily `gpt-4o`, `whisper-1`, or `tts-1`.
+
+You can also enter these values under **Settings → Custom / Self-Hosted** in the dashboard. After saving the settings, reload the agent form. Azure options only appear when the required values for that capability are present.
+
+For a normal modular voice agent, choose **Azure OpenAI** for STT and TTS. The backend uses the same Azure endpoint and key and sends audio requests to the configured deployments. The participant's browser never receives the Azure key.
+
+OASIS does not try to discover deployments through Azure's management API. That is deliberate, so that the IT team does not need to give OASIS Azure management permissions but only need to provide the inference endpoint, key, and deployment names.
+
+If Azure models do not appear, check the endpoint, key, API version, and deployment spelling first. Then use **Settings → Verify configured providers**. The dry-run check does not contact Azure; the live check does.
 
 </details>
 
@@ -182,9 +219,9 @@ For Realtime voice-to-voice specifically, the EU endpoint supports `gpt-realtime
 <details>
 <summary><strong>Why no Azure OpenAI Realtime voice-to-voice?</strong></summary>
 
-Pipecat (the voice pipeline framework OASIS uses) has an `AzureRealtimeLLMService`, but it has unresolved bugs. It sends parameters Azure's API rejects. There's a fix PR but it hasn't been merged, and the Pipecat maintainers themselves don't have an Azure Realtime endpoint to test against. Azure also hasn't made the non-beta Realtime endpoint generally available in most regions.
+Azure Realtime can be configured when the Azure resource has a supported Realtime deployment. Set `AZURE_OPENAI_REALTIME_DEPLOYMENT` and OASIS will generate the current `/openai/v1/realtime?model=...` WebSocket URL. If the Azure team gives you a different URL, put the full value in `AZURE_OPENAI_REALTIME_URL`.
 
-We don't ship stuff we can't test. The modular pipeline with Azure (separate STT + LLM + TTS) works fine and is the reliable Azure path today.
+Realtime support still depends on the model, region, API contract, and endpoint being available in that Azure resource. We cannot test that handshake without access to the client's deployment, so for a first pilot the modular Azure pipeline (separate STT + LLM + TTS) is the safer option. Leave the Realtime deployment blank if it is not available.
 
 </details>
 

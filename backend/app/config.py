@@ -83,10 +83,17 @@ class Settings(BaseSettings):
     openai_compatible_llm_url: str = ""    # e.g. http://my-litellm:4000/v1
     openai_compatible_llm_api_key: str = ""
 
-    # ── Azure OpenAI (self-hosted) ──
+    # ── Azure OpenAI ──
+    # One resource: endpoint + key + api version. Each capability is the
+    # deployment name from the Azure portal, not the underlying model name.
     azure_openai_api_key: str = ""
     azure_openai_endpoint: str = ""
     azure_openai_api_version: str = "2024-08-01-preview"
+    azure_openai_chat_deployments: str = ""  # comma-separated deployment names
+    azure_openai_stt_deployment: str = ""    # Whisper (or other audio transcription) deployment
+    azure_openai_tts_deployment: str = ""    # TTS deployment on the same resource
+    azure_openai_realtime_deployment: str = ""  # gpt-realtime deployment, if any
+    azure_openai_realtime_url: str = ""      # optional full wss:// override
 
     # ── GCP Vertex AI (self-hosted) ──
     gcp_project_id: str = ""

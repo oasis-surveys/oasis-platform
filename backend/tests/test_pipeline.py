@@ -13,6 +13,7 @@ from app.pipeline.runner import (
     _resolve_model_name,
     _resolve_elevenlabs_voice,
     _get_rag_tools_schema,
+    azure_realtime_websocket_url,
 )
 
 
@@ -36,6 +37,19 @@ class TestResolveModelName:
 
     def test_azure_prefix(self):
         assert _resolve_model_name("azure/gpt-4-turbo") == "gpt-4-turbo"
+
+    def test_azure_realtime_url_uses_deployment_name(self):
+        assert azure_realtime_websocket_url(
+            "https://uit.openai.azure.com/",
+            "gpt-realtime",
+        ) == "wss://uit.openai.azure.com/openai/v1/realtime?model=gpt-realtime"
+
+    def test_azure_realtime_url_override(self):
+        assert azure_realtime_websocket_url(
+            "https://uit.openai.azure.com/",
+            "gpt-realtime",
+            "wss://uit.openai.azure.com/openai/realtime?api-version=2025-04-01-preview&deployment=gpt-realtime",
+        ).startswith("wss://uit.openai.azure.com/openai/realtime?")
 
     def test_gcp_prefix(self):
         assert _resolve_model_name("gcp/gemini-pro") == "gemini-pro"
@@ -113,6 +127,36 @@ class TestBuildLLM:
             MockLLM.return_value = MagicMock()
             llm = await _build_llm("openai/gpt-4o-mini")
             MockLLM.assert_called_once()
+
+    @patch("app.pipeline.runner._azure_openai_client", new_callable=AsyncMock)
+    async def test_build_azure_llm_uses_azure_client(self, mock_azure_client):
+        from app.pipeline.runner import _build_llm
+
+        azure_client = MagicMock(name="azure_client")
+        mock_azure_client.return_value = azure_client
+
+        llm = await _build_llm("azure/chat-deployment")
+
+        assert llm._client is azure_client
+        assert llm._settings.model == "chat-deployment"
+
+    @patch("app.pipeline.runner._azure_openai_client", new_callable=AsyncMock)
+    async def test_build_azure_audio_uses_deployment_and_client(self, mock_azure_client):
+        from app.pipeline.runner import _build_stt, _build_tts
+        from pipecat.transcriptions.language import Language
+
+        azure_client = MagicMock(name="azure_client")
+        mock_azure_client.return_value = azure_client
+
+        with patch("app.pipeline.runner._get_key", new_callable=AsyncMock) as get_key:
+            get_key.return_value = "azure-key"
+            stt = await _build_stt("azure_openai", Language.EN, "stt-deployment")
+            tts = await _build_tts("azure_openai", "alloy", "en-US", "tts-deployment")
+
+        assert stt._client is azure_client
+        assert stt._settings.model == "stt-deployment"
+        assert tts._client is azure_client
+        assert tts._settings.model == "tts-deployment"
 
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
     async def test_build_gpt_5_6_uses_responses_api(self, mock_get_key):

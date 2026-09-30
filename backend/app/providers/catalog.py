@@ -86,9 +86,7 @@ LLM_MODULAR_MODELS: tuple[ModelOption, ...] = (
     ModelOption("scaleway/gemma-3-27b-it", "Gemma 3 27B IT", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     ModelOption("scaleway/devstral-2-123b-instruct-2512", "Devstral 2 123B Instruct", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     ModelOption("scaleway/pixtral-12b-2409", "Pixtral 12B (vision)", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
-    # Azure (requires full triple)
-    ModelOption("azure/gpt-4o", "Azure GPT-4o", "Azure", "azure", "chat_completions", ("modular", "text")),
-    ModelOption("azure/gpt-4o-mini", "Azure GPT-4o Mini", "Azure", "azure", "chat_completions", ("modular", "text")),
+    # Azure chat deployments are added from AZURE_OPENAI_CHAT_DEPLOYMENTS.
     # GCP Vertex
     ModelOption("gcp/gemini-2.5-flash", "GCP Gemini 2.5 Flash", "GCP (Vertex AI)", "gcp", "chat_completions", ("modular", "text")),
     ModelOption("gcp/gemini-2.5-pro", "GCP Gemini 2.5 Pro", "GCP (Vertex AI)", "gcp", "chat_completions", ("modular", "text")),
@@ -129,6 +127,7 @@ STT_PROVIDERS: tuple[ProviderOption, ...] = (
         "nova-2-meeting", "nova-2-phonecall", "enhanced",
     )),
     ProviderOption("scaleway", "Scaleway Whisper", "scaleway", ("whisper-large-v3",)),
+    ProviderOption("azure_openai", "Azure OpenAI", "azure_openai_stt", None),
     ProviderOption(
         "self_hosted",
         "Custom / Self-Hosted",
@@ -141,6 +140,7 @@ TTS_PROVIDERS: tuple[ProviderOption, ...] = (
     ProviderOption("openai", "OpenAI TTS", "openai", ("gpt-4o-mini-tts", "tts-1", "tts-1-hd")),
     ProviderOption("elevenlabs", "ElevenLabs", "elevenlabs", None),
     ProviderOption("cartesia", "Cartesia (Sonic)", "cartesia", None),
+    ProviderOption("azure_openai", "Azure OpenAI", "azure_openai_tts", None),
     ProviderOption(
         "self_hosted",
         "Custom / Self-Hosted",
@@ -250,6 +250,11 @@ _LLM_BY_VALUE: dict[str, ModelOption] = {
 }
 
 
+def deployment_names(raw: str) -> list[str]:
+    """Split a comma-separated Azure deployment list."""
+    return [part.strip() for part in (raw or "").split(",") if part.strip()]
+
+
 def _llm_prefix(model: str) -> str:
     if model.startswith("custom/"):
         return "custom"
@@ -331,11 +336,37 @@ async def _filter_models(models: tuple[ModelOption, ...], pipeline: PipelineKind
     return out
 
 
+async def _azure_setting(field: str) -> str:
+    return await get_effective_provider_setting(field)
+
+
 async def get_configured_catalog() -> dict:
     """Return only providers/models whose credentials are fully configured."""
     modular = await _filter_models(LLM_MODULAR_MODELS, "modular")
     text = await _filter_models(LLM_MODULAR_MODELS, "text")
     v2v = await _filter_models(LLM_V2V_MODELS, "voice_to_voice")
+
+    if await is_provider_configured_async("azure"):
+        for name in deployment_names(await _azure_setting("azure_openai_chat_deployments")):
+            option = {
+                "value": f"azure/{name}",
+                "label": name,
+                "group": "Azure OpenAI",
+                "provider": "azure",
+                "api_kind": "chat_completions",
+            }
+            modular.append(option)
+            text.append(option)
+
+    if await is_provider_configured_async("azure_openai_realtime"):
+        name = await _azure_setting("azure_openai_realtime_deployment")
+        v2v.append({
+            "value": f"azure/{name}",
+            "label": name,
+            "group": "Azure OpenAI",
+            "provider": "azure",
+            "api_kind": "realtime",
+        })
 
     stt_providers = []
     for p in STT_PROVIDERS:
@@ -350,6 +381,9 @@ async def get_configured_catalog() -> dict:
                     "value": model,
                     "label": model,
                 }]
+            elif p.value == "azure_openai":
+                model = await _azure_setting("azure_openai_stt_deployment")
+                models = [{"value": model, "label": model}]
             stt_providers.append({
                 "value": p.value,
                 "label": p.label,
@@ -370,6 +404,9 @@ async def get_configured_catalog() -> dict:
                     "value": model,
                     "label": model,
                 }]
+            elif p.value == "azure_openai":
+                model = await _azure_setting("azure_openai_tts_deployment")
+                models = [{"value": model, "label": model}]
             tts_providers.append({
                 "value": p.value,
                 "label": p.label,
@@ -385,8 +422,15 @@ async def get_configured_catalog() -> dict:
         "cartesia": [{"value": v.value, "label": v.label} for v in CARTESIA_VOICES],
     }
 
-    if not await is_provider_configured_async("openai"):
+    if not (
+        await is_provider_configured_async("openai")
+        or await is_provider_configured_async("azure_openai_realtime")
+    ):
         voices["openai_realtime"] = []
+    if not (
+        await is_provider_configured_async("openai")
+        or await is_provider_configured_async("azure_openai_tts")
+    ):
         voices["openai_tts"] = []
     if not await is_provider_configured_async("google"):
         voices["gemini_live"] = []
@@ -403,5 +447,8 @@ async def get_configured_catalog() -> dict:
         "stt_providers": stt_providers,
         "tts_providers": tts_providers,
         "voices": voices,
-        "supports_custom_llm": await is_provider_configured_async("custom"),
+        "supports_custom_llm": (
+            await is_provider_configured_async("custom")
+            or await is_provider_configured_async("azure")
+        ),
     }

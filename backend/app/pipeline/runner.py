@@ -18,6 +18,7 @@ Pipecat 1.x notes:
 
 import uuid
 from typing import Optional
+from urllib.parse import quote
 
 from loguru import logger
 
@@ -115,6 +116,46 @@ async def _setup_audio_recording(
     )
     logger.info(f"Audio recording enabled for session {session_id} at {prefix}")
     return manager, UserAudioTap(manager), AgentAudioTap(manager)
+
+
+def azure_realtime_websocket_url(endpoint: str, deployment: str, override: str = "") -> str:
+    """Websocket URL for an Azure OpenAI Realtime deployment.
+
+    The override is the full URL from the Azure portal, when the generated
+    GA path is not the one that resource uses.
+    """
+    if override.strip():
+        return override.strip()
+    base = endpoint.strip().rstrip("/")
+    if base.startswith("https://"):
+        base = "wss://" + base[len("https://"):]
+    elif base.startswith("http://"):
+        base = "ws://" + base[len("http://"):]
+    elif not base.startswith("ws"):
+        base = "wss://" + base
+    return f"{base}/openai/v1/realtime?model={quote(deployment, safe='')}"
+
+
+async def _azure_openai_client():
+    """Azure OpenAI client using the dashboard value when one is set."""
+    from openai import AsyncAzureOpenAI
+
+    api_key = await _get_key("azure_openai_api_key")
+    endpoint = await _get_key("azure_openai_endpoint") or settings.azure_openai_endpoint
+    api_version = (
+        await _get_key("azure_openai_api_version")
+        or settings.azure_openai_api_version
+        or "2024-08-01-preview"
+    )
+    if not api_key or not endpoint:
+        raise ValueError(
+            "AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set."
+        )
+    return AsyncAzureOpenAI(
+        api_key=api_key,
+        azure_endpoint=endpoint,
+        api_version=api_version,
+    )
 
 
 async def _get_key(field: str) -> str:
@@ -614,21 +655,16 @@ async def _build_llm(llm_model: str):
 
     if llm_model.startswith("azure/"):
         model_name = llm_model[len("azure/"):]
-        api_key = await _get_key("azure_openai_api_key")
-        if not api_key:
-            raise ValueError(
-                "AZURE_OPENAI_API_KEY is not set. Add it to your .env file or dashboard."
-            )
-        from openai import AsyncAzureOpenAI
-        client = AsyncAzureOpenAI(
-            api_key=api_key,
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_version=settings.azure_openai_api_version,
-        )
-        return OpenAILLMService(
-            client=client,
+        # Pipecat 1.4 does not accept a client= constructor argument. Build
+        # the normal service, then replace the client it created with the
+        # Azure client. Without this, it silently creates an AsyncOpenAI
+        # client and either needs OPENAI_API_KEY or calls the wrong endpoint.
+        service = OpenAILLMService(
+            api_key="azure-client",
             settings=OpenAILLMSettings(model=model_name),
         )
+        service._client = await _azure_openai_client()
+        return service
 
     if llm_model.startswith("gcp/"):
         model_name = llm_model[len("gcp/"):]
@@ -929,6 +965,23 @@ async def _build_v2v_pipeline(
     study_id: Optional[uuid.UUID] = None,
 ) -> PipelineTask:
     """Dispatch to the correct V2V backend based on the model prefix."""
+    if llm_model.startswith("azure/"):
+        return await _build_openai_realtime_pipeline(
+            transport=transport,
+            user_tap=user_tap,
+            agent_tap=agent_tap,
+            user_capture=user_capture,
+            transcript_logger=transcript_logger,
+            llm_model=llm_model,
+            system_prompt=system_prompt,
+            welcome_message=welcome_message,
+            language=language,
+            max_duration_seconds=max_duration_seconds,
+            voice=voice or "alloy",
+            study_id=study_id,
+            silence_timeout_seconds=silence_timeout_seconds,
+            silence_prompt=silence_prompt,
+        )
     if llm_model.startswith("google/"):
         return await _build_gemini_live_pipeline(
             transport=transport,
@@ -1021,12 +1074,7 @@ async def _build_openai_realtime_pipeline(
     # SessionProperties doesn't expose the field and we'd need a brittle
     # subclass to inject it. The model still works without it (uses OpenAI's
     # default). Revisit once pipecat ships official support.
-    api_key = await _get_key("openai_api_key")
-    realtime_base_url = await _openai_realtime_base_url()
-    realtime_llm = OpenAIRealtimeLLMService(
-        api_key=api_key,
-        base_url=realtime_base_url,
-        settings=OpenAIRealtimeLLMSettings(
+    realtime_settings = OpenAIRealtimeLLMSettings(
             model=model_name,
             system_instruction=effective_system_prompt,
             session_properties=SessionProperties(
@@ -1041,8 +1089,27 @@ async def _build_openai_realtime_pipeline(
                     output=AudioOutput(voice=voice),
                 ),
             ),
-        ),
-    )
+        )
+    if llm_model.startswith("azure/"):
+        from pipecat.services.azure.realtime.llm import AzureRealtimeLLMService
+
+        deployment = llm_model.split("/", 1)[1]
+        realtime_llm = AzureRealtimeLLMService(
+            api_key=await _get_key("azure_openai_api_key"),
+            base_url=azure_realtime_websocket_url(
+                await _get_key("azure_openai_endpoint"),
+                deployment,
+                await _get_key("azure_openai_realtime_url"),
+            ),
+            settings=realtime_settings,
+        )
+    else:
+        api_key = await _get_key("openai_api_key")
+        realtime_llm = OpenAIRealtimeLLMService(
+            api_key=api_key,
+            base_url=await _openai_realtime_base_url(),
+            settings=realtime_settings,
+        )
 
     # ── RAG tool registration (only if study has knowledge docs) ─
     if study_id and await _study_has_knowledge(study_id):
@@ -1398,6 +1465,23 @@ async def _build_stt(provider: str, language: str, model: Optional[str] = None):
             settings=OpenAISTTSettings(model=model or "whisper-large-v3"),
         )
 
+    if provider == "azure_openai":
+        from pipecat.services.openai.stt import OpenAISTTService, OpenAISTTSettings
+
+        deployment = model or await _get_key("azure_openai_stt_deployment")
+        if not deployment:
+            raise ValueError(
+                "AZURE_OPENAI_STT_DEPLOYMENT is not set. Use the Whisper "
+                "deployment name from the Azure portal."
+            )
+        service = OpenAISTTService(
+            api_key=await _get_key("azure_openai_api_key"),
+            language=language,
+            settings=OpenAISTTSettings(model=deployment),
+        )
+        service._client = await _azure_openai_client()
+        return service
+
     if provider == "azure":
         from pipecat.services.azure.stt import AzureSTTService
         return AzureSTTService()
@@ -1473,6 +1557,25 @@ async def _build_tts(
             api_key=api_key,
             voice_id=voice or "a0e99841-438c-4a64-b679-ae501e7d6091",
         )
+
+    if provider == "azure_openai":
+        from pipecat.services.openai.tts import OpenAITTSService, OpenAITTSSettings
+
+        deployment = model or await _get_key("azure_openai_tts_deployment")
+        if not deployment:
+            raise ValueError(
+                "AZURE_OPENAI_TTS_DEPLOYMENT is not set. Use the TTS "
+                "deployment name from the Azure portal."
+            )
+        service = OpenAITTSService(
+            api_key=await _get_key("azure_openai_api_key"),
+            settings=OpenAITTSSettings(
+                model=deployment,
+                voice=voice or "alloy",
+            ),
+        )
+        service._client = await _azure_openai_client()
+        return service
 
     if provider == "azure":
         from pipecat.services.azure.tts import AzureTTSService

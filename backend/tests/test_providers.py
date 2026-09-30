@@ -11,6 +11,7 @@ from app.providers.catalog import (
     LLM_MODULAR_MODELS,
     LLM_V2V_MODELS,
     get_catalog_entry,
+    get_configured_catalog,
     list_all_llm_models,
     resolve_llm_api_kind,
 )
@@ -88,6 +89,58 @@ class TestProviderValidation:
         )
         assert any("STT model" in e for e in errors)
 
+    async def test_azure_deployment_name_is_accepted(self, monkeypatch):
+        monkeypatch.setattr(settings, "azure_openai_api_key", "key")
+        monkeypatch.setattr(settings, "azure_openai_endpoint", "https://example.openai.azure.com/")
+        monkeypatch.setattr(settings, "azure_openai_api_version", "2024-08-01-preview")
+
+        errors = await validate_agent_pipeline_config(
+            modality="text",
+            pipeline_type="modular",
+            llm_model="azure/gpt-4.1-uit",
+        )
+        assert errors == []
+
+    async def test_azure_realtime_deployment_must_match(self, monkeypatch):
+        monkeypatch.setattr(settings, "azure_openai_api_key", "key")
+        monkeypatch.setattr(settings, "azure_openai_endpoint", "https://example.openai.azure.com/")
+        monkeypatch.setattr(settings, "azure_openai_realtime_deployment", "gpt-realtime")
+
+        ok = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="voice_to_voice",
+            llm_model="azure/gpt-realtime",
+            tts_voice="alloy",
+        )
+        mismatch = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="voice_to_voice",
+            llm_model="azure/other",
+            tts_voice="alloy",
+        )
+        assert ok == []
+        assert any("gpt-realtime" in error for error in mismatch)
+
+    async def test_azure_audio_deployments_must_match(self, monkeypatch):
+        monkeypatch.setattr(settings, "azure_openai_api_key", "key")
+        monkeypatch.setattr(settings, "azure_openai_endpoint", "https://example.openai.azure.com/")
+        monkeypatch.setattr(settings, "azure_openai_stt_deployment", "whisper-prod")
+        monkeypatch.setattr(settings, "azure_openai_tts_deployment", "tts-prod")
+
+        errors = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="modular",
+            llm_model="azure/chat-prod",
+            stt_provider="azure_openai",
+            stt_model="wrong-whisper",
+            tts_provider="azure_openai",
+            tts_model="wrong-tts",
+            tts_voice="alloy",
+        )
+
+        assert any("STT deployment" in error for error in errors)
+        assert any("TTS deployment" in error for error in errors)
+
     async def test_self_hosted_models_accept_free_form_ids(self, monkeypatch):
         monkeypatch.setattr(settings, "self_hosted_stt_url", "http://stt.local/v1")
         monkeypatch.setattr(settings, "self_hosted_tts_url", "http://tts.local/v1")
@@ -141,6 +194,27 @@ class TestCatalogAPI:
         assert any(p["value"] == "self_hosted" for p in data["stt_providers"])
         assert any(p["value"] == "self_hosted" for p in data["tts_providers"])
 
+    async def test_catalog_lists_configured_azure_deployments(self, monkeypatch):
+        monkeypatch.setattr(settings, "azure_openai_api_key", "key")
+        monkeypatch.setattr(settings, "azure_openai_endpoint", "https://example.openai.azure.com/")
+        monkeypatch.setattr(settings, "azure_openai_api_version", "2024-08-01-preview")
+        monkeypatch.setattr(settings, "azure_openai_chat_deployments", "gpt-4.1, gpt-4.1-mini")
+        monkeypatch.setattr(settings, "azure_openai_stt_deployment", "whisper")
+        monkeypatch.setattr(settings, "azure_openai_tts_deployment", "tts")
+        monkeypatch.setattr(settings, "azure_openai_realtime_deployment", "gpt-realtime")
+
+        data = await get_configured_catalog()
+
+        assert any(m["value"] == "azure/gpt-4.1" for m in data["llm_text"])
+        assert any(m["value"] == "azure/gpt-realtime" for m in data["llm_v2v"])
+        stt = next(p for p in data["stt_providers"] if p["value"] == "azure_openai")
+        tts = next(p for p in data["tts_providers"] if p["value"] == "azure_openai")
+        assert stt["models"][0]["value"] == "whisper"
+        assert tts["models"][0]["value"] == "tts"
+        assert data["supports_custom_llm"] is True
+        assert data["voices"]["openai_tts"]
+        assert data["voices"]["openai_realtime"]
+
 
 class TestSmokeContract:
     async def test_dry_run_covers_catalog(self):
@@ -160,3 +234,22 @@ class TestSmokeContract:
 
         assert ("stt", "self_hosted") in probes
         assert ("tts", "self_hosted") in probes
+
+    async def test_dry_run_covers_configured_azure(self, monkeypatch):
+        monkeypatch.setattr(settings, "azure_openai_api_key", "key")
+        monkeypatch.setattr(settings, "azure_openai_endpoint", "https://example.openai.azure.com/")
+        monkeypatch.setattr(settings, "azure_openai_chat_deployments", "chat-prod")
+        monkeypatch.setattr(settings, "azure_openai_stt_deployment", "whisper-prod")
+        monkeypatch.setattr(settings, "azure_openai_tts_deployment", "tts-prod")
+        monkeypatch.setattr(settings, "azure_openai_realtime_deployment", "realtime-prod")
+
+        result = await run_configured_smoke_tests(live=False)
+        probes = {
+            (probe["category"], probe["model"])
+            for probe in result["results"]
+        }
+
+        assert ("llm", "azure/chat-prod") in probes
+        assert ("v2v", "azure/realtime-prod") in probes
+        assert ("stt", "whisper-prod") in probes
+        assert ("tts", "tts-prod") in probes

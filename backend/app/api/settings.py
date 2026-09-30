@@ -58,6 +58,11 @@ _API_KEY_FIELDS = {
     "azure_openai_api_key": "AZURE_OPENAI_API_KEY",
     "azure_openai_endpoint": "AZURE_OPENAI_ENDPOINT",
     "azure_openai_api_version": "AZURE_OPENAI_API_VERSION",
+    "azure_openai_chat_deployments": "AZURE_OPENAI_CHAT_DEPLOYMENTS",
+    "azure_openai_stt_deployment": "AZURE_OPENAI_STT_DEPLOYMENT",
+    "azure_openai_tts_deployment": "AZURE_OPENAI_TTS_DEPLOYMENT",
+    "azure_openai_realtime_deployment": "AZURE_OPENAI_REALTIME_DEPLOYMENT",
+    "azure_openai_realtime_url": "AZURE_OPENAI_REALTIME_URL",
     "gcp_project_id": "GCP_PROJECT_ID",
     "gcp_location": "GCP_LOCATION",
     "gcp_api_key": "GCP_API_KEY",
@@ -110,6 +115,11 @@ class ApiKeyUpdate(BaseModel):
     azure_openai_api_key: Optional[str] = None
     azure_openai_endpoint: Optional[str] = None
     azure_openai_api_version: Optional[str] = None
+    azure_openai_chat_deployments: Optional[str] = None
+    azure_openai_stt_deployment: Optional[str] = None
+    azure_openai_tts_deployment: Optional[str] = None
+    azure_openai_realtime_deployment: Optional[str] = None
+    azure_openai_realtime_url: Optional[str] = None
     gcp_project_id: Optional[str] = None
     gcp_location: Optional[str] = None
     gcp_api_key: Optional[str] = None
