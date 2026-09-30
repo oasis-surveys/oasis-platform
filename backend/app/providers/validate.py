@@ -4,7 +4,10 @@ Validate agent pipeline configuration against the provider catalog.
 
 from __future__ import annotations
 
-from app.providers.availability import is_provider_configured_async
+from app.providers.availability import (
+    get_effective_provider_setting,
+    is_provider_configured_async,
+)
 from app.providers.catalog import (
     CARTESIA_VOICES,
     ELEVENLABS_VOICES,
@@ -55,7 +58,7 @@ async def validate_agent_pipeline_config(
         elif not entry and prefix == "custom":
             if not await is_provider_configured_async("custom"):
                 errors.append("Custom LLM requires OPENAI_COMPATIBLE_LLM_URL to be configured.")
-        elif not entry and prefix not in ("openai", "anthropic", "google", "scaleway"):
+        elif not entry and prefix not in ("openai", "anthropic", "google", "scaleway", "azure"):
             errors.append(f"Model '{llm_model}' is not in the supported catalog.")
         elif not entry and not await is_provider_configured_async(prefix):
             errors.append(f"Provider '{prefix}' is not configured.")
@@ -63,7 +66,22 @@ async def validate_agent_pipeline_config(
             errors.append(f"Provider '{entry.provider}' is not configured for model '{llm_model}'.")
 
     elif pipe == "voice_to_voice":
-        if not entry or "voice_to_voice" not in entry.pipelines:
+        if llm_model.startswith("azure/"):
+            deployment = llm_model.split("/", 1)[1]
+            if not await is_provider_configured_async("azure_openai_realtime"):
+                errors.append(
+                    "Azure Realtime requires AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, "
+                    "and AZURE_OPENAI_REALTIME_DEPLOYMENT."
+                )
+            else:
+                configured = await get_effective_provider_setting("azure_openai_realtime_deployment")
+                if configured and deployment != configured:
+                    errors.append(
+                        f"Azure Realtime deployment is '{configured}', not '{deployment}'."
+                    )
+            if tts_voice and tts_voice not in {v.value for v in OPENAI_REALTIME_VOICES}:
+                errors.append(f"Voice '{tts_voice}' is not valid for {llm_model}.")
+        elif not entry or "voice_to_voice" not in entry.pipelines:
             errors.append(
                 f"Model '{llm_model}' is not a voice-to-voice model. "
                 "Choose an OpenAI Realtime or Gemini Live model."
@@ -86,7 +104,7 @@ async def validate_agent_pipeline_config(
         elif not entry and prefix == "custom":
             if not await is_provider_configured_async("custom"):
                 errors.append("Custom LLM requires OPENAI_COMPATIBLE_LLM_URL to be configured.")
-        elif not entry and prefix not in ("openai", "anthropic", "google", "scaleway"):
+        elif not entry and prefix not in ("openai", "anthropic", "google", "scaleway", "azure"):
             errors.append(f"Model '{llm_model}' is not in the supported catalog.")
         elif not entry and not await is_provider_configured_async(prefix):
             errors.append(f"Provider '{prefix}' is not configured.")
@@ -101,6 +119,14 @@ async def validate_agent_pipeline_config(
                 next(p.provider for p in STT_PROVIDERS if p.value == stt_provider)
             ):
                 errors.append(f"STT provider '{stt_provider}' is not configured.")
+            elif stt_provider == "azure_openai" and stt_model:
+                configured = await get_effective_provider_setting(
+                    "azure_openai_stt_deployment"
+                )
+                if configured and stt_model != configured:
+                    errors.append(
+                        f"Azure OpenAI STT deployment is '{configured}', not '{stt_model}'."
+                    )
             elif stt_model:
                 allowed = {m["value"] for m in list_stt_models(stt_provider)}
                 if allowed and stt_model not in allowed:
@@ -114,12 +140,20 @@ async def validate_agent_pipeline_config(
                 next(p.provider for p in TTS_PROVIDERS if p.value == tts_provider)
             ):
                 errors.append(f"TTS provider '{tts_provider}' is not configured.")
+            elif tts_provider == "azure_openai" and tts_model:
+                configured = await get_effective_provider_setting(
+                    "azure_openai_tts_deployment"
+                )
+                if configured and tts_model != configured:
+                    errors.append(
+                        f"Azure OpenAI TTS deployment is '{configured}', not '{tts_model}'."
+                    )
             elif tts_model:
                 allowed = {m["value"] for m in list_tts_models(tts_provider)}
                 if allowed and tts_model not in allowed:
                     errors.append(f"TTS model '{tts_model}' is not valid for {tts_provider}.")
             if tts_voice:
-                if tts_provider == "openai":
+                if tts_provider in ("openai", "azure_openai"):
                     allowed = {v.value for v in OPENAI_TTS_VOICES}
                 elif tts_provider == "elevenlabs":
                     allowed = {v.value for v in ELEVENLABS_VOICES}

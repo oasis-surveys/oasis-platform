@@ -102,6 +102,32 @@ class TestCallLlm:
         assert "api_base" not in kwargs
 
     @pytest.mark.asyncio
+    @patch("litellm.acompletion", new_callable=AsyncMock)
+    @patch("app.api.text_chat._get_key", new_callable=AsyncMock)
+    async def test_azure_uses_endpoint_and_api_version(
+        self, mock_get_key, mock_acompletion
+    ):
+        mock_get_key.side_effect = lambda field: {
+            "azure_openai_api_key": "azure-test",
+            "azure_openai_endpoint": "https://resource.openai.azure.com/",
+            "azure_openai_api_version": "2025-04-01-preview",
+        }.get(field, "")
+        mock_acompletion.return_value = _mock_litellm_response()
+
+        from app.api.text_chat import _call_llm
+
+        await _call_llm(
+            [{"role": "user", "content": "Hi"}],
+            model="azure/chat-deployment",
+        )
+
+        kwargs = mock_acompletion.call_args.kwargs
+        assert kwargs["model"] == "azure/chat-deployment"
+        assert kwargs["api_key"] == "azure-test"
+        assert kwargs["api_base"] == "https://resource.openai.azure.com/"
+        assert kwargs["api_version"] == "2025-04-01-preview"
+
+    @pytest.mark.asyncio
     @patch("app.api.text_chat._call_openai_responses", new_callable=AsyncMock)
     @patch("app.api.text_chat._openai_api_base", new_callable=AsyncMock)
     @patch("app.api.text_chat._get_key", new_callable=AsyncMock)

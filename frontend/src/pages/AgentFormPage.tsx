@@ -708,7 +708,7 @@ export default function AgentFormPage() {
   );
 
   const ttsVoiceOptions = withUnavailableSimple(
-    form.tts_provider === "openai"
+    form.tts_provider === "openai" || form.tts_provider === "azure_openai"
       ? catalog?.voices.openai_tts ?? []
       : form.tts_provider === "cartesia"
         ? catalog?.voices.cartesia ?? []
@@ -839,6 +839,8 @@ export default function AgentFormPage() {
         }
       } else if (form.stt_provider === "self_hosted" && !isKeySet("self_hosted_stt_url")) {
         missingKeys.push({ label: "Self-Hosted STT URL", field: "self_hosted_stt_url", envVar: "SELF_HOSTED_STT_URL" });
+      } else if (form.stt_provider === "azure_openai" && !isKeySet("azure_openai_stt_deployment")) {
+        missingKeys.push({ label: "Azure OpenAI STT deployment", field: "azure_openai_stt_deployment", envVar: "AZURE_OPENAI_STT_DEPLOYMENT" });
       }
     }
 
@@ -854,6 +856,8 @@ export default function AgentFormPage() {
         missingKeys.push({ label: "Cartesia API Key", field: "cartesia_api_key", envVar: "CARTESIA_API_KEY" });
       } else if (form.tts_provider === "self_hosted" && !isKeySet("self_hosted_tts_url")) {
         missingKeys.push({ label: "Self-Hosted TTS URL", field: "self_hosted_tts_url", envVar: "SELF_HOSTED_TTS_URL" });
+      } else if (form.tts_provider === "azure_openai" && !isKeySet("azure_openai_tts_deployment")) {
+        missingKeys.push({ label: "Azure OpenAI TTS deployment", field: "azure_openai_tts_deployment", envVar: "AZURE_OPENAI_TTS_DEPLOYMENT" });
       }
     }
   }
@@ -2075,7 +2079,7 @@ export default function AgentFormPage() {
             )}
             {isAzureLLM && (
               <InfoBanner color="blue">
-                <strong>Azure OpenAI:</strong> Requires <code>AZURE_OPENAI_API_KEY</code>, <code>AZURE_OPENAI_ENDPOINT</code>, and <code>AZURE_OPENAI_API_VERSION</code> in your <code>.env</code> file.
+                <strong>Azure OpenAI:</strong> Set the resource endpoint and key under Settings, then list chat deployment names in <code>AZURE_OPENAI_CHAT_DEPLOYMENTS</code>. The value after <code>azure/</code> is that deployment name.
               </InfoBanner>
             )}
             {isScalewayLLM && (
@@ -2202,7 +2206,7 @@ export default function AgentFormPage() {
                           (option) => option.value === p,
                         );
                         const voices =
-                          p === "openai"
+                          p === "openai" || p === "azure_openai"
                             ? catalog?.voices.openai_tts
                             : p === "elevenlabs"
                               ? catalog?.voices.elevenlabs
@@ -2249,6 +2253,16 @@ export default function AgentFormPage() {
                           <option key={m.value} value={m.value}>{m.label}</option>
                         ))}
                       </select>
+                    </div>
+                  )}
+                  {form.tts_provider === "azure_openai" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        TTS Deployment
+                      </label>
+                      <div className="text-xs text-gray-500 italic px-3 py-2.5 rounded-lg bg-gray-50 border border-gray-200">
+                        Configured under Settings with <code>AZURE_OPENAI_TTS_DEPLOYMENT</code>.
+                      </div>
                     </div>
                   )}
                   {form.tts_provider === "self_hosted" && (
@@ -2341,6 +2355,11 @@ export default function AgentFormPage() {
                 {(form.stt_provider === "azure" || form.tts_provider === "azure") && (
                   <InfoBanner color="blue">
                     <strong>Azure Speech:</strong> Set <code>AZURE_SPEECH_KEY</code> and <code>AZURE_SPEECH_REGION</code> in your <code>.env</code> file. The voice / model are read from those environment variables, not from per-agent config.
+                  </InfoBanner>
+                )}
+                {(form.stt_provider === "azure_openai" || form.tts_provider === "azure_openai") && (
+                  <InfoBanner color="blue">
+                    <strong>Azure OpenAI audio:</strong> Set the shared Azure endpoint and key, plus the STT/TTS deployment names, under Settings or in <code>.env</code>. These deployment names are selected automatically for the agent.
                   </InfoBanner>
                 )}
 

@@ -85,6 +85,31 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
     description: "API version string used by the Azure OpenAI client (e.g. 2024-08-01-preview).",
     category: "Custom / Self-Hosted",
   },
+  azure_openai_chat_deployments: {
+    label: "Azure OpenAI chat deployments",
+    description: "Comma-separated deployment names from the Azure portal. These appear as text and modular-voice models. You can also type azure/<name> on the agent.",
+    category: "Custom / Self-Hosted",
+  },
+  azure_openai_stt_deployment: {
+    label: "Azure OpenAI speech-to-text deployment",
+    description: "Whisper (or other transcription) deployment on the same Azure OpenAI resource. Leave empty to hide Azure speech-to-text.",
+    category: "Custom / Self-Hosted",
+  },
+  azure_openai_tts_deployment: {
+    label: "Azure OpenAI text-to-speech deployment",
+    description: "TTS deployment on the same Azure OpenAI resource. Leave empty to hide Azure text-to-speech.",
+    category: "Custom / Self-Hosted",
+  },
+  azure_openai_realtime_deployment: {
+    label: "Azure OpenAI Realtime deployment",
+    description: "gpt-realtime deployment name for voice-to-voice. Leave empty if this resource has no Realtime deployment.",
+    category: "Custom / Self-Hosted",
+  },
+  azure_openai_realtime_url: {
+    label: "Azure OpenAI Realtime websocket URL",
+    description: "Optional. Paste the full wss:// URL from the portal if the generated /openai/v1/realtime URL does not match your resource.",
+    category: "Custom / Self-Hosted",
+  },
   gcp_project_id: {
     label: "GCP Project ID",
     description: "Required for GCP Vertex AI models.",

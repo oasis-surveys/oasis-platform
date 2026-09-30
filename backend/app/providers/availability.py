@@ -17,13 +17,16 @@ _PROVIDER_REQUIREMENTS: dict[str, tuple[str, ...]] = {
     "anthropic": ("anthropic_api_key",),
     "scaleway": ("scaleway_secret_key",),
     "azure": ("azure_openai_api_key", "azure_openai_endpoint", "azure_openai_api_version"),
+    "azure_openai_stt": ("azure_openai_api_key", "azure_openai_endpoint", "azure_openai_stt_deployment"),
+    "azure_openai_tts": ("azure_openai_api_key", "azure_openai_endpoint", "azure_openai_tts_deployment"),
+    "azure_openai_realtime": ("azure_openai_api_key", "azure_openai_endpoint", "azure_openai_realtime_deployment"),
     "gcp": ("gcp_project_id",),
     "custom": ("openai_compatible_llm_url",),
     "self_hosted_stt": ("self_hosted_stt_url",),
     "self_hosted_tts": ("self_hosted_tts_url",),
 }
 
-_DISABLED_PROVIDERS = frozenset({"azure", "gcp"})
+_DISABLED_PROVIDERS = frozenset({"gcp"})
 
 
 async def get_effective_provider_setting(field: str) -> str:

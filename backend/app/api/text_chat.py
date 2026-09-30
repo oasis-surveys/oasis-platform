@@ -272,8 +272,12 @@ async def _call_llm(
         kwargs["api_base"] = "https://api.scaleway.ai/v1"
     elif model.startswith("azure/"):
         kwargs["api_key"] = await _get_key("azure_openai_api_key")
-        kwargs["api_base"] = getattr(settings, "azure_openai_endpoint", "")
-        kwargs["api_version"] = getattr(settings, "azure_openai_api_version", "2024-02-01")
+        kwargs["api_base"] = await _get_key("azure_openai_endpoint") or settings.azure_openai_endpoint
+        kwargs["api_version"] = (
+            await _get_key("azure_openai_api_version")
+            or settings.azure_openai_api_version
+            or "2024-08-01-preview"
+        )
     elif model.startswith("gcp/"):
         gcp_model = model.split("/", 1)[1]
         litellm_model = f"vertex_ai/{gcp_model}"
