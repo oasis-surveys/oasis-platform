@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { withUnavailableSaved } from "./AgentFormPage";
+import { normalizeCustomModel, withUnavailableSaved } from "./AgentFormPage";
 
 describe("withUnavailableSaved", () => {
   const options = [
@@ -19,5 +19,19 @@ describe("withUnavailableSaved", () => {
 
   it("does not duplicate an available model", () => {
     expect(withUnavailableSaved(options, "openai/gpt-5.6-luna")).toEqual(options);
+  });
+});
+
+describe("normalizeCustomModel", () => {
+  it("adds the internal custom route to a proxy model ID", () => {
+    expect(normalizeCustomModel("openai/gpt-5-mini")).toBe(
+      "custom/openai/gpt-5-mini",
+    );
+  });
+
+  it("does not add the route twice", () => {
+    expect(normalizeCustomModel("custom/openai/gpt-5-mini")).toBe(
+      "custom/openai/gpt-5-mini",
+    );
   });
 });

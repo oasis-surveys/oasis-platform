@@ -59,34 +59,39 @@ class TestResolveModelName:
 
 class TestResolveElevenLabsVoice:
     def test_known_name(self):
-        voice_id = _resolve_elevenlabs_voice("rachel")
-        assert voice_id == "21m00Tcm4TlvDq8ikWAM"
+        voice_id = _resolve_elevenlabs_voice("talia")
+        assert voice_id == "OZ0L6eISlOejga3XjDFt"
 
     def test_known_name_case_insensitive(self):
-        assert _resolve_elevenlabs_voice("Rachel") == "21m00Tcm4TlvDq8ikWAM"
-        assert _resolve_elevenlabs_voice("RACHEL") == "21m00Tcm4TlvDq8ikWAM"
+        assert _resolve_elevenlabs_voice("Talia") == "OZ0L6eISlOejga3XjDFt"
+        assert _resolve_elevenlabs_voice("TALIA") == "OZ0L6eISlOejga3XjDFt"
 
     def test_raw_voice_id_passthrough(self):
-        raw_id = "21m00Tcm4TlvDq8ikWAM"
+        raw_id = "OZ0L6eISlOejga3XjDFt"
         assert _resolve_elevenlabs_voice(raw_id) == raw_id
 
     def test_unknown_name_treated_as_id(self):
         assert _resolve_elevenlabs_voice("custom-id-xyz") == "custom-id-xyz"
 
     def test_none_returns_default(self):
-        assert _resolve_elevenlabs_voice(None) == "21m00Tcm4TlvDq8ikWAM"
+        assert _resolve_elevenlabs_voice(None) == "OZ0L6eISlOejga3XjDFt"
 
     def test_empty_returns_default(self):
-        assert _resolve_elevenlabs_voice("") == "21m00Tcm4TlvDq8ikWAM"
+        assert _resolve_elevenlabs_voice("") == "OZ0L6eISlOejga3XjDFt"
 
-    def test_known_voices_coverage(self):
-        """Verify all known voices can be resolved."""
-        known = ["rachel", "domi", "bella", "antoni", "elli", "josh", "arnold",
-                 "adam", "sam", "charlie", "emily", "alice", "bill", "george",
-                 "lily", "sarah", "chris"]
-        for name in known:
-            voice_id = _resolve_elevenlabs_voice(name)
-            assert len(voice_id) > 10  # Real ElevenLabs IDs are 20+ chars
+    def test_catalog_voices_resolve(self):
+        from app.providers.catalog import ELEVENLABS_VOICES
+
+        for voice in ELEVENLABS_VOICES:
+            assert _resolve_elevenlabs_voice(voice.value) != voice.value
+
+    def test_retired_voices_use_replacements(self):
+        from app.providers.catalog import ELEVENLABS_RETIRED_VOICES
+
+        assert _resolve_elevenlabs_voice("alice") == "BFd5oBc2DDna33pSi4Gf"
+        for old, new in ELEVENLABS_RETIRED_VOICES.items():
+            assert _resolve_elevenlabs_voice(old) == _resolve_elevenlabs_voice(new)
+            assert _resolve_elevenlabs_voice(old) != old
 
 
 # ── RAG Tools Schema ──────────────────────────────────────────────
@@ -296,6 +301,27 @@ class TestBuildLLM:
             await _build_llm("custom/qwen3-32b")
             assert MockLLM.call_args.kwargs["api_key"] == "not-needed"
 
+    @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
+    async def test_build_custom_llm_preserves_proxy_model_id(self, mock_get_key):
+        """A custom OpenAI-compatible model keeps its provider prefix."""
+        async def _key(field):
+            return {
+                "openai_compatible_llm_url": "https://api-manager.example/api/openai/v1",
+                "openai_compatible_llm_api_key": "proxy-token",
+            }.get(field, "")
+
+        mock_get_key.side_effect = _key
+        from app.pipeline.runner import _build_llm
+
+        with patch("pipecat.services.openai.llm.OpenAILLMService") as MockLLM:
+            MockLLM.return_value = MagicMock()
+            await _build_llm("custom/openai/gpt-5-mini")
+
+            assert MockLLM.call_args.kwargs["base_url"] == (
+                "https://api-manager.example/api/openai/v1"
+            )
+            assert MockLLM.call_args.kwargs["settings"].model == "openai/gpt-5-mini"
+
     @patch("app.pipeline.runner._openai_use_eu", new_callable=AsyncMock)
     @patch("app.pipeline.runner._get_key", new_callable=AsyncMock)
     async def test_default_openai_llm_routes_to_eu_when_flag_on(
@@ -446,6 +472,9 @@ class TestBuildTTS:
                 MockTTS.return_value = MagicMock()
                 tts = await _build_tts("elevenlabs", "rachel", "en")
                 MockTTS.assert_called_once()
+                settings = MockTTS.call_args.kwargs["settings"]
+                assert settings.model == "eleven_flash_v2_5"
+                assert settings.voice == "OZ0L6eISlOejga3XjDFt"
         except ImportError:
             pytest.skip("elevenlabs pipecat service not installed")
 

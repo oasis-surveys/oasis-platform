@@ -42,7 +42,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 
 from app.config import settings
-from app.providers.catalog import resolve_llm_api_kind
+from app.providers.catalog import ELEVENLABS_RETIRED_VOICES, resolve_llm_api_kind
 from app.database import async_session_factory
 from app.pipeline.transcript_logger import (
     TranscriptLoggerState,
@@ -1427,7 +1427,7 @@ async def _build_stt(provider: str, language: str, model: Optional[str] = None):
 
     if provider in ("whisper", "openai"):
         api_key = await _get_key("openai_api_key")
-        if model == "gpt-realtime-whisper":
+        if model in ("gpt-realtime-whisper", "gpt-live-transcribe"):
             from pipecat.services.openai.stt import OpenAIRealtimeSTTService
 
             # Local VAD commits turns for realtime transcription.
@@ -1517,7 +1517,7 @@ async def _build_tts(
 
     The optional ``model`` argument is forwarded to the underlying pipecat
     service when the provider supports model selection (OpenAI, self-hosted).
-    ElevenLabs/Cartesia/Azure pin model-equivalent behaviour via voice IDs.
+    ElevenLabs and Cartesia use a fixed current model; Azure uses the deployment.
     """
     provider = provider.lower()
 
@@ -1530,7 +1530,10 @@ async def _build_tts(
         api_key = await _get_key("elevenlabs_api_key")
         return ElevenLabsTTSService(
             api_key=api_key,
-            settings=ElevenLabsTTSSettings(voice=resolved_voice),
+            settings=ElevenLabsTTSSettings(
+                model="eleven_flash_v2_5",
+                voice=resolved_voice,
+            ),
         )
 
     if provider == "openai":
@@ -1555,7 +1558,10 @@ async def _build_tts(
             raise ValueError("Cartesia API key is not set (CARTESIA_API_KEY)")
         return CartesiaTTSService(
             api_key=api_key,
-            voice_id=voice or "a0e99841-438c-4a64-b679-ae501e7d6091",
+            settings=CartesiaTTSService.Settings(
+                model="sonic-3.6",
+                voice=voice or "a0e99841-438c-4a64-b679-ae501e7d6091",
+            ),
         )
 
     if provider == "azure_openai":
@@ -1607,37 +1613,37 @@ async def _build_tts(
 # ── ElevenLabs voice name → ID mapping ──────────────────────────────────────
 # Common default voices — users can also paste the actual voice ID directly.
 _ELEVENLABS_VOICES = {
-    "rachel": "21m00Tcm4TlvDq8ikWAM",
-    "domi": "AZnzlk1XvdvUeBnXmlld",
-    "bella": "EXAVITQu4vr4xnSDxMaL",
-    "antoni": "ErXwobaYiN019PkySvjV",
-    "elli": "MF3mGyEYCl7XYWbV9V6O",
-    "josh": "TxGEqnHWrfWFTfGW9XjX",
-    "arnold": "VR6AewLTigWG4xSOukaG",
-    "adam": "pNInz6obpgDQGcFmaJgB",
-    "sam": "yoZ06aMxZJJ28mfd3POQ",
-    "charlie": "IKne3meq5aSn9XLyUdCD",
-    "emily": "LcfcDJNUP1GQjkzn1xUU",
-    "alice": "Xb7hH8MSUJpSbSDYk0k2",
-    "bill": "pqHfZKP75CvOlQylNhV4",
-    "george": "JBFqnCBsd6RMkjVDRZzb",
-    "lily": "pFZP5JQG7iQjIQuC4Bku",
-    "sarah": "EXAVITQu4vr4xnSDxMaL",
-    "chris": "iP95p4xoKVk53GoZ742B",
+    "talia": "OZ0L6eISlOejga3XjDFt",
+    "alicia": "BFd5oBc2DDna33pSi4Gf",
+    "jade": "g7LVvkPWALzPxOQbF6OE",
+    "elara": "WQP7cQUF5aAS6Axh5yaa",
+    "maisie": "QtY3JBOUKEB5xzrRfOKc",
+    "elowen": "dvbL7qkNGZY1IqPGZAjM",
+    "florence": "22N9cF8z0o7y23njdyaY",
+    "eddie": "l7kNoIfnJKPg7779LI2t",
+    "caleb": "AaOhDHYJ1XLZk74lXhdE",
+    "finley": "fnYMz3F5gMEDGMWcH1ex",
+    "lawrence": "ktkP7Nsj67dw2zcplQYt",
+    "wyatt": "FrS6cKLB1wg4WYgPa9GW",
+    "eldrin": "6WwXjDDEMyNmFG95zycZ",
+    "darian": "gOupLcAkjEnguROwi4oS",
+    "warren": "7QN34D2r3hCNwbOYIeK0",
+    "baxter": "jSuBIjxMKhqIfb0wCK1F",
 }
 
 
 def _resolve_elevenlabs_voice(voice: Optional[str]) -> str:
     """
     Resolve a voice name or ID to an ElevenLabs voice ID.
-    Accepts either a friendly name (e.g. 'rachel') or a raw voice ID.
-    Falls back to Rachel's voice ID if nothing is provided.
+    Accepts either a friendly name (e.g. 'talia') or a raw voice ID.
+    Falls back to Talia's voice ID if nothing is provided.
     """
     if not voice:
-        return "21m00Tcm4TlvDq8ikWAM"  # Rachel default
+        return _ELEVENLABS_VOICES["talia"]
 
     # Check if it's a known friendly name (case-insensitive)
     lower = voice.strip().lower()
+    lower = ELEVENLABS_RETIRED_VOICES.get(lower, lower)
     if lower in _ELEVENLABS_VOICES:
         return _ELEVENLABS_VOICES[lower]
 

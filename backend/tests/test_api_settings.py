@@ -61,6 +61,18 @@ class TestSettingsAPI:
         )
         assert resp.status_code == 200
 
+    async def test_self_hosted_model_rejects_url(self, client: AsyncClient):
+        resp = await client.put(
+            "/api/settings/keys",
+            json={"self_hosted_stt_model": "http://host.docker.internal:8002/v1"},
+        )
+        assert resp.status_code == 400
+        assert "SELF_HOSTED_STT_MODEL" in resp.json()["detail"]
+
+        keys = (await client.get("/api/settings/keys")).json()["keys"]
+        stt_model = next(k for k in keys if k["field"] == "self_hosted_stt_model")
+        assert stt_model["source"] != "dashboard"
+
     async def test_auth_config(self, client: AsyncClient):
         resp = await client.get("/api/settings/auth")
         assert resp.status_code == 200

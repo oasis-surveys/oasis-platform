@@ -36,9 +36,9 @@ class TestAgentsCRUD:
         assert data["llm_model"] == "openai/gpt-5.6-luna"
         assert data["stt_provider"] == "openai"
         assert data["stt_model"] == "gpt-realtime-whisper"
-        assert data["tts_provider"] == "openai"
-        assert data["tts_model"] == "gpt-4o-mini-tts"
-        assert data["tts_voice"] == "alloy"
+        assert data["tts_provider"] == "elevenlabs"
+        assert data["tts_model"] is None
+        assert data["tts_voice"] is None
         assert "widget_key" in data
 
     async def test_create_agent_full(self, client: AsyncClient, study_id: str):

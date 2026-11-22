@@ -61,9 +61,9 @@ class TestAgentSchemas:
         assert a.llm_model == "openai/gpt-5.6-luna"
         assert a.stt_provider == "openai"
         assert a.stt_model == "gpt-realtime-whisper"
-        assert a.tts_provider == "openai"
-        assert a.tts_model == "gpt-4o-mini-tts"
-        assert a.tts_voice == "alloy"
+        assert a.tts_provider == "elevenlabs"
+        assert a.tts_model is None
+        assert a.tts_voice is None
         assert a.language == "en"
         assert a.status == AgentStatus.ACTIVE
 

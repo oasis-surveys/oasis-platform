@@ -53,21 +53,21 @@ OASIS has first-class integrations for the providers below. Each one has a dedic
 
 | Provider | Env var | Model ID format | Notes |
 |---|---|---|---|
-| OpenAI | `OPENAI_API_KEY` | `openai/gpt-5.6-sol`, `openai/gpt-5.6-terra`, `openai/gpt-5.6-luna`, ... | Set `OPENAI_USE_EU=true` to route through `eu.api.openai.com`. |
-| Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-opus-4-7`, `anthropic/claude-sonnet-4-6`, `anthropic/claude-haiku-4-5` | Text only. No native voice-to-voice. |
-| Google AI | `GOOGLE_API_KEY` | `google/gemini-3.5-flash`, `google/gemini-2.5-pro`, `google/gemini-3.1-pro-preview` | Same key works for Gemini Live voice-to-voice. |
-| Scaleway | `SCALEWAY_SECRET_KEY` | `scaleway/qwen3-235b-...`, `scaleway/llama-3.3-70b-instruct`, ... | EU-hosted Generative APIs (Paris). |
+| OpenAI | `OPENAI_API_KEY` | `openai/gpt-6.2-sol`, `openai/gpt-6-luna`, `openai/gpt-5.6-luna`, ... | Set `OPENAI_USE_EU=true` to route through `eu.api.openai.com`. |
+| Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-opus-5-5`, `anthropic/claude-sonnet-5-5`, `anthropic/claude-haiku-5-5` | Text only. No native voice-to-voice. |
+| Google AI | `GOOGLE_API_KEY` | `google/gemini-3.8-flash`, `google/gemini-3.5-flash`, `google/gemini-4-hydrogen` | Same key works for Gemini Live voice-to-voice. |
+| Scaleway | `SCALEWAY_SECRET_KEY` | `scaleway/qwen3.8-27b`, `scaleway/llama-3.3-70b-instruct`, ... | EU-hosted Generative APIs (Paris). |
 | Azure OpenAI | `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_API_VERSION` | `azure/<your-deployment-name>` | Use your Azure deployment name, not the OpenAI model name. |
-| GCP Vertex AI | `GCP_API_KEY` + `GCP_PROJECT_ID` + `GCP_LOCATION` | `gcp/gemini-2.5-pro`, `gcp/gemini-2.5-flash`, ... | Vertex AI's OpenAI-compatible shim. |
+| GCP Vertex AI | `GCP_API_KEY` + `GCP_PROJECT_ID` + `GCP_LOCATION` | `gcp/gemini-3.8-flash`, `gcp/gemini-2.5-pro`, ... | Vertex AI's OpenAI-compatible shim. |
 | **Anything OpenAI-compatible (incl. OpenRouter)** | `OPENAI_COMPATIBLE_LLM_URL` + `OPENAI_COMPATIBLE_LLM_API_KEY` | `custom/<model>` | See below. |
 
 **STT (speech-to-text):** OpenAI GPT Realtime Whisper / Whisper / GPT-4o Transcribe, Deepgram (`DEEPGRAM_API_KEY`), Scaleway Whisper, Azure OpenAI Whisper, and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_STT_URL` to show the self-hosted option.
 
 **TTS (text-to-speech):** OpenAI TTS, Azure OpenAI TTS, ElevenLabs (`ELEVENLABS_API_KEY`), Cartesia (`CARTESIA_API_KEY`), and OpenAI-compatible self-hosted servers. Set `SELF_HOSTED_TTS_URL` to show the self-hosted option.
 
-**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2.1`, `gpt-realtime-2.1-mini`, `gpt-realtime-2`, `gpt-realtime-1.5`, `gpt-realtime`, `gpt-realtime-mini`), Google Gemini Live, and Azure OpenAI Realtime when the Azure deployment is configured.
+**Voice-to-voice:** OpenAI Realtime (`gpt-realtime-2.1`, `gpt-realtime-2.1-mini`, `gpt-realtime-2`, `gpt-realtime-1.5`), Google Gemini Live (`gemini-3.8-live` and older), and Azure OpenAI Realtime when the Azure deployment is configured. OpenAI shuts down `gpt-realtime` and `gpt-realtime-mini` on January 20, 2027.
 
-**Yes, OpenRouter works.** And so does Groq, Mistral La Plateforme, DeepInfra, Together AI, Fireworks, your own LiteLLM proxy, vLLM, Ollama, anything that speaks the OpenAI Chat Completions protocol. Use the `custom/` prefix:
+**Yes, OpenRouter works.** And so does Groq, Mistral La Plateforme, DeepInfra, Together AI, Fireworks, your own LiteLLM proxy, vLLM, Ollama, anything that speaks the OpenAI Chat Completions protocol. Put the proxy URL and key in the custom LLM settings:
 
 ```env
 # in .env
@@ -75,15 +75,37 @@ OPENAI_COMPATIBLE_LLM_URL=https://openrouter.ai/api/v1
 OPENAI_COMPATIBLE_LLM_API_KEY=sk-or-v1-...
 ```
 
-Then in the dashboard, pick **Custom (OpenAI-compatible)** as the LLM and enter the model with the `custom/` prefix:
+Then in the dashboard, pick **Custom (OpenAI-compatible)** as the LLM and enter the model ID exactly as the proxy expects:
 
 ```
-custom/anthropic/claude-sonnet-4.6
-custom/openai/gpt-5.5
-custom/meta-llama/llama-3.3-70b-instruct
+anthropic/claude-sonnet-4.6
+openai/gpt-5.5
+meta-llama/llama-3.3-70b-instruct
 ```
 
-(For OpenRouter, the model ID after `custom/` is whatever OpenRouter calls it, see [openrouter.ai/models](https://openrouter.ai/models). Same idea for Groq, Mistral, etc.)
+The form adds the internal `custom/` route when it saves the agent. If you
+import an agent JSON or call the API directly, use the stored form instead,
+for example `custom/openai/gpt-5.5`. This is what keeps an
+OpenAI-compatible model from being sent to `api.openai.com`.
+
+For example, if an institutional API manager sits in front of Azure and its
+working LiteLLM configuration is:
+
+```python
+model = "openai/gpt-5-mini"
+api_base = "https://your-api-manager.example/api/openai/v1"
+```
+
+put `https://your-api-manager.example/api/openai/v1` in
+`OPENAI_COMPATIBLE_LLM_URL`, put its key in
+`OPENAI_COMPATIBLE_LLM_API_KEY`, and enter `openai/gpt-5-mini` in the
+agent's Custom Model Identifier field. Do not rename the Azure entries in
+`catalog.py` to `openai/...`; that prefix means the public OpenAI provider
+unless the model is routed through the Custom option.
+
+(For OpenRouter, the model ID is whatever OpenRouter calls it, see
+[openrouter.ai/models](https://openrouter.ai/models). Same idea for Groq,
+Mistral, and an institutional API manager.)
 
 The `custom/` route only covers the **LLM** step. STT and TTS are configured separately through `SELF_HOSTED_STT_URL` and `SELF_HOSTED_TTS_URL`, which accept OpenAI-compatible audio endpoints.
 
@@ -132,22 +154,29 @@ The agent form loads its model and voice lists from `GET /api/settings/catalog`.
 
 Use **Settings → Verify configured providers** or `python scripts/verify_providers.py` to check the configured models. Results include the endpoint, model, and latency, but not credentials.
 
-For "I want to type a model ID directly" workflows, here are the currently supported families (July 2026):
+For "I want to type a model ID directly" workflows, here are the currently supported families (November 2026):
 
 **OpenAI** ([source](https://developers.openai.com/api/docs/models)):
-- Frontier text: `openai/gpt-5.6-sol`, `openai/gpt-5.6-terra`, `openai/gpt-5.6-luna`, `openai/gpt-5.5`, `openai/gpt-5.5-pro`, `openai/gpt-5.4`, `openai/gpt-5.4-pro`, `openai/gpt-5.4-mini`, `openai/gpt-5.4-nano`, `openai/gpt-5`, `openai/gpt-5-mini`, `openai/gpt-5-nano`, `openai/gpt-4.1`, `openai/gpt-4o`, `openai/gpt-4o-mini`, `openai/o3`
-- Realtime (voice-to-voice): `openai/gpt-realtime-2.1`, `openai/gpt-realtime-2.1-mini`, `openai/gpt-realtime-2`, `openai/gpt-realtime-1.5`, `openai/gpt-realtime`, `openai/gpt-realtime-mini`. Note: GPT Realtime 2.x supports a `reasoning_effort` knob that OASIS doesn't expose yet (pipecat upstream has to add it first), so it runs at the default effort.
-- STT: `gpt-realtime-whisper` (streaming Realtime transcription), `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize`
-- TTS: `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`
+- Frontier text: `openai/gpt-6.2-astra`, `openai/gpt-6.2-sol`, `openai/gpt-6.1-terra`, `openai/gpt-6-luna`, `openai/gpt-5.6-sol`, `openai/gpt-5.6-terra`, `openai/gpt-5.6-luna`, `openai/gpt-5.5`, `openai/gpt-5.5-pro`, `openai/gpt-5.4`, `openai/gpt-5.4-pro`, `openai/gpt-5.4-mini`, `openai/gpt-5.4-nano`. GPT-6 and the Pro models run through the Responses API. OpenAI shuts down GPT-5, GPT-5 Mini, GPT-5 Nano and o3 on December 11, 2026, and GPT-4.1 and GPT-4o on January 14, 2027.
+- Realtime (voice-to-voice): `openai/gpt-realtime-2.1`, `openai/gpt-realtime-2.1-mini`, `openai/gpt-realtime-2`, `openai/gpt-realtime-1.5`. `openai/gpt-realtime` and `openai/gpt-realtime-mini` still work until January 20, 2027. Realtime voices are `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse`, `marin` and `cedar`. Note: GPT Realtime 2.x supports a `reasoning_effort` knob that OASIS doesn't expose yet (pipecat upstream has to add it first), so it runs at the default effort.
+- STT: `gpt-realtime-whisper` and `gpt-live-transcribe` (streaming), `gpt-transcribe`. `whisper-1`, `gpt-4o-transcribe`, `gpt-4o-mini-transcribe` and `gpt-4o-transcribe-diarize` shut down on February 26, 2027.
+- TTS: `gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`. OpenAI shuts these down on January 6, 2027 ([deprecations](https://platform.openai.com/docs/deprecations)), so new agents default to ElevenLabs. Cartesia or a self-hosted server also work. OpenAI's replacement is a Realtime speech-to-speech model, which OASIS already supports as the voice-to-voice pipeline.
 
 **Anthropic** ([source](https://platform.claude.com/docs/en/about-claude/models/overview)):
-- Current: `anthropic/claude-opus-4-7`, `anthropic/claude-sonnet-4-6`, `anthropic/claude-haiku-4-5`
-- Legacy (still works): `anthropic/claude-opus-4-6`, `anthropic/claude-sonnet-4-5`, `anthropic/claude-opus-4-5`
+- Current: `anthropic/claude-fable-5-2`, `anthropic/claude-opus-5-5`, `anthropic/claude-sonnet-5-5`, `anthropic/claude-haiku-5-5`
+- Legacy (still works): `anthropic/claude-opus-4-8`, `anthropic/claude-opus-4-7`, `anthropic/claude-sonnet-4-6`, `anthropic/claude-haiku-4-5`. Claude Sonnet 4.5 retires on November 30, 2026.
 
 **Google Gemini** ([source](https://ai.google.dev/gemini-api/docs/models)):
-- Stable text: `google/gemini-3.5-flash`, `google/gemini-2.5-pro`, `google/gemini-3.1-flash-lite`
-- Preview text (Gemini 3 family): `google/gemini-3.1-pro-preview`, `google/gemini-3-flash-preview`
-- Voice-to-voice (Live API): `google/gemini-3.1-flash-live-preview`, `google/gemini-2.5-flash-native-audio-latest`
+- Text: `google/gemini-3.8-flash`, `google/gemini-3.5-flash`, `google/gemini-3.5-flash-lite`, `google/gemini-3.1-flash-lite`
+- Gemini 4: `google/gemini-4-hydrogen`, `google/gemini-4-neon`, `google/gemini-4-carbon`. These think for a long time by default, so replies can take 20 seconds or more. That suits text interviews better than voice. Neon and Carbon need a paid API key.
+- Gemini 2.5 Pro and 2.5 Flash are no longer available to new Google AI keys.
+- Voice-to-voice (Live API): `google/gemini-3.8-live`, `google/gemini-3.1-flash-live-preview`, `google/gemini-2.5-flash-native-audio-latest`
+
+**Scaleway** ([source](https://www.scaleway.com/en/docs/generative-apis/reference-content/supported-models/)): `scaleway/qwen3.8-27b`, `scaleway/qwen3.6-35b-a3b`, `scaleway/qwen3.5-397b-a17b`, `scaleway/deepseek-v4.1-flash-1017`, `scaleway/glm-5.3`, `scaleway/mistral-medium-3.5-128b` and more. Scaleway sends requests for retired models (Gemma 3, Devstral 2, Voxtral Small, Pixtral) to a replacement model.
+
+**ElevenLabs:** OASIS uses `eleven_flash_v2_5`. ElevenLabs retires its old Default voices (Rachel, Alice, Lily and the rest) on December 31, 2026. Agents that still use one of those names play the replacement voice ElevenLabs suggests. Pick a new voice in the agent form to choose it yourself.
+
+**Cartesia:** OASIS uses `sonic-3.6`.
 
 If a provider releases a new model after this list was written, you can usually just type its ID into the **Custom model** field of the agent form. The prefix routing (`openai/`, `anthropic/`, `google/`, etc.) passes the model name straight through to the provider's SDK.
 

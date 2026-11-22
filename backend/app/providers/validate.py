@@ -10,6 +10,7 @@ from app.providers.availability import (
 )
 from app.providers.catalog import (
     CARTESIA_VOICES,
+    ELEVENLABS_RETIRED_VOICES,
     ELEVENLABS_VOICES,
     GEMINI_LIVE_VOICES,
     OPENAI_REALTIME_VOICES,
@@ -127,6 +128,12 @@ async def validate_agent_pipeline_config(
                     errors.append(
                         f"Azure OpenAI STT deployment is '{configured}', not '{stt_model}'."
                     )
+            elif stt_provider == "self_hosted" and stt_model and "://" in stt_model:
+                errors.append(
+                    f"STT model '{stt_model}' looks like a URL. Set the server URL in "
+                    "SELF_HOSTED_STT_URL and use a model ID here "
+                    "(for example Systran/faster-whisper-small)."
+                )
             elif stt_model:
                 allowed = {m["value"] for m in list_stt_models(stt_provider)}
                 if allowed and stt_model not in allowed:
@@ -148,6 +155,11 @@ async def validate_agent_pipeline_config(
                     errors.append(
                         f"Azure OpenAI TTS deployment is '{configured}', not '{tts_model}'."
                     )
+            elif tts_provider == "self_hosted" and tts_model and "://" in tts_model:
+                errors.append(
+                    f"TTS model '{tts_model}' looks like a URL. Set the server URL in "
+                    "SELF_HOSTED_TTS_URL and use a model ID here."
+                )
             elif tts_model:
                 allowed = {m["value"] for m in list_tts_models(tts_provider)}
                 if allowed and tts_model not in allowed:
@@ -156,7 +168,7 @@ async def validate_agent_pipeline_config(
                 if tts_provider in ("openai", "azure_openai"):
                     allowed = {v.value for v in OPENAI_TTS_VOICES}
                 elif tts_provider == "elevenlabs":
-                    allowed = {v.value for v in ELEVENLABS_VOICES}
+                    allowed = {v.value for v in ELEVENLABS_VOICES} | ELEVENLABS_RETIRED_VOICES.keys()
                 elif tts_provider == "cartesia":
                     allowed = {v.value for v in CARTESIA_VOICES}
                 else:

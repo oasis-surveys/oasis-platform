@@ -52,7 +52,7 @@ const KEY_INFO: Record<string, { label: string; description: string; category: s
   },
   openai_compatible_llm_url: {
     label: "Custom LLM URL (LiteLLM / OpenAI-compatible)",
-    description: "Base URL of your LiteLLM proxy or any OpenAI-compatible LLM endpoint (vLLM, Ollama, OpenRouter, Groq). Used when an agent's model is 'custom/<model>'. Env var: OPENAI_COMPATIBLE_LLM_URL.",
+    description: "Base URL of your LiteLLM proxy or any OpenAI-compatible LLM endpoint (vLLM, Ollama, OpenRouter, Groq, or an institutional API manager). Select Custom in the agent form and enter the model ID your endpoint expects, for example openai/gpt-5.4-mini. Env var: OPENAI_COMPATIBLE_LLM_URL.",
     category: "Custom / Self-Hosted",
   },
   openai_compatible_llm_api_key: {

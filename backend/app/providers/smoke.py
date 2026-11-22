@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import struct
 import time
@@ -13,6 +14,7 @@ from loguru import logger
 
 from app.config import settings
 from app.providers.availability import get_effective_provider_setting
+from app.providers.compatible import litellm_model_id
 from app.providers.catalog import (
     DEFAULTS,
     get_catalog_entry,
@@ -110,6 +112,12 @@ def _openai_compatible_endpoint(base_url: str, path: str) -> str:
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
+async def _expect_realtime_session(ws) -> None:
+    event = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+    if event.get("type") == "error":
+        raise RuntimeError(event.get("error", {}).get("message", "Realtime error"))
+
+
 async def _probe_llm(model: str) -> SmokeProbeResult:
     entry = get_catalog_entry(model)
     provider = entry.provider if entry else model.split("/", 1)[0]
@@ -182,7 +190,7 @@ async def _probe_llm(model: str) -> SmokeProbeResult:
             base_url = await _get_key("openai_compatible_llm_url")
             endpoint = base_url or "custom"
             await litellm.acompletion(
-                model=f"openai/{custom_model}",
+                model=litellm_model_id(custom_model),
                 messages=[{"role": "user", "content": "Reply with exactly: ok"}],
                 api_base=base_url,
                 api_key=await _get_key("openai_compatible_llm_api_key") or "not-needed",
@@ -224,20 +232,19 @@ async def _probe_stt(provider: str, model: str) -> SmokeProbeResult:
     endpoint = ""
 
     try:
-        if provider == "openai" and model == "gpt-realtime-whisper":
+        if provider == "openai" and model in ("gpt-realtime-whisper", "gpt-live-transcribe"):
             import websockets
 
             api_key = await _get_key("openai_api_key")
             url = await _openai_realtime_url()
             endpoint = url
-            headers = {"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}
             async with websockets.connect(
-                f"{url}?model={model}",
-                additional_headers=headers,
+                f"{url}?intent=transcription",
+                additional_headers={"Authorization": f"Bearer {api_key}"},
                 open_timeout=15,
                 close_timeout=5,
             ) as ws:
-                await asyncio.wait_for(ws.recv(), timeout=10)
+                await _expect_realtime_session(ws)
         elif provider == "openai":
             import httpx
 
@@ -378,7 +385,7 @@ async def _probe_tts(provider: str, model: str | None, voice: str) -> SmokeProbe
                 resp = await client.post(
                     endpoint,
                     headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-                    json={"text": "ok", "model_id": "eleven_multilingual_v2"},
+                    json={"text": "ok", "model_id": "eleven_flash_v2_5"},
                 )
                 resp.raise_for_status()
         elif provider == "cartesia":
@@ -391,11 +398,11 @@ async def _probe_tts(provider: str, model: str | None, voice: str) -> SmokeProbe
                     endpoint,
                     headers={
                         "X-API-Key": api_key,
-                        "Cartesia-Version": "2024-06-10",
+                        "Cartesia-Version": "2026-03-01",
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model_id": "sonic-2",
+                        "model_id": "sonic-3.6",
                         "transcript": "ok",
                         "voice": {"mode": "id", "id": voice},
                         "output_format": {"container": "wav", "encoding": "pcm_f32le", "sample_rate": 44100},
@@ -454,7 +461,7 @@ async def _probe_v2v(model: str) -> SmokeProbeResult:
                 open_timeout=15,
                 close_timeout=5,
             ) as ws:
-                await asyncio.wait_for(ws.recv(), timeout=10)
+                await _expect_realtime_session(ws)
         elif api_kind == "realtime":
             import websockets
 
@@ -462,14 +469,13 @@ async def _probe_v2v(model: str) -> SmokeProbeResult:
             model_id = model.split("/", 1)[1]
             url = await _openai_realtime_url()
             endpoint = url
-            headers = {"Authorization": f"Bearer {api_key}", "OpenAI-Beta": "realtime=v1"}
             async with websockets.connect(
                 f"{url}?model={model_id}",
-                additional_headers=headers,
+                additional_headers={"Authorization": f"Bearer {api_key}"},
                 open_timeout=15,
                 close_timeout=5,
             ) as ws:
-                await asyncio.wait_for(ws.recv(), timeout=10)
+                await _expect_realtime_session(ws)
         elif api_kind == "gemini_live":
             import websockets
 

@@ -29,6 +29,10 @@ class TestProviderCatalog:
     def test_gpt_56_uses_responses_api(self):
         assert resolve_llm_api_kind("openai/gpt-5.6-luna") == "responses"
 
+    def test_gpt_6_uses_responses_api(self):
+        assert resolve_llm_api_kind("openai/gpt-6.2-sol") == "responses"
+        assert resolve_llm_api_kind("openai/gpt-6.3-sol") == "responses"
+
     def test_gpt_4o_uses_chat_completions(self):
         assert resolve_llm_api_kind("openai/gpt-4o-mini") == "chat_completions"
 
@@ -157,6 +161,53 @@ class TestProviderValidation:
         )
 
         assert errors == []
+
+    async def test_self_hosted_models_reject_urls(self, monkeypatch):
+        monkeypatch.setattr(settings, "self_hosted_stt_url", "http://stt.local/v1")
+        monkeypatch.setattr(settings, "self_hosted_tts_url", "http://tts.local/v1")
+
+        ok = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="modular",
+            llm_model="openai/gpt-4o-mini",
+            stt_provider="self_hosted",
+            stt_model="Systran/faster-whisper-small",
+            tts_provider="self_hosted",
+            tts_model="kokoro",
+        )
+        errors = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="modular",
+            llm_model="openai/gpt-4o-mini",
+            stt_provider="self_hosted",
+            stt_model="http://host.docker.internal:8002/v1",
+            tts_provider="self_hosted",
+            tts_model="http://host.docker.internal:8880/v1",
+        )
+
+        assert ok == []
+        assert any("SELF_HOSTED_STT_URL" in e for e in errors)
+        assert any("SELF_HOSTED_TTS_URL" in e for e in errors)
+
+    async def test_retired_voices(self, monkeypatch):
+        monkeypatch.setattr(settings, "elevenlabs_api_key", "key")
+
+        elevenlabs = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="modular",
+            llm_model="openai/gpt-5.6-luna",
+            tts_provider="elevenlabs",
+            tts_voice="rachel",
+        )
+        realtime = await validate_agent_pipeline_config(
+            modality="voice",
+            pipeline_type="voice_to_voice",
+            llm_model="openai/gpt-realtime-2.1-mini",
+            tts_voice="fable",
+        )
+
+        assert elevenlabs == []
+        assert any("fable" in e for e in realtime)
 
 
 class TestCatalogAPI:

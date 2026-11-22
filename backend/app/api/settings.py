@@ -202,6 +202,13 @@ async def update_api_keys(data: ApiKeyUpdate):
     redis = await get_redis()
     updates = data.model_dump(exclude_none=True)
 
+    for field in ("self_hosted_stt_model", "self_hosted_tts_model"):
+        if "://" in updates.get(field, ""):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{_API_KEY_FIELDS[field]} must be a model ID, not a URL.",
+            )
+
     for field, value in updates.items():
         if field not in _API_KEY_FIELDS:
             continue
