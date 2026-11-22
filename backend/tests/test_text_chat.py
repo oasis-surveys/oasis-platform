@@ -128,6 +128,50 @@ class TestCallLlm:
         assert kwargs["api_version"] == "2025-04-01-preview"
 
     @pytest.mark.asyncio
+    @patch("litellm.acompletion", new_callable=AsyncMock)
+    @patch("app.api.text_chat._get_key", new_callable=AsyncMock)
+    async def test_custom_gateway_preserves_openai_model_prefix(
+        self, mock_get_key, mock_acompletion
+    ):
+        mock_get_key.side_effect = lambda field: {
+            "openai_compatible_llm_url": "https://api-manager.example/api/openai/v1",
+            "openai_compatible_llm_api_key": "gateway-test",
+        }.get(field, "")
+        mock_acompletion.return_value = _mock_litellm_response()
+
+        from app.api.text_chat import _call_llm
+
+        await _call_llm(
+            [{"role": "user", "content": "Hi"}],
+            model="custom/openai/gpt-5-mini",
+        )
+
+        kwargs = mock_acompletion.call_args.kwargs
+        assert kwargs["model"] == "openai/gpt-5-mini"
+        assert kwargs["api_base"] == "https://api-manager.example/api/openai/v1"
+        assert kwargs["api_key"] == "gateway-test"
+        assert kwargs["max_completion_tokens"] == 2048
+        assert "max_tokens" not in kwargs
+
+    @pytest.mark.asyncio
+    @patch("litellm.acompletion", new_callable=AsyncMock)
+    @patch("app.api.text_chat._get_key", new_callable=AsyncMock)
+    async def test_anthropic_omits_temperature(self, mock_get_key, mock_acompletion):
+        mock_get_key.return_value = "anthropic-test"
+        mock_acompletion.return_value = _mock_litellm_response()
+
+        from app.api.text_chat import _call_llm
+
+        await _call_llm(
+            [{"role": "user", "content": "Hi"}],
+            model="anthropic/claude-opus-5-5",
+        )
+
+        kwargs = mock_acompletion.call_args.kwargs
+        assert kwargs["model"] == "anthropic/claude-opus-5-5"
+        assert "temperature" not in kwargs
+
+    @pytest.mark.asyncio
     @patch("app.api.text_chat._call_openai_responses", new_callable=AsyncMock)
     @patch("app.api.text_chat._openai_api_base", new_callable=AsyncMock)
     @patch("app.api.text_chat._get_key", new_callable=AsyncMock)

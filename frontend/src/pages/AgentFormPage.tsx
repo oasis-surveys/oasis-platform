@@ -78,6 +78,20 @@ function withGuideDefaults(g: Partial<InterviewGuide> | null | undefined): Inter
   };
 }
 
+/**
+ * Keep the UI model ID friendly while storing enough information for the
+ * backend to route it through the configured OpenAI-compatible endpoint.
+ */
+export function normalizeCustomModel(model: string): string {
+  const trimmed = model.trim();
+  if (!trimmed || trimmed.startsWith("custom/")) return trimmed;
+  return `custom/${trimmed}`;
+}
+
+function customModelForInput(model: string): string {
+  return model.startsWith("custom/") ? model.slice("custom/".length) : model;
+}
+
 // ── File helpers ──────────────────────────────────────────────
 
 function downloadFile(content: string, filename: string, mime: string) {
@@ -237,7 +251,9 @@ function parseGuideJSON(content: string): InterviewGuide {
 
 function buildAgentConfigJSON(form: FormData): string {
   const resolvedModel =
-    form.llm_model === "__custom__" ? form.llm_model_custom : form.llm_model;
+    form.llm_model === "__custom__"
+      ? normalizeCustomModel(form.llm_model_custom)
+      : form.llm_model;
   const maxDur = form.max_duration_seconds === "__custom__"
     ? (form.max_duration_custom ? parseInt(form.max_duration_custom) : null)
     : (form.max_duration_seconds ? parseInt(form.max_duration_seconds) : null);
@@ -320,7 +336,7 @@ function importAgentConfigToForm(
     welcome_message: (obj.welcome_message as string) || "",
     pipeline_type: (obj.pipeline_type as "modular" | "voice_to_voice") || "modular",
     llm_model: isCustom || !isKnown ? "__custom__" : storedModel,
-    llm_model_custom: isCustom || !isKnown ? storedModel : "",
+    llm_model_custom: isCustom || !isKnown ? customModelForInput(storedModel) : "",
     stt_provider: (obj.stt_provider as string) || "openai",
     stt_model: (obj.stt_model as string) || "gpt-realtime-whisper",
     tts_provider: (obj.tts_provider as string) || "openai",
@@ -481,9 +497,9 @@ Important: Adapt your style to the communication channel. For voice interviews, 
   llm_model_custom: "",
   stt_provider: "openai",
   stt_model: "gpt-realtime-whisper",
-  tts_provider: "openai",
-  tts_model: "gpt-4o-mini-tts",
-  tts_voice: "alloy",
+  tts_provider: "elevenlabs",
+  tts_model: "",
+  tts_voice: "talia",
   turn_detection: "local",
   language: "en",
   language_custom: "",
@@ -537,6 +553,22 @@ function GroupedSelect({
         </optgroup>
       ))}
     </select>
+  );
+}
+
+function defaultTtsVoice(catalog: ProviderCatalog | null, provider: string): string {
+  const voices =
+    provider === "openai" || provider === "azure_openai"
+      ? catalog?.voices.openai_tts
+      : provider === "elevenlabs"
+        ? catalog?.voices.elevenlabs
+        : provider === "cartesia"
+          ? catalog?.voices.cartesia
+          : [];
+  return (
+    voices?.find((voice) => voice.value === catalog?.defaults.tts_voice)?.value ??
+    voices?.[0]?.value ??
+    (provider === "self_hosted" ? catalog?.defaults.self_hosted_tts_voice ?? "alloy" : "")
   );
 }
 
@@ -778,6 +810,10 @@ export default function AgentFormPage() {
         stt_model: sttModel,
         tts_provider: tts?.value ?? current.tts_provider,
         tts_model: ttsModel,
+        tts_voice:
+          tts && tts.value !== current.tts_provider
+            ? defaultTtsVoice(catalog, tts.value)
+            : current.tts_voice,
       };
     });
   }, [catalog, isNew]);
@@ -879,7 +915,7 @@ export default function AgentFormPage() {
           welcome_message: a.welcome_message || "",
           pipeline_type: a.pipeline_type,
           llm_model: isCustom ? "__custom__" : storedModel,
-          llm_model_custom: isCustom ? storedModel : "",
+          llm_model_custom: isCustom ? customModelForInput(storedModel) : "",
           stt_provider: a.stt_provider,
           stt_model: a.stt_model || "gpt-realtime-whisper",
           tts_provider: a.tts_provider,
@@ -952,7 +988,9 @@ export default function AgentFormPage() {
     }
 
     const resolvedModel =
-      form.llm_model === "__custom__" ? form.llm_model_custom.trim() : form.llm_model;
+      form.llm_model === "__custom__"
+        ? normalizeCustomModel(form.llm_model_custom)
+        : form.llm_model;
     if (!resolvedModel) {
       setError("Please enter a custom model ID or choose a model from the list.");
       return;
@@ -2023,7 +2061,7 @@ export default function AgentFormPage() {
                   value={form.llm_model_custom}
                   onChange={set("llm_model_custom")}
                   className="input-styled font-mono"
-                  placeholder="e.g. anthropic/claude-sonnet-4-6, google/gemini-3.5-flash, custom/openrouter/anthropic/claude-sonnet-4-6"
+                  placeholder="e.g. openai/gpt-5.4-mini, anthropic/claude-sonnet-5-5, or your-proxy-model"
                 />
                 <p className="text-xs text-gray-400 mt-1.5">
                   Built-in prefixes: <code className="bg-gray-100 px-1 rounded text-xs">openai/</code>,{" "}
@@ -2032,8 +2070,10 @@ export default function AgentFormPage() {
                   <code className="bg-gray-100 px-1 rounded text-xs">scaleway/</code>,{" "}
                   <code className="bg-gray-100 px-1 rounded text-xs">azure/</code>,{" "}
                   <code className="bg-gray-100 px-1 rounded text-xs">gcp/</code>. Use{" "}
-                  <code className="bg-gray-100 px-1 rounded text-xs">custom/&lt;model&gt;</code>{" "}
-                  to hit your own LiteLLM/vLLM/Ollama proxy (set the URL and API key under Settings → Custom / Self-Hosted, or via{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">openai/&lt;model&gt;</code>{" "}
+                  for an OpenAI-compatible proxy. The form adds the internal{" "}
+                  <code className="bg-gray-100 px-1 rounded text-xs">custom/</code>{" "}
+                  route automatically. Set the proxy URL and API key under Settings → Custom / Self-Hosted, or via{" "}
                   <code className="bg-gray-100 px-1 rounded text-xs">OPENAI_COMPATIBLE_LLM_URL</code> /{" "}
                   <code className="bg-gray-100 px-1 rounded text-xs">OPENAI_COMPATIBLE_LLM_API_KEY</code> in <code className="bg-gray-100 px-1 rounded text-xs">.env</code>).
                 </p>
@@ -2100,6 +2140,11 @@ export default function AgentFormPage() {
             {isModular && form.stt_provider === "self_hosted" && (
               <InfoBanner color="sky">
                 <strong>Custom STT:</strong> Point this at a LiteLLM proxy or any OpenAI-compatible speech-to-text server (e.g. Speaches/faster-whisper, LocalAI). Configure <code>SELF_HOSTED_STT_URL</code> and <code>SELF_HOSTED_STT_API_KEY</code> in <Link to="/settings" className="underline font-medium">Settings</Link> or your <code>.env</code> file.
+              </InfoBanner>
+            )}
+            {form.modality === "voice" && isModular && form.tts_provider === "openai" && (
+              <InfoBanner color="amber">
+                <strong>OpenAI TTS is being retired:</strong> OpenAI shuts down its text-to-speech models on January 6, 2027. Switch this agent to another TTS provider before then.
               </InfoBanner>
             )}
             {isModular && form.tts_provider === "self_hosted" && (
@@ -2205,14 +2250,6 @@ export default function AgentFormPage() {
                         const provider = catalog?.tts_providers.find(
                           (option) => option.value === p,
                         );
-                        const voices =
-                          p === "openai" || p === "azure_openai"
-                            ? catalog?.voices.openai_tts
-                            : p === "elevenlabs"
-                              ? catalog?.voices.elevenlabs
-                              : p === "cartesia"
-                                ? catalog?.voices.cartesia
-                                : [];
                         setForm((current) => ({
                           ...current,
                           tts_provider: p,
@@ -2222,14 +2259,7 @@ export default function AgentFormPage() {
                             )?.value ??
                             provider?.models[0]?.value ??
                             "",
-                          tts_voice:
-                            voices?.find(
-                              (voice) => voice.value === catalogDefaults?.tts_voice,
-                            )?.value ??
-                            voices?.[0]?.value ??
-                            (p === "self_hosted"
-                              ? catalogDefaults?.self_hosted_tts_voice ?? "alloy"
-                              : ""),
+                          tts_voice: defaultTtsVoice(catalog, p),
                         }));
                       }}
                       className="select-styled"

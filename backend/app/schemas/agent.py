@@ -145,9 +145,9 @@ class AgentCreate(BaseModel):
     stt_provider: str = Field("openai", max_length=100)
     stt_model: str | None = "gpt-realtime-whisper"
 
-    tts_provider: str = Field("openai", max_length=100)
-    tts_model: str | None = "gpt-4o-mini-tts"
-    tts_voice: str | None = "alloy"
+    tts_provider: str = Field("elevenlabs", max_length=100)
+    tts_model: str | None = None
+    tts_voice: str | None = None
 
     turn_detection: str = Field(
         "local",

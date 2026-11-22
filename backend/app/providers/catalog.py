@@ -56,54 +56,55 @@ class VoiceOption:
 
 LLM_MODULAR_MODELS: tuple[ModelOption, ...] = (
     # OpenAI
-    ModelOption("openai/gpt-5.6-sol", "GPT-5.6 Sol (flagship)", "OpenAI", "openai", "responses", ("modular", "text")),
-    ModelOption("openai/gpt-5.6-terra", "GPT-5.6 Terra (balanced)", "OpenAI", "openai", "responses", ("modular", "text")),
-    ModelOption("openai/gpt-5.6-luna", "GPT-5.6 Luna (cost-efficient)", "OpenAI", "openai", "responses", ("modular", "text")),
+    ModelOption("openai/gpt-6.2-astra", "GPT-6.2 Astra (most capable)", "OpenAI", "openai", "responses", ("modular", "text")),
+    ModelOption("openai/gpt-6.2-sol", "GPT-6.2 Sol", "OpenAI", "openai", "responses", ("modular", "text")),
+    ModelOption("openai/gpt-6.1-terra", "GPT-6.1 Terra", "OpenAI", "openai", "responses", ("modular", "text")),
+    ModelOption("openai/gpt-6-luna", "GPT-6 Luna (cost-efficient)", "OpenAI", "openai", "responses", ("modular", "text")),
+    ModelOption("openai/gpt-5.6-sol", "GPT-5.6 Sol", "OpenAI", "openai", "responses", ("modular", "text")),
+    ModelOption("openai/gpt-5.6-terra", "GPT-5.6 Terra", "OpenAI", "openai", "responses", ("modular", "text")),
+    ModelOption("openai/gpt-5.6-luna", "GPT-5.6 Luna (default)", "OpenAI", "openai", "responses", ("modular", "text")),
     ModelOption("openai/gpt-5.5", "GPT-5.5", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-5.5-pro", "GPT-5.5 Pro", "OpenAI", "openai", "chat_completions", ("modular", "text")),
+    ModelOption("openai/gpt-5.5-pro", "GPT-5.5 Pro (slow)", "OpenAI", "openai", "responses", ("modular", "text")),
     ModelOption("openai/gpt-5.4", "GPT-5.4", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-5.4-pro", "GPT-5.4 Pro", "OpenAI", "openai", "chat_completions", ("modular", "text")),
+    ModelOption("openai/gpt-5.4-pro", "GPT-5.4 Pro (slow)", "OpenAI", "openai", "responses", ("modular", "text")),
     ModelOption("openai/gpt-5.4-mini", "GPT-5.4 Mini", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-5.4-nano", "GPT-5.4 Nano (cheapest)", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-5", "GPT-5", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-5-mini", "GPT-5 Mini", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-5-nano", "GPT-5 Nano", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-4.1", "GPT-4.1", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-4.1-mini", "GPT-4.1 Mini", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-4o", "GPT-4o", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/gpt-4o-mini", "GPT-4o Mini", "OpenAI", "openai", "chat_completions", ("modular", "text")),
-    ModelOption("openai/o3", "o3 (reasoning)", "OpenAI", "openai", "chat_completions", ("modular", "text")),
+    ModelOption("openai/gpt-5.4-nano", "GPT-5.4 Nano (shuts down Apr 1, 2027)", "OpenAI", "openai", "chat_completions", ("modular", "text")),
     # Scaleway
-    ModelOption("scaleway/qwen3.5-397b-a17b", "Qwen 3.5 397B A17B (newest)", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
-    ModelOption("scaleway/mistral-medium-3.5-128b", "Mistral Medium 3.5 128B", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
-    ModelOption("scaleway/qwen3-235b-a22b-instruct-2507", "Qwen 3 235B A22B Instruct", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
+    ModelOption("scaleway/qwen3.8-27b", "Qwen 3.8 27B (newest)", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     ModelOption("scaleway/qwen3.6-35b-a3b", "Qwen 3.6 35B A3B (fast)", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
+    ModelOption("scaleway/qwen3.5-397b-a17b", "Qwen 3.5 397B A17B", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
+    ModelOption("scaleway/qwen3-235b-a22b-instruct-2507", "Qwen 3 235B A22B Instruct", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
+    ModelOption("scaleway/deepseek-v4.1-flash-1017", "DeepSeek V4.1 Flash", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
+    ModelOption("scaleway/glm-5.3", "GLM 5.3", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
+    ModelOption("scaleway/mistral-medium-3.5-128b", "Mistral Medium 3.5 128B", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     ModelOption("scaleway/mistral-small-3.2-24b-instruct-2506", "Mistral Small 3.2 24B", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
-    ModelOption("scaleway/voxtral-small-24b-2507", "Voxtral Small 24B (audio-capable)", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     ModelOption("scaleway/gpt-oss-120b", "GPT-OSS 120B", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     ModelOption("scaleway/llama-3.3-70b-instruct", "Llama 3.3 70B Instruct", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     ModelOption("scaleway/gemma-4-26b-a4b-it", "Gemma 4 26B A4B IT", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
-    ModelOption("scaleway/gemma-3-27b-it", "Gemma 3 27B IT", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
-    ModelOption("scaleway/devstral-2-123b-instruct-2512", "Devstral 2 123B Instruct", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
-    ModelOption("scaleway/pixtral-12b-2409", "Pixtral 12B (vision)", "Scaleway", "scaleway", "chat_completions", ("modular", "text")),
     # Azure chat deployments are added from AZURE_OPENAI_CHAT_DEPLOYMENTS.
     # GCP Vertex
+    ModelOption("gcp/gemini-3.8-flash", "GCP Gemini 3.8 Flash", "GCP (Vertex AI)", "gcp", "chat_completions", ("modular", "text")),
+    ModelOption("gcp/gemini-3.5-flash", "GCP Gemini 3.5 Flash", "GCP (Vertex AI)", "gcp", "chat_completions", ("modular", "text")),
     ModelOption("gcp/gemini-2.5-flash", "GCP Gemini 2.5 Flash", "GCP (Vertex AI)", "gcp", "chat_completions", ("modular", "text")),
     ModelOption("gcp/gemini-2.5-pro", "GCP Gemini 2.5 Pro", "GCP (Vertex AI)", "gcp", "chat_completions", ("modular", "text")),
-    ModelOption("gcp/gemini-2.0-flash", "GCP Gemini 2.0 Flash", "GCP (Vertex AI)", "gcp", "chat_completions", ("modular", "text")),
     # Anthropic
-    ModelOption("anthropic/claude-opus-4-7", "Claude Opus 4.7 (most capable)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
-    ModelOption("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6 (balanced)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
-    ModelOption("anthropic/claude-haiku-4-5", "Claude Haiku 4.5 (fast)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
-    ModelOption("anthropic/claude-opus-4-6", "Claude Opus 4.6 (legacy)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
-    ModelOption("anthropic/claude-sonnet-4-5", "Claude Sonnet 4.5 (legacy)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
-    ModelOption("anthropic/claude-opus-4-5", "Claude Opus 4.5 (legacy)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-fable-5-2", "Claude Fable 5.2 (most capable)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-opus-5-5", "Claude Opus 5.5 (recommended)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-sonnet-5-5", "Claude Sonnet 5.5 (balanced)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-haiku-5-5", "Claude Haiku 5.5 (fast)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-opus-4-8", "Claude Opus 4.8 (legacy)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-opus-4-7", "Claude Opus 4.7 (legacy)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-sonnet-4-6", "Claude Sonnet 4.6 (legacy)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
+    ModelOption("anthropic/claude-haiku-4-5", "Claude Haiku 4.5 (legacy)", "Anthropic", "anthropic", "chat_completions", ("modular", "text")),
     # Google AI
-    ModelOption("google/gemini-3.5-flash", "Gemini 3.5 Flash (newest stable)", "Google AI", "google", "chat_completions", ("modular", "text")),
-    ModelOption("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro (preview)", "Google AI", "google", "chat_completions", ("modular", "text")),
-    ModelOption("google/gemini-3-flash-preview", "Gemini 3 Flash (preview)", "Google AI", "google", "chat_completions", ("modular", "text")),
+    ModelOption("google/gemini-3.8-flash", "Gemini 3.8 Flash (newest Flash)", "Google AI", "google", "chat_completions", ("modular", "text")),
+    ModelOption("google/gemini-3.5-flash", "Gemini 3.5 Flash", "Google AI", "google", "chat_completions", ("modular", "text")),
+    ModelOption("google/gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite (fastest)", "Google AI", "google", "chat_completions", ("modular", "text")),
     ModelOption("google/gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite", "Google AI", "google", "chat_completions", ("modular", "text")),
-    ModelOption("google/gemini-2.5-pro", "Gemini 2.5 Pro (stable)", "Google AI", "google", "chat_completions", ("modular", "text")),
+    ModelOption("google/gemini-4-hydrogen", "Gemini 4 Hydrogen (slow for voice)", "Google AI", "google", "chat_completions", ("modular", "text")),
+    ModelOption("google/gemini-4-neon", "Gemini 4 Neon (paid tier, slow for voice)", "Google AI", "google", "chat_completions", ("modular", "text")),
+    ModelOption("google/gemini-4-carbon", "Gemini 4 Carbon (paid tier, slow for voice)", "Google AI", "google", "chat_completions", ("modular", "text")),
+    ModelOption("google/gemini-3.1-pro-preview", "Gemini 3.1 Pro (preview, paid tier)", "Google AI", "google", "chat_completions", ("modular", "text")),
 )
 
 LLM_V2V_MODELS: tuple[ModelOption, ...] = (
@@ -111,16 +112,18 @@ LLM_V2V_MODELS: tuple[ModelOption, ...] = (
     ModelOption("openai/gpt-realtime-2.1-mini", "GPT Realtime 2.1 Mini (cost-efficient)", "OpenAI", "openai", "realtime", ("voice_to_voice",)),
     ModelOption("openai/gpt-realtime-2", "GPT Realtime 2", "OpenAI", "openai", "realtime", ("voice_to_voice",)),
     ModelOption("openai/gpt-realtime-1.5", "GPT Realtime 1.5", "OpenAI", "openai", "realtime", ("voice_to_voice",)),
-    ModelOption("openai/gpt-realtime", "GPT Realtime", "OpenAI", "openai", "realtime", ("voice_to_voice",)),
-    ModelOption("openai/gpt-realtime-mini", "GPT Realtime Mini (cost-efficient)", "OpenAI", "openai", "realtime", ("voice_to_voice",)),
-    ModelOption("google/gemini-3.1-flash-live-preview", "Gemini 3.1 Flash Live (newest preview)", "Google", "google", "gemini_live", ("voice_to_voice",)),
+    ModelOption("openai/gpt-realtime", "GPT Realtime (shuts down Jan 20, 2027)", "OpenAI", "openai", "realtime", ("voice_to_voice",)),
+    ModelOption("openai/gpt-realtime-mini", "GPT Realtime Mini (shuts down Jan 20, 2027)", "OpenAI", "openai", "realtime", ("voice_to_voice",)),
+    ModelOption("google/gemini-3.8-live", "Gemini 3.8 Live (newest)", "Google", "google", "gemini_live", ("voice_to_voice",)),
+    ModelOption("google/gemini-3.1-flash-live-preview", "Gemini 3.1 Flash Live (preview)", "Google", "google", "gemini_live", ("voice_to_voice",)),
     ModelOption("google/gemini-2.5-flash-native-audio-latest", "Gemini 2.5 Flash Native Audio (latest)", "Google", "google", "gemini_live", ("voice_to_voice",)),
 )
 
 STT_PROVIDERS: tuple[ProviderOption, ...] = (
     ProviderOption("openai", "OpenAI Whisper", "openai", (
-        "gpt-realtime-whisper", "whisper-1", "gpt-4o-transcribe",
-        "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize",
+        "gpt-realtime-whisper", "gpt-live-transcribe", "gpt-transcribe",
+        "whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe",
+        "gpt-4o-transcribe-diarize",
     )),
     ProviderOption("deepgram", "Deepgram", "deepgram", (
         "nova-3", "nova-3-medical", "nova-2", "nova-2-general",
@@ -151,13 +154,12 @@ TTS_PROVIDERS: tuple[ProviderOption, ...] = (
 
 OPENAI_REALTIME_VOICES: tuple[VoiceOption, ...] = (
     VoiceOption("coral", "Coral (default)", "openai"),
+    VoiceOption("marin", "Marin (best quality)", "openai"),
+    VoiceOption("cedar", "Cedar (best quality)", "openai"),
     VoiceOption("alloy", "Alloy", "openai"),
     VoiceOption("ash", "Ash", "openai"),
     VoiceOption("ballad", "Ballad", "openai"),
     VoiceOption("echo", "Echo", "openai"),
-    VoiceOption("fable", "Fable", "openai"),
-    VoiceOption("onyx", "Onyx", "openai"),
-    VoiceOption("nova", "Nova", "openai"),
     VoiceOption("sage", "Sage", "openai"),
     VoiceOption("shimmer", "Shimmer", "openai"),
     VoiceOption("verse", "Verse", "openai"),
@@ -184,23 +186,54 @@ OPENAI_TTS_VOICES: tuple[VoiceOption, ...] = (
 )
 
 ELEVENLABS_VOICES: tuple[VoiceOption, ...] = (
-    VoiceOption("rachel", "Rachel (Female)", "elevenlabs"),
-    VoiceOption("alice", "Alice (Female)", "elevenlabs"),
-    VoiceOption("lily", "Lily (Female)", "elevenlabs"),
-    VoiceOption("emily", "Emily (Female)", "elevenlabs"),
-    VoiceOption("bella", "Bella (Female)", "elevenlabs"),
-    VoiceOption("elli", "Elli (Female)", "elevenlabs"),
-    VoiceOption("josh", "Josh (Male)", "elevenlabs"),
-    VoiceOption("adam", "Adam (Male)", "elevenlabs"),
-    VoiceOption("arnold", "Arnold (Male)", "elevenlabs"),
-    VoiceOption("sam", "Sam (Male)", "elevenlabs"),
-    VoiceOption("charlie", "Charlie (Male)", "elevenlabs"),
-    VoiceOption("bill", "Bill (Male)", "elevenlabs"),
-    VoiceOption("george", "George (Male)", "elevenlabs"),
+    VoiceOption("talia", "Talia (warm, soft)", "elevenlabs"),
+    VoiceOption("alicia", "Alicia (polished)", "elevenlabs"),
+    VoiceOption("jade", "Jade (upbeat, natural)", "elevenlabs"),
+    VoiceOption("elara", "Elara (crisp)", "elevenlabs"),
+    VoiceOption("maisie", "Maisie (friendly, casual)", "elevenlabs"),
+    VoiceOption("elowen", "Elowen (upbeat)", "elevenlabs"),
+    VoiceOption("florence", "Florence (atmospheric)", "elevenlabs"),
+    VoiceOption("eddie", "Eddie (natural, helpful)", "elevenlabs"),
+    VoiceOption("caleb", "Caleb (trusted guide)", "elevenlabs"),
+    VoiceOption("finley", "Finley (articulate)", "elevenlabs"),
+    VoiceOption("lawrence", "Lawrence (bright)", "elevenlabs"),
+    VoiceOption("wyatt", "Wyatt (seasoned)", "elevenlabs"),
+    VoiceOption("eldrin", "Eldrin (British baritone)", "elevenlabs"),
+    VoiceOption("darian", "Darian (warm, grounded)", "elevenlabs"),
+    VoiceOption("warren", "Warren (cool, easy)", "elevenlabs"),
+    VoiceOption("baxter", "Baxter (calm, Australian)", "elevenlabs"),
 )
 
+# ElevenLabs retires its Default voices on Dec 31, 2026. Agents saved with an
+# old name keep working through the replacement ElevenLabs suggests, or a
+# similar voice where it suggests none.
+ELEVENLABS_RETIRED_VOICES: dict[str, str] = {
+    "rachel": "talia",
+    "sarah": "talia",
+    "bella": "talia",
+    "domi": "jade",
+    "elli": "maisie",
+    "emily": "elara",
+    "alice": "alicia",
+    "lily": "florence",
+    "charlie": "baxter",
+    "chris": "caleb",
+    "bill": "wyatt",
+    "george": "eldrin",
+    "antoni": "eddie",
+    "josh": "lawrence",
+    "arnold": "eldrin",
+    "adam": "finley",
+    "sam": "eddie",
+}
+
 CARTESIA_VOICES: tuple[VoiceOption, ...] = (
-    VoiceOption("a0e99841-438c-4a64-b679-ae501e7d6091", "Barbershop Man (default)", "cartesia"),
+    VoiceOption("db6b0ed5-d5d3-463d-ae85-518a07d3c2b4", "Skylar (US, female)", "cartesia"),
+    VoiceOption("47c38ca4-5f35-497b-b1a3-415245fb35e1", "Daniel (US, male)", "cartesia"),
+    VoiceOption("9626c31c-bec5-4cca-baa8-f8ba9e84c8bc", "Jacqueline (US, female)", "cartesia"),
+    VoiceOption("62ae83ad-4f6a-430b-af41-a9bede9286ca", "Gemma (UK, female)", "cartesia"),
+    VoiceOption("ef191366-f52f-447a-a398-ed8c0f2943a1", "Archie (UK, male)", "cartesia"),
+    VoiceOption("a0e99841-438c-4a64-b679-ae501e7d6091", "Barbershop Man", "cartesia"),
     VoiceOption("729651dc-c6c3-4ee5-97fa-350da1f88600", "Storyteller (Female)", "cartesia"),
     VoiceOption("5345cf08-6f37-424d-a5d9-8ae1101b9377", "British Reading Lady", "cartesia"),
     VoiceOption("421b3369-f63f-4b03-8980-37a44df1d4e8", "Friendly Brit", "cartesia"),
@@ -209,10 +242,12 @@ CARTESIA_VOICES: tuple[VoiceOption, ...] = (
 
 STT_MODEL_LABELS: dict[str, str] = {
     "gpt-realtime-whisper": "GPT Realtime Whisper (streaming)",
-    "whisper-1": "Whisper 1",
-    "gpt-4o-transcribe": "GPT-4o Transcribe",
-    "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe",
-    "gpt-4o-transcribe-diarize": "GPT-4o Transcribe Diarize (multi-speaker)",
+    "gpt-live-transcribe": "GPT Live Transcribe (streaming)",
+    "gpt-transcribe": "GPT Transcribe",
+    "whisper-1": "Whisper 1 (shuts down Feb 26, 2027)",
+    "gpt-4o-transcribe": "GPT-4o Transcribe (shuts down Feb 26, 2027)",
+    "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (shuts down Feb 26, 2027)",
+    "gpt-4o-transcribe-diarize": "GPT-4o Transcribe Diarize (shuts down Feb 26, 2027)",
     "whisper-large-v3": "Whisper Large V3",
     "nova-3": "Nova 3 (default)",
     "nova-3-medical": "Nova 3 Medical",
@@ -224,9 +259,9 @@ STT_MODEL_LABELS: dict[str, str] = {
 }
 
 TTS_MODEL_LABELS: dict[str, str] = {
-    "gpt-4o-mini-tts": "GPT-4o Mini TTS (default)",
-    "tts-1": "TTS-1 (fast)",
-    "tts-1-hd": "TTS-1 HD (quality)",
+    "gpt-4o-mini-tts": "GPT-4o Mini TTS (shuts down Jan 6, 2027)",
+    "tts-1": "TTS-1 (shuts down Jan 6, 2027)",
+    "tts-1-hd": "TTS-1 HD (shuts down Jan 6, 2027)",
 }
 
 DEFAULTS = {
@@ -235,7 +270,7 @@ DEFAULTS = {
     "v2v_llm": "openai/gpt-realtime-2.1-mini",
     "stt_provider": "openai",
     "stt_model": "gpt-realtime-whisper",
-    "tts_provider": "openai",
+    "tts_provider": "elevenlabs",
     "tts_model": "gpt-4o-mini-tts",
     "tts_voice": "alloy",
     "v2v_voice_openai": "coral",
@@ -273,7 +308,7 @@ def resolve_llm_api_kind(model: str) -> ApiKind | None:
         return entry.api_kind
     prefix = _llm_prefix(model)
     if prefix == "openai":
-        if "gpt-5.6" in model:
+        if "gpt-5.6" in model or "gpt-6" in model:
             return "responses"
         if "realtime" in model.lower():
             return "realtime"

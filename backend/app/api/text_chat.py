@@ -34,6 +34,7 @@ from app.models.session import (
     aggregate_session_tokens,
 )
 from app.realtime import publish_transcript_event
+from app.providers.compatible import litellm_model_id
 from app.providers.catalog import resolve_llm_api_kind
 from app.providers.validate import validate_agent_pipeline_config
 from app.session_manager import register_session, unregister_session
@@ -73,13 +74,13 @@ async def _openai_api_base() -> str | None:
 
 _REALTIME_TO_CHAT: dict[str, str] = {
     # OpenAI Realtime → chat equivalents
-    "openai-realtime/gpt-4o-realtime-preview": "gpt-4o",
-    "openai-realtime/gpt-4o-mini-realtime-preview": "gpt-4o-mini",
-    "openai-realtime/gpt-realtime-1.5": "gpt-4.1",
-    "openai-realtime/gpt-realtime-2": "gpt-4.1",
+    "openai-realtime/gpt-4o-realtime-preview": "openai/gpt-5.6-luna",
+    "openai-realtime/gpt-4o-mini-realtime-preview": "openai/gpt-5.6-luna",
+    "openai-realtime/gpt-realtime-1.5": "openai/gpt-5.6-luna",
+    "openai-realtime/gpt-realtime-2": "openai/gpt-5.6-luna",
     # Gemini Live → chat equivalents
     "google/gemini-2.5-flash-native-audio": "google/gemini-3.5-flash",
-    "google/gemini-2.0-flash-live": "google/gemini-2.0-flash",
+    "google/gemini-2.0-flash-live": "google/gemini-3.5-flash",
 }
 
 
@@ -101,9 +102,7 @@ def _resolve_chat_model(model: str) -> str:
         # Best-effort fallback
         if "gemini" in lower:
             return "google/gemini-3.5-flash"
-        if "gpt" in lower:
-            return "gpt-4.1"
-        return "gpt-4.1"  # safe default
+        return "openai/gpt-5.6-luna"
 
     return model
 
@@ -239,7 +238,9 @@ async def _call_llm(
     messages = await _maybe_inject_rag_context(messages, study_id, last_user_text)
 
     api_kind = resolve_llm_api_kind(model)
-    openai_model_id = model.removeprefix("openai/")
+    model_id_for_limits = model.removeprefix("openai/")
+    if model.startswith("custom/"):
+        model_id_for_limits = model[len("custom/"):].removeprefix("openai/")
     is_direct_openai = model.startswith("openai/") or "/" not in model
     if is_direct_openai and api_kind == "responses":
         return await _call_openai_responses(
@@ -260,11 +261,13 @@ async def _call_llm(
         "model": litellm_model,
         "messages": messages,
     }
-    if openai_model_id.startswith(("gpt-5", "o1", "o3", "o4")):
+    if model_id_for_limits.startswith(("gpt-5", "o1", "o3", "o4")):
         kwargs["max_completion_tokens"] = 2048
     else:
         kwargs["max_tokens"] = 2048
-        kwargs["temperature"] = 0.7
+        # Claude 4.7 and later reject sampling parameters.
+        if not model.startswith("anthropic/"):
+            kwargs["temperature"] = 0.7
 
     if model.startswith("scaleway/"):
         scw_key = await _get_key("scaleway_secret_key")
@@ -297,7 +300,10 @@ async def _call_llm(
                 "(e.g. http://my-litellm:4000/v1) for your custom OpenAI-"
                 "compatible endpoint, or pick a built-in provider."
             )
-        kwargs["model"] = f"openai/{custom_model}"
+        # Keep an existing ``openai/`` prefix. The API manager may require
+        # that exact model identifier, and adding it twice changes the model
+        # to ``openai/openai/<name>``.
+        kwargs["model"] = litellm_model_id(custom_model)
         kwargs["api_base"] = base_url
         kwargs["api_key"] = await _get_key("openai_compatible_llm_api_key") or "not-needed"
     elif model.startswith("anthropic/"):
